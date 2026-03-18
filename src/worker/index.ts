@@ -9,15 +9,16 @@
 // See: docs/20260318-001-realtime-wire-contract.md
 
 import { Hono } from 'hono'
+import { logger } from 'hono/logger'
 
 type Env = {
   REALTIME_APP_ID: string
   REALTIME_APP_SECRET: string
+  DEBUG?: string
 }
 
 // VERIFIED: rtc.live.cloudflare.com/v1 (not realtime.cloudflare.com/client/v4)
 const REALTIME_API = 'https://rtc.live.cloudflare.com/v1/apps'
-const DEBUG_PROTOCOL = false
 
 // Dev-only ephemeral rendezvous state; invalid across isolates/restarts/deploys.
 // Production requires Durable Objects or external shared state.
@@ -26,10 +27,7 @@ const calls = new Map<string, Map<string, {
   publishedTracks: Array<{ trackName: string; mid: string }>
 }>>()
 
-interface CreateSessionRequest {
-  // Empty body verified
-}
-
+// Type definitions
 interface CreateSessionResponse {
   sessionId: string
   cloudflareSessionId: string
@@ -53,7 +51,7 @@ interface SubscribeOfferRequest {
   sessionId: string
   remoteTracks: Array<{
     trackName: string
-    sessionId: string  // Publisher's session ID
+    sessionId: string
   }>
 }
 
@@ -87,30 +85,62 @@ interface LeaveRequest {
   sessionId: string
 }
 
+interface HealthResponse {
+  status: 'healthy'
+  version: string
+  callsActive: number
+  sessionsActive: number
+}
+
+interface ErrorResponse { 
+  error: string
+  code?: string
+  details?: unknown
+}
+
 interface OkResponse { ok: true }
-interface ErrorResponse { error: string }
 
-const apiHeaders = (env: Env) => ({
-  'Authorization': `Bearer ${env.REALTIME_APP_SECRET}`,
-  'Content-Type': 'application/json'
-})
+// Helper functions
+function isDebugEnabled(env: Env): boolean {
+  return env.DEBUG === 'true' || env.DEBUG === '1'
+}
 
-async function parseCloudflareResponse(res: Response, routeName: string): Promise<{ data: unknown; text: string }> {
+function apiHeaders(env: Env) {
+  return {
+    'Authorization': `Bearer ${env.REALTIME_APP_SECRET}`,
+    'Content-Type': 'application/json'
+  }
+}
+
+async function parseCloudflareResponse(
+  res: Response, 
+  routeName: string, 
+  debug: boolean
+): Promise<{ data: unknown; text: string }> {
   const text = await res.text()
+  
   if (!res.ok) {
-    console.error(`[${routeName}] Upstream Cloudflare failure:`, {
+    const errorInfo: Record<string, unknown> = {
       status: res.status,
       statusText: res.statusText,
-      ...(DEBUG_PROTOCOL ? { body: text.slice(0, 500) } : {})
-    })
-    throw new Error(`Upstream failure: ${res.status}`)
+    }
+    if (debug) {
+      errorInfo.bodyPreview = text.slice(0, 500)
+      errorInfo.bodyLength = text.length
+    }
+    console.error(`[${routeName}] Upstream Cloudflare failure:`, errorInfo)
+    throw new Error(`Upstream failure: ${res.status} ${res.statusText}`)
   }
+  
   try {
     const data = JSON.parse(text)
+    if (debug) {
+      console.log(`[${routeName}] Response:`, JSON.stringify(data, null, 2).slice(0, 1000))
+    }
     return { data, text }
   } catch (e) {
     console.error(`[${routeName}] Failed to parse upstream JSON:`, {
-      ...(DEBUG_PROTOCOL ? { rawBody: text.slice(0, 500) } : {}),
+      preview: text.slice(0, 200),
       parseError: (e as Error).message
     })
     throw new Error('Invalid JSON from upstream')
@@ -131,23 +161,56 @@ function requireNonEmptyArray<T>(value: unknown, field: string): T[] {
   return value as T[]
 }
 
+// Hono app
 const app = new Hono<{ Bindings: Env }>()
 
-app.notFound((c) => c.json({ error: 'Not found' } as ErrorResponse, 404))
+// Request logging in development
+app.use('*', logger())
+
+// Error handling
+app.notFound((c) => c.json({ error: 'Not found', code: 'NOT_FOUND' } as ErrorResponse, 404))
+
 app.onError((err, c) => {
   console.error('[unhandled]', err)
-  return c.json({ error: 'Internal error' } as ErrorResponse, 500)
+  return c.json({ 
+    error: 'Internal error', 
+    code: 'INTERNAL_ERROR',
+    details: isDebugEnabled(c.env) ? err.message : undefined
+  } as ErrorResponse, 500)
+})
+
+// Health check endpoint
+app.get('/health', (c) => {
+  let sessionsActive = 0
+  for (const call of calls.values()) {
+    sessionsActive += call.size
+  }
+  
+  return c.json({
+    status: 'healthy',
+    version: '0.0.1',
+    callsActive: calls.size,
+    sessionsActive
+  } as HealthResponse)
 })
 
 // 1. SESSION — VERIFIED
 app.post('/api/calls/:callId/session', async (c) => {
   const env = c.env
   const callId = c.req.param('callId')
+  const debug = isDebugEnabled(env)
 
   try {
     requireNonEmptyString(callId, 'callId')
   } catch (e) {
-    return c.json({ error: (e as Error).message }, 400)
+    return c.json({ 
+      error: (e as Error).message, 
+      code: 'BAD_REQUEST' 
+    } as ErrorResponse, 400)
+  }
+
+  if (debug) {
+    console.log(`[sessions/new] Creating session for call: ${callId}`)
   }
 
   // VERIFIED: Empty body, response is { sessionId: "..." }
@@ -159,16 +222,22 @@ app.post('/api/calls/:callId/session', async (c) => {
 
   let cfResponse: { sessionId?: string }
   try {
-    const { data } = await parseCloudflareResponse(res, 'sessions/new')
+    const { data } = await parseCloudflareResponse(res, 'sessions/new', debug)
     cfResponse = data as { sessionId?: string }
   } catch (e) {
-    return c.json({ error: (e as Error).message }, 502)
+    return c.json({ 
+      error: (e as Error).message, 
+      code: 'UPSTREAM_ERROR' 
+    } as ErrorResponse, 502)
   }
 
   // VERIFIED: Response path is sessionId (not result.id)
   const cfSessionId = cfResponse?.sessionId
   if (!cfSessionId || typeof cfSessionId !== 'string') {
-    return c.json({ error: 'Unexpected Realtime response shape: missing sessionId' }, 502)
+    return c.json({ 
+      error: 'Unexpected Realtime response shape: missing sessionId',
+      code: 'INVALID_RESPONSE'
+    } as ErrorResponse, 502)
   }
 
   const internalId = crypto.randomUUID()
@@ -182,6 +251,10 @@ app.post('/api/calls/:callId/session', async (c) => {
     console.warn('[calls] excessive in-memory call count; dev-only store may be leaking')
   }
 
+  if (debug) {
+    console.log(`[sessions/new] Created: internal=${internalId.slice(0, 8)}, cf=${cfSessionId.slice(0, 8)}`)
+  }
+
   return c.json({
     sessionId: internalId,
     cloudflareSessionId: cfSessionId
@@ -192,11 +265,12 @@ app.post('/api/calls/:callId/session', async (c) => {
 app.post('/api/calls/:callId/publish-offer', async (c) => {
   const env = c.env
   const callId = c.req.param('callId')
+  const debug = isDebugEnabled(env)
 
   try {
     requireNonEmptyString(callId, 'callId')
   } catch (e) {
-    return c.json({ error: (e as Error).message }, 400)
+    return c.json({ error: (e as Error).message, code: 'BAD_REQUEST' } as ErrorResponse, 400)
   }
 
   let body: PublishOfferRequest
@@ -206,12 +280,16 @@ app.post('/api/calls/:callId/publish-offer', async (c) => {
     requireNonEmptyString(body.sdpOffer, 'sdpOffer')
     requireNonEmptyArray(body.tracks, 'tracks')
   } catch (e) {
-    return c.json({ error: (e as Error).message }, 400)
+    return c.json({ error: (e as Error).message, code: 'BAD_REQUEST' } as ErrorResponse, 400)
   }
 
   const session = calls.get(callId)?.get(body.sessionId)
   if (!session) {
-    return c.json({ error: 'Session not found' }, 404)
+    return c.json({ error: 'Session not found', code: 'SESSION_NOT_FOUND' } as ErrorResponse, 404)
+  }
+
+  if (debug) {
+    console.log(`[tracks/new/push] Publishing ${body.tracks.length} tracks for session: ${body.sessionId.slice(0, 8)}`)
   }
 
   // VERIFIED: tracks/new with location: "local" returns Answer
@@ -239,18 +317,25 @@ app.post('/api/calls/:callId/publish-offer', async (c) => {
     tracks?: Array<{ mid: string; trackName: string }>
   }
   try {
-    const { data } = await parseCloudflareResponse(res, 'tracks/new-push')
+    const { data } = await parseCloudflareResponse(res, 'tracks/new-push', debug)
     cfResponse = data as typeof cfResponse
   } catch (e) {
-    return c.json({ error: (e as Error).message }, 502)
+    return c.json({ error: (e as Error).message, code: 'UPSTREAM_ERROR' } as ErrorResponse, 502)
   }
 
   if (!cfResponse?.sessionDescription || cfResponse.sessionDescription.type !== 'answer') {
-    return c.json({ error: 'Unexpected response: expected answer' }, 502)
+    return c.json({ 
+      error: 'Unexpected response: expected answer',
+      code: 'INVALID_RESPONSE'
+    } as ErrorResponse, 502)
   }
 
   // Store published tracks for remote discovery
   session.publishedTracks = body.tracks
+
+  if (debug) {
+    console.log(`[tracks/new/push] Success: got answer, ${cfResponse.tracks?.length || 0} tracks confirmed`)
+  }
 
   return c.json({
     sessionDescription: cfResponse.sessionDescription,
@@ -263,11 +348,12 @@ app.post('/api/calls/:callId/publish-offer', async (c) => {
 app.post('/api/calls/:callId/subscribe-offer', async (c) => {
   const env = c.env
   const callId = c.req.param('callId')
+  const debug = isDebugEnabled(env)
 
   try {
     requireNonEmptyString(callId, 'callId')
   } catch (e) {
-    return c.json({ error: (e as Error).message }, 400)
+    return c.json({ error: (e as Error).message, code: 'BAD_REQUEST' } as ErrorResponse, 400)
   }
 
   let body: SubscribeOfferRequest
@@ -276,12 +362,16 @@ app.post('/api/calls/:callId/subscribe-offer', async (c) => {
     requireNonEmptyString(body.sessionId, 'sessionId')
     requireNonEmptyArray(body.remoteTracks, 'remoteTracks')
   } catch (e) {
-    return c.json({ error: (e as Error).message }, 400)
+    return c.json({ error: (e as Error).message, code: 'BAD_REQUEST' } as ErrorResponse, 400)
   }
 
   const session = calls.get(callId)?.get(body.sessionId)
   if (!session) {
-    return c.json({ error: 'Session not found' }, 404)
+    return c.json({ error: 'Session not found', code: 'SESSION_NOT_FOUND' } as ErrorResponse, 404)
+  }
+
+  if (debug) {
+    console.log(`[tracks/new/pull] Subscribing to ${body.remoteTracks.length} remote tracks`)
   }
 
   // VERIFIED: tracks/new with location: "remote" returns OFFER
@@ -306,20 +396,27 @@ app.post('/api/calls/:callId/subscribe-offer', async (c) => {
     requiresImmediateRenegotiation?: boolean
   }
   try {
-    const { data } = await parseCloudflareResponse(res, 'tracks/new-pull')
+    const { data } = await parseCloudflareResponse(res, 'tracks/new-pull', debug)
     cfResponse = data as typeof cfResponse
   } catch (e) {
-    return c.json({ error: (e as Error).message }, 502)
+    return c.json({ error: (e as Error).message, code: 'UPSTREAM_ERROR' } as ErrorResponse, 502)
   }
 
   if (!cfResponse?.sessionDescription || cfResponse.sessionDescription.type !== 'offer') {
-    return c.json({ error: 'Unexpected response: expected offer' }, 502)
+    return c.json({ 
+      error: 'Unexpected response: expected offer',
+      code: 'INVALID_RESPONSE'
+    } as ErrorResponse, 502)
+  }
+
+  if (debug) {
+    console.log(`[tracks/new/pull] Success: got offer, ${cfResponse.tracks?.length || 0} tracks`)
   }
 
   return c.json({
     sessionDescription: cfResponse.sessionDescription,
     tracks: cfResponse.tracks || [],
-    requiresImmediateRenegotiation: cfResponse.requiresImmediateRenegotiation || true
+    requiresImmediateRenegotiation: cfResponse.requiresImmediateRenegotiation ?? true
   } as SubscribeOfferResponse)
 })
 
@@ -328,11 +425,12 @@ app.post('/api/calls/:callId/subscribe-offer', async (c) => {
 app.post('/api/calls/:callId/complete-subscribe', async (c) => {
   const env = c.env
   const callId = c.req.param('callId')
+  const debug = isDebugEnabled(env)
 
   try {
     requireNonEmptyString(callId, 'callId')
   } catch (e) {
-    return c.json({ error: (e as Error).message }, 400)
+    return c.json({ error: (e as Error).message, code: 'BAD_REQUEST' } as ErrorResponse, 400)
   }
 
   let body: CompleteSubscribeRequest
@@ -341,12 +439,16 @@ app.post('/api/calls/:callId/complete-subscribe', async (c) => {
     requireNonEmptyString(body.sessionId, 'sessionId')
     requireNonEmptyString(body.sdpAnswer, 'sdpAnswer')
   } catch (e) {
-    return c.json({ error: (e as Error).message }, 400)
+    return c.json({ error: (e as Error).message, code: 'BAD_REQUEST' } as ErrorResponse, 400)
   }
 
   const session = calls.get(callId)?.get(body.sessionId)
   if (!session) {
-    return c.json({ error: 'Session not found' }, 404)
+    return c.json({ error: 'Session not found', code: 'SESSION_NOT_FOUND' } as ErrorResponse, 404)
+  }
+
+  if (debug) {
+    console.log(`[renegotiate] Sending answer for session: ${body.sessionId.slice(0, 8)}`)
   }
 
   // VERIFIED: PUT /renegotiate with sessionDescription (Answer)
@@ -365,9 +467,13 @@ app.post('/api/calls/:callId/complete-subscribe', async (c) => {
   )
 
   try {
-    await parseCloudflareResponse(res, 'renegotiate')
+    await parseCloudflareResponse(res, 'renegotiate', debug)
   } catch (e) {
-    return c.json({ error: (e as Error).message }, 502)
+    return c.json({ error: (e as Error).message, code: 'UPSTREAM_ERROR' } as ErrorResponse, 502)
+  }
+
+  if (debug) {
+    console.log(`[renegotiate] Success: subscription complete`)
   }
 
   return c.json({ ok: true } as OkResponse)
@@ -375,13 +481,13 @@ app.post('/api/calls/:callId/complete-subscribe', async (c) => {
 
 // 5. DISCOVER-REMOTE-TRACKS
 // App-level discovery — returns other participants' track refs
-app.get('/api/calls/:callId/discover-remote-tracks', async (c) => {
+app.get('/api/calls/:callId/discover-remote-tracks', (c) => {
   const callId = c.req.param('callId')
 
   try {
     requireNonEmptyString(callId, 'callId')
   } catch (e) {
-    return c.json({ error: (e as Error).message }, 400)
+    return c.json({ error: (e as Error).message, code: 'BAD_REQUEST' } as ErrorResponse, 400)
   }
 
   const selfId = c.req.query('sessionId')
@@ -414,7 +520,7 @@ app.post('/api/calls/:callId/leave', async (c) => {
   try {
     requireNonEmptyString(callId, 'callId')
   } catch (e) {
-    return c.json({ error: (e as Error).message }, 400)
+    return c.json({ error: (e as Error).message, code: 'BAD_REQUEST' } as ErrorResponse, 400)
   }
 
   let body: LeaveRequest
@@ -422,7 +528,7 @@ app.post('/api/calls/:callId/leave', async (c) => {
     body = await c.req.json()
     requireNonEmptyString(body.sessionId, 'sessionId')
   } catch (e) {
-    return c.json({ error: (e as Error).message }, 400)
+    return c.json({ error: (e as Error).message, code: 'BAD_REQUEST' } as ErrorResponse, 400)
   }
 
   const session = calls.get(callId)?.get(body.sessionId)

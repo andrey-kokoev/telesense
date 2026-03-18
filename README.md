@@ -49,7 +49,10 @@ pnpm dev
 
 | Command | Description |
 |---------|-------------|
-| `pnpm dev` | Start dev servers (Vite + Wrangler) |
+| `pnpm dev` | Start dev servers (Vite + Wrangler) with process management |
+| `pnpm dev:debug` | Start with verbose Cloudflare API logging |
+| `pnpm health` | Quick health check of running services |
+| `pnpm test:call` | Reminder for manual 1:1 call test |
 | `pnpm build` | Build for production |
 | `pnpm deploy` | Deploy to Cloudflare Workers |
 | `pnpm typecheck` | Run TypeScript type checking |
@@ -60,7 +63,28 @@ pnpm dev
 | `pnpm logs` | View production logs |
 | `make help` | Show all available make commands |
 
-Or use `make`:
+### Debug Mode
+
+Enable verbose logging to see Cloudflare API requests/responses:
+
+```bash
+# Option 1: Use debug script
+pnpm dev:debug
+
+# Option 2: Set in .dev.vars
+DEBUG=true
+pnpm dev
+```
+
+### Quick Health Check
+
+```bash
+# While dev server is running
+pnpm health
+# → { "status": "healthy", "version": "0.0.1", ... }
+```
+
+### Or use `make`:
 ```bash
 make dev      # Start development
 make check    # Run type checks

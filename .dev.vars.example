@@ -1,3 +1,6 @@
 # Cloudflare Realtime App Secret
 # Get this from: https://dash.cloudflare.com/?to=/:account/calls
 REALTIME_APP_SECRET=your-app-token-here
+
+# Debug mode - set to 'true' to enable verbose logging
+# DEBUG=true

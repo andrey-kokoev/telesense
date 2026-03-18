@@ -2096,30 +2096,109 @@ var Hono2 = class extends Hono {
   }
 };
 
+// node_modules/.pnpm/hono@4.12.8/node_modules/hono/dist/utils/color.js
+function getColorEnabled() {
+  const { process, Deno } = globalThis;
+  const isNoColor = typeof Deno?.noColor === "boolean" ? Deno.noColor : process !== void 0 ? (
+    // eslint-disable-next-line no-unsafe-optional-chaining
+    "NO_COLOR" in process?.env
+  ) : false;
+  return !isNoColor;
+}
+__name(getColorEnabled, "getColorEnabled");
+async function getColorEnabledAsync() {
+  const { navigator } = globalThis;
+  const cfWorkers = "cloudflare:workers";
+  const isNoColor = navigator !== void 0 && navigator.userAgent === "Cloudflare-Workers" ? await (async () => {
+    try {
+      return "NO_COLOR" in ((await import(cfWorkers)).env ?? {});
+    } catch {
+      return false;
+    }
+  })() : !getColorEnabled();
+  return !isNoColor;
+}
+__name(getColorEnabledAsync, "getColorEnabledAsync");
+
+// node_modules/.pnpm/hono@4.12.8/node_modules/hono/dist/middleware/logger/index.js
+var humanize = /* @__PURE__ */ __name((times) => {
+  const [delimiter, separator] = [",", "."];
+  const orderTimes = times.map((v) => v.replace(/(\d)(?=(\d\d\d)+(?!\d))/g, "$1" + delimiter));
+  return orderTimes.join(separator);
+}, "humanize");
+var time = /* @__PURE__ */ __name((start) => {
+  const delta = Date.now() - start;
+  return humanize([delta < 1e3 ? delta + "ms" : Math.round(delta / 1e3) + "s"]);
+}, "time");
+var colorStatus = /* @__PURE__ */ __name(async (status) => {
+  const colorEnabled = await getColorEnabledAsync();
+  if (colorEnabled) {
+    switch (status / 100 | 0) {
+      case 5:
+        return `\x1B[31m${status}\x1B[0m`;
+      case 4:
+        return `\x1B[33m${status}\x1B[0m`;
+      case 3:
+        return `\x1B[36m${status}\x1B[0m`;
+      case 2:
+        return `\x1B[32m${status}\x1B[0m`;
+    }
+  }
+  return `${status}`;
+}, "colorStatus");
+async function log(fn, prefix, method, path, status = 0, elapsed) {
+  const out = prefix === "<--" ? `${prefix} ${method} ${path}` : `${prefix} ${method} ${path} ${await colorStatus(status)} ${elapsed}`;
+  fn(out);
+}
+__name(log, "log");
+var logger = /* @__PURE__ */ __name((fn = console.log) => {
+  return /* @__PURE__ */ __name(async function logger2(c, next) {
+    const { method, url } = c.req;
+    const path = url.slice(url.indexOf("/", 8));
+    await log(fn, "<--", method, path);
+    const start = Date.now();
+    await next();
+    await log(fn, "-->", method, path, c.res.status, time(start));
+  }, "logger2");
+}, "logger");
+
 // src/worker/index.ts
 var REALTIME_API = "https://rtc.live.cloudflare.com/v1/apps";
-var DEBUG_PROTOCOL = false;
 var calls = /* @__PURE__ */ new Map();
-var apiHeaders = /* @__PURE__ */ __name((env) => ({
-  "Authorization": `Bearer ${env.REALTIME_APP_SECRET}`,
-  "Content-Type": "application/json"
-}), "apiHeaders");
-async function parseCloudflareResponse(res, routeName) {
+function isDebugEnabled(env) {
+  return env.DEBUG === "true" || env.DEBUG === "1";
+}
+__name(isDebugEnabled, "isDebugEnabled");
+function apiHeaders(env) {
+  return {
+    "Authorization": `Bearer ${env.REALTIME_APP_SECRET}`,
+    "Content-Type": "application/json"
+  };
+}
+__name(apiHeaders, "apiHeaders");
+async function parseCloudflareResponse(res, routeName, debug) {
   const text = await res.text();
   if (!res.ok) {
-    console.error(`[${routeName}] Upstream Cloudflare failure:`, {
+    const errorInfo = {
       status: res.status,
-      statusText: res.statusText,
-      ...DEBUG_PROTOCOL ? { body: text.slice(0, 500) } : {}
-    });
-    throw new Error(`Upstream failure: ${res.status}`);
+      statusText: res.statusText
+    };
+    if (debug) {
+      errorInfo.bodyPreview = text.slice(0, 500);
+      errorInfo.bodyLength = text.length;
+    }
+    console.error(`[${routeName}] Upstream Cloudflare failure:`, errorInfo);
+    throw new Error(`Upstream failure: ${res.status} ${res.statusText}`);
   }
   try {
     const data = JSON.parse(text);
+    if (debug) {
+      console.log(`[${routeName}] Response:`, JSON.stringify(data, null, 2).slice(0, 1e3));
+    }
     return { data, text };
   } catch (e) {
     console.error(`[${routeName}] Failed to parse upstream JSON:`, {
-      ...DEBUG_PROTOCOL ? { rawBody: text.slice(0, 500) } : {},
+      preview: text.slice(0, 200),
       parseError: e.message
     });
     throw new Error("Invalid JSON from upstream");
@@ -2141,18 +2220,42 @@ function requireNonEmptyArray(value, field) {
 }
 __name(requireNonEmptyArray, "requireNonEmptyArray");
 var app = new Hono2();
-app.notFound((c) => c.json({ error: "Not found" }, 404));
+app.use("*", logger());
+app.notFound((c) => c.json({ error: "Not found", code: "NOT_FOUND" }, 404));
 app.onError((err, c) => {
   console.error("[unhandled]", err);
-  return c.json({ error: "Internal error" }, 500);
+  return c.json({
+    error: "Internal error",
+    code: "INTERNAL_ERROR",
+    details: isDebugEnabled(c.env) ? err.message : void 0
+  }, 500);
+});
+app.get("/health", (c) => {
+  let sessionsActive = 0;
+  for (const call of calls.values()) {
+    sessionsActive += call.size;
+  }
+  return c.json({
+    status: "healthy",
+    version: "0.0.1",
+    callsActive: calls.size,
+    sessionsActive
+  });
 });
 app.post("/api/calls/:callId/session", async (c) => {
   const env = c.env;
   const callId = c.req.param("callId");
+  const debug = isDebugEnabled(env);
   try {
     requireNonEmptyString(callId, "callId");
   } catch (e) {
-    return c.json({ error: e.message }, 400);
+    return c.json({
+      error: e.message,
+      code: "BAD_REQUEST"
+    }, 400);
+  }
+  if (debug) {
+    console.log(`[sessions/new] Creating session for call: ${callId}`);
   }
   const res = await fetch(`${REALTIME_API}/${env.REALTIME_APP_ID}/sessions/new`, {
     method: "POST",
@@ -2161,14 +2264,20 @@ app.post("/api/calls/:callId/session", async (c) => {
   });
   let cfResponse;
   try {
-    const { data } = await parseCloudflareResponse(res, "sessions/new");
+    const { data } = await parseCloudflareResponse(res, "sessions/new", debug);
     cfResponse = data;
   } catch (e) {
-    return c.json({ error: e.message }, 502);
+    return c.json({
+      error: e.message,
+      code: "UPSTREAM_ERROR"
+    }, 502);
   }
   const cfSessionId = cfResponse?.sessionId;
   if (!cfSessionId || typeof cfSessionId !== "string") {
-    return c.json({ error: "Unexpected Realtime response shape: missing sessionId" }, 502);
+    return c.json({
+      error: "Unexpected Realtime response shape: missing sessionId",
+      code: "INVALID_RESPONSE"
+    }, 502);
   }
   const internalId = crypto.randomUUID();
   if (!calls.has(callId)) calls.set(callId, /* @__PURE__ */ new Map());
@@ -2179,6 +2288,9 @@ app.post("/api/calls/:callId/session", async (c) => {
   if (calls.size > 1e3) {
     console.warn("[calls] excessive in-memory call count; dev-only store may be leaking");
   }
+  if (debug) {
+    console.log(`[sessions/new] Created: internal=${internalId.slice(0, 8)}, cf=${cfSessionId.slice(0, 8)}`);
+  }
   return c.json({
     sessionId: internalId,
     cloudflareSessionId: cfSessionId
@@ -2187,10 +2299,11 @@ app.post("/api/calls/:callId/session", async (c) => {
 app.post("/api/calls/:callId/publish-offer", async (c) => {
   const env = c.env;
   const callId = c.req.param("callId");
+  const debug = isDebugEnabled(env);
   try {
     requireNonEmptyString(callId, "callId");
   } catch (e) {
-    return c.json({ error: e.message }, 400);
+    return c.json({ error: e.message, code: "BAD_REQUEST" }, 400);
   }
   let body;
   try {
@@ -2199,11 +2312,14 @@ app.post("/api/calls/:callId/publish-offer", async (c) => {
     requireNonEmptyString(body.sdpOffer, "sdpOffer");
     requireNonEmptyArray(body.tracks, "tracks");
   } catch (e) {
-    return c.json({ error: e.message }, 400);
+    return c.json({ error: e.message, code: "BAD_REQUEST" }, 400);
   }
   const session = calls.get(callId)?.get(body.sessionId);
   if (!session) {
-    return c.json({ error: "Session not found" }, 404);
+    return c.json({ error: "Session not found", code: "SESSION_NOT_FOUND" }, 404);
+  }
+  if (debug) {
+    console.log(`[tracks/new/push] Publishing ${body.tracks.length} tracks for session: ${body.sessionId.slice(0, 8)}`);
   }
   const res = await fetch(
     `${REALTIME_API}/${env.REALTIME_APP_ID}/sessions/${session.cfSessionId}/tracks/new`,
@@ -2225,15 +2341,21 @@ app.post("/api/calls/:callId/publish-offer", async (c) => {
   );
   let cfResponse;
   try {
-    const { data } = await parseCloudflareResponse(res, "tracks/new-push");
+    const { data } = await parseCloudflareResponse(res, "tracks/new-push", debug);
     cfResponse = data;
   } catch (e) {
-    return c.json({ error: e.message }, 502);
+    return c.json({ error: e.message, code: "UPSTREAM_ERROR" }, 502);
   }
   if (!cfResponse?.sessionDescription || cfResponse.sessionDescription.type !== "answer") {
-    return c.json({ error: "Unexpected response: expected answer" }, 502);
+    return c.json({
+      error: "Unexpected response: expected answer",
+      code: "INVALID_RESPONSE"
+    }, 502);
   }
   session.publishedTracks = body.tracks;
+  if (debug) {
+    console.log(`[tracks/new/push] Success: got answer, ${cfResponse.tracks?.length || 0} tracks confirmed`);
+  }
   return c.json({
     sessionDescription: cfResponse.sessionDescription,
     tracks: cfResponse.tracks || []
@@ -2242,10 +2364,11 @@ app.post("/api/calls/:callId/publish-offer", async (c) => {
 app.post("/api/calls/:callId/subscribe-offer", async (c) => {
   const env = c.env;
   const callId = c.req.param("callId");
+  const debug = isDebugEnabled(env);
   try {
     requireNonEmptyString(callId, "callId");
   } catch (e) {
-    return c.json({ error: e.message }, 400);
+    return c.json({ error: e.message, code: "BAD_REQUEST" }, 400);
   }
   let body;
   try {
@@ -2253,11 +2376,14 @@ app.post("/api/calls/:callId/subscribe-offer", async (c) => {
     requireNonEmptyString(body.sessionId, "sessionId");
     requireNonEmptyArray(body.remoteTracks, "remoteTracks");
   } catch (e) {
-    return c.json({ error: e.message }, 400);
+    return c.json({ error: e.message, code: "BAD_REQUEST" }, 400);
   }
   const session = calls.get(callId)?.get(body.sessionId);
   if (!session) {
-    return c.json({ error: "Session not found" }, 404);
+    return c.json({ error: "Session not found", code: "SESSION_NOT_FOUND" }, 404);
+  }
+  if (debug) {
+    console.log(`[tracks/new/pull] Subscribing to ${body.remoteTracks.length} remote tracks`);
   }
   const res = await fetch(
     `${REALTIME_API}/${env.REALTIME_APP_ID}/sessions/${session.cfSessionId}/tracks/new`,
@@ -2275,27 +2401,34 @@ app.post("/api/calls/:callId/subscribe-offer", async (c) => {
   );
   let cfResponse;
   try {
-    const { data } = await parseCloudflareResponse(res, "tracks/new-pull");
+    const { data } = await parseCloudflareResponse(res, "tracks/new-pull", debug);
     cfResponse = data;
   } catch (e) {
-    return c.json({ error: e.message }, 502);
+    return c.json({ error: e.message, code: "UPSTREAM_ERROR" }, 502);
   }
   if (!cfResponse?.sessionDescription || cfResponse.sessionDescription.type !== "offer") {
-    return c.json({ error: "Unexpected response: expected offer" }, 502);
+    return c.json({
+      error: "Unexpected response: expected offer",
+      code: "INVALID_RESPONSE"
+    }, 502);
+  }
+  if (debug) {
+    console.log(`[tracks/new/pull] Success: got offer, ${cfResponse.tracks?.length || 0} tracks`);
   }
   return c.json({
     sessionDescription: cfResponse.sessionDescription,
     tracks: cfResponse.tracks || [],
-    requiresImmediateRenegotiation: cfResponse.requiresImmediateRenegotiation || true
+    requiresImmediateRenegotiation: cfResponse.requiresImmediateRenegotiation ?? true
   });
 });
 app.post("/api/calls/:callId/complete-subscribe", async (c) => {
   const env = c.env;
   const callId = c.req.param("callId");
+  const debug = isDebugEnabled(env);
   try {
     requireNonEmptyString(callId, "callId");
   } catch (e) {
-    return c.json({ error: e.message }, 400);
+    return c.json({ error: e.message, code: "BAD_REQUEST" }, 400);
   }
   let body;
   try {
@@ -2303,11 +2436,14 @@ app.post("/api/calls/:callId/complete-subscribe", async (c) => {
     requireNonEmptyString(body.sessionId, "sessionId");
     requireNonEmptyString(body.sdpAnswer, "sdpAnswer");
   } catch (e) {
-    return c.json({ error: e.message }, 400);
+    return c.json({ error: e.message, code: "BAD_REQUEST" }, 400);
   }
   const session = calls.get(callId)?.get(body.sessionId);
   if (!session) {
-    return c.json({ error: "Session not found" }, 404);
+    return c.json({ error: "Session not found", code: "SESSION_NOT_FOUND" }, 404);
+  }
+  if (debug) {
+    console.log(`[renegotiate] Sending answer for session: ${body.sessionId.slice(0, 8)}`);
   }
   const res = await fetch(
     `${REALTIME_API}/${env.REALTIME_APP_ID}/sessions/${session.cfSessionId}/renegotiate`,
@@ -2324,18 +2460,21 @@ app.post("/api/calls/:callId/complete-subscribe", async (c) => {
     }
   );
   try {
-    await parseCloudflareResponse(res, "renegotiate");
+    await parseCloudflareResponse(res, "renegotiate", debug);
   } catch (e) {
-    return c.json({ error: e.message }, 502);
+    return c.json({ error: e.message, code: "UPSTREAM_ERROR" }, 502);
+  }
+  if (debug) {
+    console.log(`[renegotiate] Success: subscription complete`);
   }
   return c.json({ ok: true });
 });
-app.get("/api/calls/:callId/discover-remote-tracks", async (c) => {
+app.get("/api/calls/:callId/discover-remote-tracks", (c) => {
   const callId = c.req.param("callId");
   try {
     requireNonEmptyString(callId, "callId");
   } catch (e) {
-    return c.json({ error: e.message }, 400);
+    return c.json({ error: e.message, code: "BAD_REQUEST" }, 400);
   }
   const selfId = c.req.query("sessionId");
   const call = calls.get(callId);
@@ -2361,14 +2500,14 @@ app.post("/api/calls/:callId/leave", async (c) => {
   try {
     requireNonEmptyString(callId, "callId");
   } catch (e) {
-    return c.json({ error: e.message }, 400);
+    return c.json({ error: e.message, code: "BAD_REQUEST" }, 400);
   }
   let body;
   try {
     body = await c.req.json();
     requireNonEmptyString(body.sessionId, "sessionId");
   } catch (e) {
-    return c.json({ error: e.message }, 400);
+    return c.json({ error: e.message, code: "BAD_REQUEST" }, 400);
   }
   const session = calls.get(callId)?.get(body.sessionId);
   if (!session) return c.json({ ok: true });
