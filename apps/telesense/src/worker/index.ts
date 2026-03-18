@@ -15,6 +15,7 @@ type Env = {
   REALTIME_APP_ID: string
   REALTIME_APP_SECRET: string
   DEBUG?: string
+  BUDGET_KV?: KVNamespace  // Optional: for usage limiting
 }
 
 // VERIFIED: rtc.live.cloudflare.com/v1 (not realtime.cloudflare.com/client/v4)

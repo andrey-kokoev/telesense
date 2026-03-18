@@ -1,5 +1,7 @@
 # Cloudflare Realtime Pricing Calculator
 
+**⚠️ CORRECTED**: Cloudflare bills by **data egress only**, not per participant-minute.
+
 ## Source
 
 https://developers.cloudflare.com/calls/pricing/

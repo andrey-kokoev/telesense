@@ -1,0 +1,20 @@
+# Usage Meter Worker - Queries Cloudflare Analytics and writes to KV
+name = "telesense-usage-meter"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+# Cron schedule: run every 5 minutes
+triggers = { crons = ["*/5 * * * *"] }
+
+[vars]
+# Set these via wrangler secret or .dev.vars
+# CF_ACCOUNT_ID = "your-account-id"
+# REALTIME_APP_ID = "your-app-id"
+
+[[kv_namespaces]]
+binding = "BUDGET_KV"
+id = "your-kv-namespace-id"
+preview_id = "your-preview-kv-namespace-id"
+
+# Secrets to set via `wrangler secret put --config wrangler.usage-meter.toml`:
+# CF_API_TOKEN - Cloudflare API token with Analytics:Read permission

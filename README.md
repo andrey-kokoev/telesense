@@ -2,166 +2,125 @@
 
 **Status: `full 1:1 call works` (protocol verified via Echo Demo 2026-03-18)**
 
-Raw Cloudflare Realtime SFU implementation with verified protocol from Echo Demo capture (2026-03-18).
+Cloudflare Realtime SFU implementation with verified protocol. Now organized as a pnpm monorepo.
 
-## Current State
-
-- ✅ Documentation: Protocol wire contract ([`docs/90-references/wire-format.md`](./docs/90-references/wire-format.md))
-- ✅ Documentation: Open questions ([`docs/90-references/open-questions.md`](./docs/90-references/open-questions.md))
-- ✅ Implementation: Backend Worker with verified endpoints
-- ✅ Implementation: Browser client with full 1:1 flow
-- ✅ Testing: Two-tab video call **verified working**
-
-## Verified Protocol (Echo Demo 2026-03-18)
-
-| Endpoint | Status | Finding |
-|----------|--------|---------|
-| `POST /sessions/new` | ✅ | Empty body, returns `{sessionId}` |
-| `POST /tracks/new` (push) | ✅ | `location: "local"` returns Answer |
-| `POST /tracks/new` (pull) | ✅ | `location: "remote"` returns **Offer** ⭐ |
-| `PUT /renegotiate` | ✅ | Send Answer, receive `{}` |
-
-**Critical Discovery (Q8 Resolved)**: Remote subscription uses `POST /tracks/new` with `location: "remote"` to request an Offer from Cloudflare. This is an **orchestration/pull model** — not push, not WebSocket.
-
-## Setup
+## Quick Start
 
 ```bash
 # Install dependencies
 pnpm install
 
-# Setup credentials
+# Run main app
+cd apps/telesense
 cp .dev.vars.example .dev.vars
-# Edit .dev.vars and add your REALTIME_APP_SECRET
-# Edit wrangler.toml and set REALTIME_APP_ID
-
-# Run local dev (worker + vite)
+# Edit .dev.vars with your Cloudflare credentials
 pnpm dev
 ```
 
-### Prerequisites
+## Monorepo Structure
 
-1. Cloudflare account with Realtime (Calls) enabled: https://dash.cloudflare.com/?to=/:account/calls
-2. Create a Calls app, copy:
-   - **App ID** → `wrangler.toml` → `REALTIME_APP_ID`
-   - **App Token** → `.dev.vars` → `REALTIME_APP_SECRET`
+```
+tesense/
+├── apps/                          # Deployable applications
+│   ├── telesense/                 # Main video call worker + client
+│   │   ├── src/
+│   │   │   ├── worker/            # Hono backend
+│   │   │   └── client/            # Browser frontend
+│   │   ├── e2e/                   # Playwright tests
+│   │   ├── public/                # Static assets
+│   │   └── wrangler.toml
+│   │
+│   └── usage-meter/               # Usage tracking worker
+│       ├── src/index.ts           # Analytics query + KV writer
+│       └── wrangler.toml
+│
+├── packages/                      # Shared packages (if needed)
+│   └── (empty for now)
+│
+├── docs/                          # Documentation
+│   ├── 00-getting-started/
+│   ├── 10-architecture/
+│   ├── 20-protocol/
+│   └── 90-references/
+│
+├── package.json                   # Root config
+├── pnpm-workspace.yaml            # Workspace definition
+└── turbo.json                     # Build orchestration
+```
 
-## Development Scripts
+## Available Scripts
 
-| Command | Description |
-|---------|-------------|
-| `pnpm dev` | Start dev servers (Vite + Wrangler) with process management |
-| `pnpm dev:debug` | Start with verbose Cloudflare API logging |
-| `pnpm health` | Quick health check of running services |
-| `pnpm test` | **Run E2E tests** (automated 1:1 call test) |
-| `pnpm test:ui` | Run E2E tests with interactive UI |
-| `pnpm test:debug` | Run E2E tests in debug mode |
-| `pnpm test:call` | Reminder for manual 1:1 call test |
-| `pnpm build` | Build for production |
-| `pnpm deploy` | Deploy to Cloudflare Workers |
-| `pnpm typecheck` | Run TypeScript type checking |
-| `pnpm lint` | Alias for typecheck |
-| `pnpm check` | Run all validation checks |
-| `pnpm clean` | Remove build artifacts |
-| `pnpm clean:all` | Remove build artifacts + node_modules |
-| `pnpm logs` | View production logs |
-| `make help` | Show all available make commands |
-
-### Debug Mode
-
-Enable verbose logging to see Cloudflare API requests/responses:
+### Root Level
 
 ```bash
-# Option 1: Use debug script
-pnpm dev:debug
-
-# Option 2: Set in .dev.vars
-DEBUG=true
-pnpm dev
+pnpm dev              # Run telesense app
+pnpm dev:meter        # Run usage meter
+pnpm build            # Build all apps
+pnpm test             # Run E2E tests
+pnpm deploy           # Deploy all apps
+pnpm typecheck        # Type check all apps
 ```
 
-### Quick Health Check
+### App Level
 
 ```bash
-# While dev server is running
-pnpm health
-# → { "status": "healthy", "version": "0.0.1", ... }
+# In apps/telesense/
+pnpm dev              # Start dev server
+pnpm test             # Run E2E tests
+pnpm deploy           # Deploy to Cloudflare
+
+# In apps/usage-meter/
+pnpm dev              # Start dev server
+pnpm logs             # View logs
+pnpm trigger          # Manual trigger
+pnpm status           # Check budget status
 ```
 
-### Or use `make`:
-```bash
-make dev      # Start development
-make check    # Run type checks
-make deploy   # Deploy to production
-make setup    # Show setup instructions
-```
+## Applications
 
-## Usage
+### 1. Telesense (`apps/telesense`)
 
-1. Open browser to `http://localhost:5173/?call=test`
-2. Allow camera/mic permissions
-3. Open second tab to same URL
-4. Wait 2-5 seconds for remote video to appear
+The main video calling application.
 
-## Architecture
+- **Worker**: Hono backend with Cloudflare Realtime API
+- **Client**: Vanilla TypeScript WebRTC client
+- **Features**: 1:1 calls, discovery, subscription
 
-- **Single Worker (Hono)** + static client (Vite)
-- **In-memory `Map` state** (dev-only)
-- **No Durable Objects**, no Web Workers, no DB
-- **Raw HTTPS Connection API** (no RealtimeKit)
-- **Poll-based signaling** (WebSocket deferred to Phase 2)
+[Details](./apps/telesense/README.md)
 
-### Flow
+### 2. Usage Meter (`apps/usage-meter`)
 
-```
-Tab A (Publisher)          Backend                Cloudflare               Tab B (Subscriber)
-    |                         |                         |                         |
-    +-- POST /session ------> | -- POST sessions/new -> |                         |
-    |                         |                         |                         |
-    +-- POST /publish-offer-> | -- POST tracks/new ---> | (location: "local")     |
-    |                         | <-- Answer -------------|                         |
-    |                         |                         |                         |
-    |                         |                         |                         | +-- POST /session -->
-    |                         |                         |                         | +-- POST /publish-offer->
-    |                         |                         |                         |
-    |                         | <-- tracks published ---|                         |
-    |                         |                         |                         |
-    +-- GET /discover ------> |                         |                         |
-    |                         | finds Tab B's tracks    |                         |
-    | <--- [track refs] ------|                         |                         |
-    |                         |                         |                         |
-    +-- POST /subscribe ----> | -- POST tracks/new ---> | (location: "remote")    |
-    |                         | <-- Offer --------------|                         |
-    |                         |                         |                         |
-    +-- POST /complete -----> | -- PUT /renegotiate --> |                         |
-    | (with Answer)           |                         |                         |
-    |                         |                         |                         |
-    <==== MEDIA FLOWS ======= Cloudflare SFU ========> |                         |
-```
+Optional usage tracking and budget enforcement.
 
-## Safety
+- **Purpose**: Query Cloudflare Analytics, write to KV
+- **Schedule**: Runs every 5 minutes via cron
+- **Function**: Budget enforcement for telesense
 
-- App Secret server-only (in Worker)
-- Track refs include Cloudflare sessionId (not browser track.id)
-- No browser MediaStreamTrack.id used for remote subscription
-
-## Known Limitations
-
-- In-memory state lost on Worker restart
-- No automatic reconnection
-- No TURN server (STUN only)
-- Tracks/close not implemented (not verified in Echo Demo)
+[Details](./apps/usage-meter/README.md)
 
 ## Documentation
 
-- [`docs/README.md`](./docs/README.md) — Documentation index
-- [`docs/90-references/consensus-log.md`](./docs/90-references/consensus-log.md) — Architectural decisions (consensus-locked)
-- [`docs/90-references/wire-format.md`](./docs/90-references/wire-format.md) — Verified API payloads
-- [`docs/90-references/open-questions.md`](./docs/90-references/open-questions.md) — Q&A tracking (Q8 resolved)
+- [Quick Start](./docs/00-getting-started/01-quickstart.md)
+- [How It Works](./docs/00-getting-started/02-how-it-works.md)
+- [Architecture](./docs/10-architecture/01-overview.md)
+- [Protocol](./docs/20-protocol/01-api-reference.md)
+- [Pricing Calculator](./docs/pricing-calculator.md)
 
-## Warning
+## Deployment
 
-Experimental scaffolding for protocol verification. Production use requires:
-- Durable Objects for state
-- Proper error handling and reconnection
-- TURN servers for NAT traversal
-- Rate limiting and auth
+```bash
+# Deploy everything
+pnpm deploy
+
+# Or individually
+pnpm --filter telesense deploy
+pnpm --filter usage-meter deploy
+```
+
+## Key Insight: Q8 Resolved ⭐
+
+Remote subscription uses `POST /tracks/new` with `location: "remote"` to request an Offer from Cloudflare. This "pull model" was the breakthrough discovery.
+
+## License
+
+MIT

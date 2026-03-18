@@ -1,0 +1,20 @@
+{
+  "name": "usage-meter",
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "clean": "rm -rf .wrangler/tmp",
+    "logs": "wrangler tail",
+    "trigger": "curl -X POST http://localhost:8787/trigger",
+    "status": "curl -s http://localhost:8787/status | jq ."
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250301.0",
+    "typescript": "^5.3.0",
+    "wrangler": "^4.75.0"
+  }
+}
