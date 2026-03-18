@@ -5,7 +5,15 @@
   "scripts": {
     "dev": "wrangler dev --local & vite",
     "build": "vite build",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit && echo '✅ Type check passed'",
+    "clean": "rm -rf dist .wrangler/tmp",
+    "clean:all": "rm -rf dist .wrangler/tmp node_modules pnpm-lock.yaml",
+    "setup": "echo 'Copy .dev.vars.example to .dev.vars and add your credentials'",
+    "logs": "wrangler tail",
+    "check": "pnpm typecheck && echo '✅ All checks passed'",
+    "rebuild": "pnpm clean && pnpm install && pnpm build"
   },
   "dependencies": {
     "hono": "^4.0.0"

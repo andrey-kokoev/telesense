@@ -1,6 +1,26 @@
 // Cloudflare Realtime Client — Full 1:1 Call Implementation
 // Protocol verified via Echo Demo 2026-03-18
 
+interface SessionResponse {
+  sessionId: string
+  cloudflareSessionId: string
+}
+
+interface PublishResponse {
+  sessionDescription: RTCSessionDescriptionInit
+  tracks: Array<{ mid: string; trackName: string }>
+}
+
+interface SubscribeResponse {
+  sessionDescription: RTCSessionDescriptionInit
+  tracks: Array<{ sessionId: string; trackName: string; mid: string }>
+  requiresImmediateRenegotiation: boolean
+}
+
+interface DiscoverResponse {
+  tracks: Array<{ trackName: string; sessionId: string; mid: string }>
+}
+
 const statusEl = document.getElementById('status') as HTMLDivElement
 const localVid = document.getElementById('local') as HTMLVideoElement
 const remoteVid = document.getElementById('remote') as HTMLVideoElement
@@ -36,10 +56,12 @@ async function init() {
 
   pc.ontrack = (e) => {
     log('📡 Received remote track!')
-    if (!remoteVid.srcObject) {
-      remoteVid.srcObject = new MediaStream()
+    let stream = remoteVid.srcObject as MediaStream | null
+    if (!stream) {
+      stream = new MediaStream()
+      remoteVid.srcObject = stream
     }
-    remoteVid.srcObject.addTrack(e.track)
+    stream.addTrack(e.track)
   }
 
   pc.oniceconnectionstatechange = () => {
@@ -51,7 +73,7 @@ async function init() {
     log('🔑 Creating session...')
     const sessionRes = await fetch(`/api/calls/${callId}/session`, { method: 'POST' })
     if (!sessionRes.ok) throw new Error(`Session failed: ${sessionRes.status}`)
-    const sessionData = await sessionRes.json()
+    const sessionData = await sessionRes.json() as SessionResponse
     const sessionId = sessionData.sessionId
     log(`✅ Session created: ${sessionId.slice(0, 8)}...`)
 
@@ -79,7 +101,7 @@ async function init() {
       })
     })
     if (!publishRes.ok) throw new Error(`Publish failed: ${publishRes.status}`)
-    const publishData = await publishRes.json()
+    const publishData = await publishRes.json() as PublishResponse
     
     await pc.setRemoteDescription(publishData.sessionDescription)
     log('✅ Published and connected to Cloudflare')
@@ -117,9 +139,9 @@ async function pollAndSubscribe(callId: string, sessionId: string, pc: RTCPeerCo
     try {
       const res = await fetch(`/api/calls/${callId}/discover-remote-tracks?sessionId=${sessionId}`)
       if (!res.ok) return
-      const data = await res.json()
+      const data = await res.json() as DiscoverResponse
       
-      const newTracks = data.tracks.filter((t: { trackName: string }) => !checkedTracks.has(t.trackName))
+      const newTracks = data.tracks.filter(t => !checkedTracks.has(t.trackName))
       
       if (newTracks.length > 0) {
         log(`🔔 Found ${newTracks.length} new remote track(s)`)
@@ -164,7 +186,7 @@ async function subscribeToTracks(
       })
     })
     if (!subscribeRes.ok) throw new Error(`Subscribe failed: ${subscribeRes.status}`)
-    const subscribeData = await subscribeRes.json()
+    const subscribeData = await subscribeRes.json() as SubscribeResponse
     
     // 2. Set remote description (Cloudflare's Offer)
     await pc.setRemoteDescription(subscribeData.sessionDescription)

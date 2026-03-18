@@ -26,19 +26,46 @@ Raw Cloudflare Realtime SFU implementation with verified protocol from Echo Demo
 ## Setup
 
 ```bash
-# Install dependencies (npm or pnpm)
-npm install
-# or: pnpm install
+# Install dependencies
+pnpm install
 
-# Set Cloudflare credentials
-npx wrangler secret put REALTIME_APP_SECRET
-# or: pnpm exec wrangler secret put REALTIME_APP_SECRET
-
-# Edit wrangler.toml: REALTIME_APP_ID
+# Setup credentials
+cp .dev.vars.example .dev.vars
+# Edit .dev.vars and add your REALTIME_APP_SECRET
+# Edit wrangler.toml and set REALTIME_APP_ID
 
 # Run local dev (worker + vite)
-npm run dev
-# or: pnpm dev
+pnpm dev
+```
+
+### Prerequisites
+
+1. Cloudflare account with Realtime (Calls) enabled: https://dash.cloudflare.com/?to=/:account/calls
+2. Create a Calls app, copy:
+   - **App ID** → `wrangler.toml` → `REALTIME_APP_ID`
+   - **App Token** → `.dev.vars` → `REALTIME_APP_SECRET`
+
+## Development Scripts
+
+| Command | Description |
+|---------|-------------|
+| `pnpm dev` | Start dev servers (Vite + Wrangler) |
+| `pnpm build` | Build for production |
+| `pnpm deploy` | Deploy to Cloudflare Workers |
+| `pnpm typecheck` | Run TypeScript type checking |
+| `pnpm lint` | Alias for typecheck |
+| `pnpm check` | Run all validation checks |
+| `pnpm clean` | Remove build artifacts |
+| `pnpm clean:all` | Remove build artifacts + node_modules |
+| `pnpm logs` | View production logs |
+| `make help` | Show all available make commands |
+
+Or use `make`:
+```bash
+make dev      # Start development
+make check    # Run type checks
+make deploy   # Deploy to production
+make setup    # Show setup instructions
 ```
 
 ## Usage

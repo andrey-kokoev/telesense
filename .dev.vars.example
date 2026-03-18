@@ -1,0 +1,3 @@
+# Cloudflare Realtime App Secret
+# Get this from: https://dash.cloudflare.com/?to=/:account/calls
+REALTIME_APP_SECRET=your-app-token-here
