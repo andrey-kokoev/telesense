@@ -1,90 +1,104 @@
 # Telesense Documentation
 
-**Project**: Cloudflare Realtime 1:1 Video Calls  
-**Status**: ✅ Full 1:1 call works (verified 2026-03-18)
+Complete guide to the Cloudflare Realtime 1:1 video calling system.
 
-## Quick Navigation
+## Quick Links
 
-| Document | Purpose | Audience |
-|----------|---------|----------|
-| [20260318-000-codex-review-summary.md](./20260318-000-codex-review-summary.md) | Architectural decisions & rationale | Developers, AI agents |
-| [20260318-001-realtime-wire-contract.md](./20260318-001-realtime-wire-contract.md) | Verified API payloads & protocol | Backend developers |
-| [20260318-002-realtime-open-questions.md](./20260318-002-realtime-open-questions.md) | Q&A tracking (Q8 resolved) | All developers |
+- 🚀 [Quick Start](./00-getting-started/01-quickstart.md) - Running in 5 minutes
+- 🧠 [How It Works](./00-getting-started/02-how-it-works.md) - High-level overview
+- 🆘 [Troubleshooting](./00-getting-started/03-troubleshooting.md) - Common issues
 
-## Documentation Philosophy
+## Documentation Structure
 
-1. **Verification-first**: No implementation without captured payloads
-2. **Consensus-locked**: Decisions in `000-*` are frozen to prevent re-debate
-3. **Evidence-based**: All protocol claims have verbatim JSON from Echo Demo
+```
+docs/
+├── 00-getting-started/          # Start here
+│   ├── 01-quickstart.md         # 5-minute setup
+│   ├── 02-how-it-works.md       # Architecture overview
+│   └── 03-troubleshooting.md    # Debug guide
+│
+├── 10-architecture/             # System design
+│   ├── 01-overview.md           # Component architecture
+│   └── 02-media-flow.md         # Packet-level details
+│
+├── 20-protocol/                 # API documentation
+│   ├── 01-api-reference.md      # All endpoints
+│   └── 02-lifecycle.md          # Call sequence
+│
+├── 30-development/              # Development guide
+│   └── (create as needed)
+│
+└── 90-references/               # Historical/technical refs
+    ├── consensus-log.md         # Architectural decisions
+    ├── open-questions.md        # Q&A tracking
+    └── wire-format.md           # Verified payloads
+```
 
-## Task Tracking
+## Key Concepts
 
-Granular tasks in `.ai/tasks/`:
+### Q8: The Critical Discovery ⭐
 
-| Task | Status | Description |
-|------|--------|-------------|
-| 20250318-001a-protocol-docs.md | ✅ | Create protocol documentation |
-| 20250318-001b-verify-protocol.md | ✅ | Verify from Echo Demo |
-| 20250318-001c-backend-scaffold.md | ✅ | Backend scaffold |
-| 20250318-001d-client-scaffold.md | ✅ | Client scaffold |
-| 20250318-001e-repo-plumbing.md | ✅ | Project configuration |
-| 20250318-001f-unlock-implementation.md | ✅ | Full implementation |
-
-## Key Findings Summary
-
-### Q8: Remote Subscription — RESOLVED ⭐
-
-**Discovery**: Same endpoint, different location
+The breakthrough finding: **Remote subscription uses the same endpoint with `location: "remote"`**.
 
 ```http
-# Push (publish)
+# Publishing (send)
 POST /tracks/new
 { "location": "local", ... } → Returns Answer
 
-# Pull (subscribe)  
-POST /tracks/new
+# Subscribing (receive)
+POST /tracks/new  
 { "location": "remote", ... } → Returns Offer
 ```
 
-**Architecture**: Orchestration/pull model — backend proactively requests Offer from Cloudflare.
+This "pull model" means browsers **ask** Cloudflare for subscription Offers.
 
-## API Base URL
+### Three IDs to Understand
 
-```
-https://rtc.live.cloudflare.com/v1/apps/{APP_ID}
-```
+| ID | What | Example |
+|----|------|---------|
+| `callId` | App-level room name | `"test-call"` |
+| `sessionId` | Cloudflare connection | `"ea2a61a4..."` |
+| `trackName` | Media stream ID | `"0aad9523..."` |
 
-**Not** `realtime.cloudflare.com` (different API).
+## Project Status
 
-## Verification Status
+✅ **Complete**: Full 1:1 video calls working  
+✅ **Verified**: Protocol via Echo Demo capture  
+✅ **Tested**: Automated E2E tests passing  
+✅ **Documented**: This comprehensive guide
 
-| Question | Status | Evidence |
-|----------|--------|----------|
-| sessions/new | ✅ Verified | Empty body, returns `{sessionId}` |
-| tracks/new (push) | ✅ Verified | `location: "local"` → Answer |
-| tracks/new (pull) | ✅ Verified | `location: "remote"` → Offer |
-| renegotiate | ✅ Verified | PUT with Answer |
-| Q8 mechanism | ✅ Resolved | Pull model confirmed |
-| E2E test | ✅ Automated | Playwright 1:1 call test |
+## Navigation by Role
 
-## Automated Testing
+**New Developer?**
+1. [Quick Start](./00-getting-started/01-quickstart.md)
+2. [How It Works](./00-getting-started/02-how-it-works.md)
+3. Run the tests: `pnpm test`
 
-E2E tests in `e2e/` using Playwright:
-```bash
-pnpm test      # Run automated 1:1 call test
-pnpm test:ui   # Interactive mode
-```
+**Implementing Features?**
+1. [API Reference](./20-protocol/01-api-reference.md)
+2. [Call Lifecycle](./20-protocol/02-lifecycle.md)
+3. Check [Consensus Log](./90-references/consensus-log.md) for constraints
 
-Tests verify:
-- Session creation
-- Track publishing
-- Discovery & subscription
-- Bidirectional media flow
+**Debugging Issues?**
+1. [Troubleshooting](./00-getting-started/03-troubleshooting.md)
+2. [Media Flow](./10-architecture/02-media-flow.md) for packet details
+3. Enable `DEBUG=true` in `.dev.vars`
+
+**Understanding Decisions?**
+1. [Consensus Log](./90-references/consensus-log.md) - Why we chose this architecture
+2. [Open Questions](./90-references/open-questions.md) - What's still unknown
+3. [Wire Format](./90-references/wire-format.md) - Verified API payloads
 
 ## Contributing
 
-When updating documentation:
-1. Mark inferred vs verified claims clearly
-2. Add verbatim JSON for any new endpoints
-3. Update consensus log if architectural decisions change
-4. Keep task files in sync with actual implementation
+Documentation improvements welcome! Guidelines:
+- Keep getting-started docs simple
+- Put technical deep-dives in architecture/
+- Update references/ when protocol changes
+- Add diagrams for complex flows
+
+## See Also
+
+- [Main README](../README.md) - Project overview
+- [E2E Tests](../e2e/) - Automated test suite
+- [Task History](../.ai/tasks/) - Implementation tasks (completed)
