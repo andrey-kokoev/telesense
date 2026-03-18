@@ -1,16 +1,16 @@
 # Telesense
 
-**Status: `local publish works` → `full 1:1 call works` (protocol verified)**
+**Status: `full 1:1 call works` (protocol verified via Echo Demo 2026-03-18)**
 
 Raw Cloudflare Realtime SFU implementation with verified protocol from Echo Demo capture (2026-03-18).
 
 ## Current State
 
-- ✅ Documentation: Protocol wire contract (`docs/20260318-001-realtime-wire-contract.md`)
-- ✅ Documentation: Open questions (`docs/20260318-002-realtime-open-questions.md`)
+- ✅ Documentation: Protocol wire contract ([`docs/20260318-001-realtime-wire-contract.md`](./docs/20260318-001-realtime-wire-contract.md))
+- ✅ Documentation: Open questions ([`docs/20260318-002-realtime-open-questions.md`](./docs/20260318-002-realtime-open-questions.md))
 - ✅ Implementation: Backend Worker with verified endpoints
 - ✅ Implementation: Browser client with full 1:1 flow
-- 🔄 Testing: Two-tab video call (ready for verification)
+- ✅ Testing: Two-tab video call **verified working**
 
 ## Verified Protocol (Echo Demo 2026-03-18)
 
@@ -148,11 +148,12 @@ Tab A (Publisher)          Backend                Cloudflare               Tab B
 - No TURN server (STUN only)
 - Tracks/close not implemented (not verified in Echo Demo)
 
-## Protocol References
+## Documentation
 
-- `docs/20260318-000-codex-review-summary.md` — Architectural decisions
-- `docs/20260318-001-realtime-wire-contract.md` — Verified payloads
-- `docs/20260318-002-realtime-open-questions.md` — Q&A tracking
+- [`docs/README.md`](./docs/README.md) — Documentation index
+- [`docs/20260318-000-codex-review-summary.md`](./docs/20260318-000-codex-review-summary.md) — Architectural decisions (consensus-locked)
+- [`docs/20260318-001-realtime-wire-contract.md`](./docs/20260318-001-realtime-wire-contract.md) — Verified API payloads
+- [`docs/20260318-002-realtime-open-questions.md`](./docs/20260318-002-realtime-open-questions.md) — Q&A tracking (Q8 resolved)
 
 ## Warning
 

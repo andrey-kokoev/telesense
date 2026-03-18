@@ -121,7 +121,7 @@ Edit `README.md`:
 ```markdown
 # Telesense
 
-**Status: `local publish works`** or **`full 1:1 call works`**
+**Status: `full 1:1 call works`**
 ```
 
 Update sections:
@@ -132,7 +132,7 @@ Update sections:
 ### Step 6: Test Locally
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
 - [ ] Worker starts without errors
