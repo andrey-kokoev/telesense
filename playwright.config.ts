@@ -2,21 +2,36 @@ import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
   testDir: './e2e',
-  fullyParallel: false, // Tests need sequential execution (shared server)
+  fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: 1, // Single worker for shared server
+  workers: 1,
   reporter: 'list',
   use: {
     baseURL: 'http://localhost:5173',
     trace: 'on-first-retry',
     video: 'on-first-retry',
     screenshot: 'only-on-failure',
+    // Use fake media devices for headless testing
+    launchOptions: {
+      args: [
+        '--use-fake-ui-for-media-stream',
+        '--use-fake-device-for-media-stream',
+        '--allow-file-access-from-files',
+        '--disable-web-security',
+      ],
+    },
   },
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        // Grant permissions automatically
+        contextOptions: {
+          permissions: ['camera', 'microphone'],
+        },
+      },
     },
   ],
   webServer: {
