@@ -28,6 +28,9 @@ docs/
 ├── 30-development/              # Development guide
 │   └── (create as needed)
 │
+├── 40-security/                 # Security & encryption
+│   └── 01-webrtc-security.md    # DTLS, key exchange, interception
+│
 └── 90-references/               # Historical/technical refs
     ├── consensus-log.md         # Architectural decisions
     ├── open-questions.md        # Q&A tracking
