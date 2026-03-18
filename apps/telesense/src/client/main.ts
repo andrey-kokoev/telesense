@@ -21,6 +21,22 @@ interface DiscoverResponse {
   tracks: Array<{ trackName: string; sessionId: string; mid: string }>
 }
 
+// User token for API authentication
+// In production, this should be injected at build time or obtained from auth flow
+const USER_TOKEN = import.meta.env.VITE_USER_TOKEN || 'dev-token'
+
+// Helper for API calls with auth
+async function apiCall(url: string, options: RequestInit = {}) {
+  return fetch(url, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-User-Token': USER_TOKEN,
+      ...options.headers,
+    },
+  })
+}
+
 const statusEl = document.getElementById('status') as HTMLDivElement
 const localVid = document.getElementById('local') as HTMLVideoElement
 const remoteVid = document.getElementById('remote') as HTMLVideoElement
@@ -71,7 +87,7 @@ async function init() {
   try {
     // 3. Create session
     log('🔑 Creating session...')
-    const sessionRes = await fetch(`/api/calls/${callId}/session`, { method: 'POST' })
+    const sessionRes = await apiCall(`/api/calls/${callId}/session`, { method: 'POST' })
     if (!sessionRes.ok) throw new Error(`Session failed: ${sessionRes.status}`)
     const sessionData = await sessionRes.json() as SessionResponse
     const sessionId = sessionData.sessionId
@@ -88,9 +104,8 @@ async function init() {
 
     // 6. Publish tracks
     log('📤 Publishing tracks...')
-    const publishRes = await fetch(`/api/calls/${callId}/publish-offer`, {
+    const publishRes = await apiCall(`/api/calls/${callId}/publish-offer`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         sessionId,
         sdpOffer: offer.sdp,
@@ -137,7 +152,7 @@ async function pollAndSubscribe(callId: string, sessionId: string, pc: RTCPeerCo
   
   const poll = async () => {
     try {
-      const res = await fetch(`/api/calls/${callId}/discover-remote-tracks?sessionId=${sessionId}`)
+      const res = await apiCall(`/api/calls/${callId}/discover-remote-tracks?sessionId=${sessionId}`)
       if (!res.ok) return
       const data = await res.json() as DiscoverResponse
       
@@ -174,9 +189,8 @@ async function subscribeToTracks(
   
   try {
     // 1. Request subscription offer from backend
-    const subscribeRes = await fetch(`/api/calls/${callId}/subscribe-offer`, {
+    const subscribeRes = await apiCall(`/api/calls/${callId}/subscribe-offer`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         sessionId,
         remoteTracks: remoteTracks.map(t => ({
@@ -196,9 +210,8 @@ async function subscribeToTracks(
     await pc.setLocalDescription(answer)
     
     // 4. Complete subscription
-    const completeRes = await fetch(`/api/calls/${callId}/complete-subscribe`, {
+    const completeRes = await apiCall(`/api/calls/${callId}/complete-subscribe`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         sessionId,
         sdpAnswer: answer.sdp

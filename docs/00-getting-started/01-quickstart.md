@@ -18,7 +18,24 @@ pnpm install
 
 ## 2. Configure Credentials
 
-### Get Credentials from Cloudflare
+### Automated Setup (Recommended)
+
+```bash
+./scripts/setup.sh
+```
+
+This interactive script will:
+- Check prerequisites (wrangler, pnpm)
+- Guide you through creating a Cloudflare Calls app
+- Generate secure tokens automatically
+- Create KV namespaces
+- Set up all required secrets
+
+**Re-running**: The script is idempotent. It will reuse existing tokens and skip already-configured resources. Use `./scripts/setup.sh --force` to regenerate everything.
+
+### Manual Setup (Alternative)
+
+If you prefer manual configuration:
 
 1. Go to https://dash.cloudflare.com/?to=/:account/calls
 2. Create a new Calls application
@@ -26,17 +43,20 @@ pnpm install
    - **App ID** (looks like `8b4b4a5e75f322fe92872b9a1d3747b5`)
    - **App Token** (long random string)
 
-### Configure
-
 ```bash
 # Copy template
-cp .dev.vars.example .dev.vars
+cp apps/telesense/.dev.vars.example apps/telesense/.dev.vars
 
 # Edit .dev.vars
 REALTIME_APP_SECRET=your-token-here
+GENERIC_USER_TOKEN=$(openssl rand -hex 32)
 
 # Edit wrangler.toml
 # Set: REALTIME_APP_ID = "your-app-id"
+
+# Set secrets in Cloudflare
+echo "your-token" | wrangler secret put REALTIME_APP_SECRET --config apps/telesense/wrangler.toml
+echo "your-user-token" | wrangler secret put GENERIC_USER_TOKEN --config apps/telesense/wrangler.toml
 ```
 
 ## 3. Run Development Server

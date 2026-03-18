@@ -1,0 +1,10 @@
+# Cloudflare Realtime App Secret
+# Get this from: https://dash.cloudflare.com/?to=/:account/calls
+REALTIME_APP_SECRET=your-app-token-here
+
+# Generic User Token - Any client with this token can use the app
+# Generate with: openssl rand -hex 32
+GENERIC_USER_TOKEN=your-generated-token-here
+
+# Debug mode - set to 'true' to enable verbose logging
+# DEBUG=true

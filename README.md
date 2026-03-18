@@ -10,10 +10,13 @@ Cloudflare Realtime SFU implementation with verified protocol. Now organized as 
 # Install dependencies
 pnpm install
 
-# Run main app
-cd apps/telesense
-cp .dev.vars.example .dev.vars
-# Edit .dev.vars with your Cloudflare credentials
+# Run automated setup (creates tokens, sets secrets)
+./scripts/setup.sh
+
+# Or manual setup: cp apps/telesense/.dev.vars.example apps/telesense/.dev.vars
+#                   edit with your Cloudflare credentials
+
+# Run dev server
 pnpm dev
 ```
 

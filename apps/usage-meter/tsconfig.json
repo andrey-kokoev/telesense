@@ -10,9 +10,9 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "lib": ["ES2022", "DOM"],
-    "types": ["@cloudflare/workers-types", "node", "vite/client"]
+    "lib": ["ES2022"],
+    "types": ["@cloudflare/workers-types"]
   },
-  "include": ["src/**/*", "e2e/**/*"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }

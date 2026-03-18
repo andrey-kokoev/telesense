@@ -14,6 +14,7 @@ import { logger } from 'hono/logger'
 type Env = {
   REALTIME_APP_ID: string
   REALTIME_APP_SECRET: string
+  GENERIC_USER_TOKEN: string
   DEBUG?: string
   BUDGET_KV?: KVNamespace  // Optional: for usage limiting
 }
@@ -167,6 +168,29 @@ const app = new Hono<{ Bindings: Env }>()
 
 // Request logging in development
 app.use('*', logger())
+
+// Auth: Require GENERIC_USER_TOKEN for all API routes
+app.use('/api/*', async (c, next) => {
+  const env = c.env
+  const token = c.req.header('X-User-Token')
+  
+  if (!token) {
+    return c.json({ 
+      error: 'Missing authentication token', 
+      code: 'AUTH_MISSING' 
+    }, 401)
+  }
+  
+  if (token !== env.GENERIC_USER_TOKEN) {
+    console.warn(`[auth] Invalid token attempt from ${c.req.header('CF-Connecting-IP') || 'unknown'}`)
+    return c.json({ 
+      error: 'Invalid authentication token', 
+      code: 'AUTH_INVALID' 
+    }, 403)
+  }
+  
+  return next()
+})
 
 // Error handling
 app.notFound((c) => c.json({ error: 'Not found', code: 'NOT_FOUND' } as ErrorResponse, 404))

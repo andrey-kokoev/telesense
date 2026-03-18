@@ -1,8 +1,24 @@
 #!/bin/bash
-# Telesense One-Time Setup Script
-# Run this once to initialize a new environment
+# Telesense Setup Script
+# Idempotent - safe to run multiple times
 
 set -e
+
+# Parse arguments
+FORCE=false
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --force)
+            FORCE=true
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: $0 [--force]"
+            exit 1
+            ;;
+    esac
+done
 
 echo "═══════════════════════════════════════════════════════════"
 echo "  Telesense Setup - Cloudflare Realtime Video Calls"
@@ -13,6 +29,7 @@ echo ""
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Check prerequisites
@@ -32,6 +49,19 @@ fi
 
 echo -e "${GREEN}✓ Prerequisites met${NC}"
 echo ""
+
+# Check if already configured (unless --force)
+if [ "$FORCE" = false ] && [ -f "apps/telesense/.dev.vars" ]; then
+    echo -e "${BLUE}Configuration already exists.${NC}"
+    echo "Run with --force to reconfigure or continue to verify setup."
+    echo ""
+    read -p "Continue with verification? [Y/n] " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Nn]$ ]]; then
+        echo "Setup cancelled. Use --force to reconfigure."
+        exit 0
+    fi
+fi
 
 # Install dependencies
 echo "Installing dependencies..."
@@ -61,22 +91,60 @@ echo ""
 
 # Step 1: Cloudflare Calls App (Manual)
 echo "═══════════════════════════════════════════════════════════"
-echo "  STEP 1: Create Cloudflare Calls Application"
+echo "  STEP 1: Cloudflare Calls Application"
 echo "═══════════════════════════════════════════════════════════"
 echo ""
-echo -e "${YELLOW}MANUAL STEP REQUIRED:${NC}"
-echo ""
-echo "1. Go to: https://dash.cloudflare.com/?to=/:account/calls"
-echo "2. Click 'Create Calls Application'"
-echo "3. Give it a name (e.g., 'telesense-prod')"
-echo "4. Copy the App ID (looks like: 8b4b4a5e75f322fe92872b9a1d3747b5)"
-echo "5. Copy the App Secret (long random string)"
-echo ""
-echo -e "${YELLOW}Enter your Calls App ID:${NC}"
-read -r APP_ID
 
-echo -e "${YELLOW}Enter your Calls App Secret:${NC}"
-read -rs APP_SECRET
+# Check if already configured
+EXISTING_APP_ID=""
+if [ -f "apps/telesense/wrangler.toml" ] && [ "$FORCE" = false ]; then
+    EXISTING_APP_ID=$(grep "REALTIME_APP_ID = " apps/telesense/wrangler.toml | grep -oP 'REALTIME_APP_ID = "\K[^"]+' || true)
+    if [ -n "$EXISTING_APP_ID" ] && [ "$EXISTING_APP_ID" != "your-app-id" ]; then
+        echo -e "${BLUE}Existing App ID found: $EXISTING_APP_ID${NC}"
+        read -p "Use existing App ID? [Y/n] " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+            APP_ID=$EXISTING_APP_ID
+            # Try to get existing secret
+            if [ -f "apps/telesense/.dev.vars" ]; then
+                APP_SECRET=$(grep "REALTIME_APP_SECRET=" apps/telesense/.dev.vars | cut -d'=' -f2 || true)
+            fi
+        fi
+    fi
+fi
+
+if [ -z "$APP_ID" ]; then
+    echo -e "${YELLOW}MANUAL STEP REQUIRED:${NC}"
+    echo ""
+    echo "1. Go to: https://dash.cloudflare.com/?to=/:account/calls"
+    echo "2. Click 'Create Calls Application'"
+    echo "3. Give it a name (e.g., 'telesense-prod')"
+    echo "4. Copy the App ID (looks like: 8b4b4a5e75f322fe92872b9a1d3747b5)"
+    echo "5. Copy the App Secret (long random string)"
+    echo ""
+    echo -e "${YELLOW}Enter your Calls App ID:${NC}"
+    read -r APP_ID
+
+    echo -e "${YELLOW}Enter your Calls App Secret:${NC}"
+    read -rs APP_SECRET
+    echo ""
+fi
+
+# Check for existing GENERIC_USER_TOKEN or generate new
+GENERIC_TOKEN=""
+if [ -f "apps/telesense/.dev.vars" ] && [ "$FORCE" = false ]; then
+    GENERIC_TOKEN=$(grep "GENERIC_USER_TOKEN=" apps/telesense/.dev.vars | cut -d'=' -f2 || true)
+    if [ -n "$GENERIC_TOKEN" ]; then
+        echo -e "${BLUE}Reusing existing GENERIC_USER_TOKEN${NC}"
+    fi
+fi
+
+if [ -z "$GENERIC_TOKEN" ]; then
+    GENERIC_TOKEN=$(openssl rand -hex 32)
+    echo -e "${GREEN}✓ Generated new Generic User Token${NC}"
+else
+    echo -e "${GREEN}✓ Using existing Generic User Token${NC}"
+fi
 echo ""
 
 # Update wrangler.toml
@@ -84,26 +152,60 @@ echo "Updating configuration files..."
 sed -i.bak "s/REALTIME_APP_ID = \"[^\"]*/REALTIME_APP_ID = \"$APP_ID/" apps/telesense/wrangler.toml
 rm -f apps/telesense/wrangler.toml.bak
 
-echo -e "${GREEN}✓ Updated apps/telesense/wrangler.toml${NC}"
+# Create/Update .dev.vars with both secrets
+cat > apps/telesense/.dev.vars << EOF
+REALTIME_APP_SECRET=$APP_SECRET
+GENERIC_USER_TOKEN=$GENERIC_TOKEN
+EOF
+
+echo -e "${GREEN}✓ Updated apps/telesense/.dev.vars${NC}"
+echo ""
+
+# Create/Update .env for client (Vite will pick this up)
+cat > apps/telesense/.env << EOF
+VITE_USER_TOKEN=$GENERIC_TOKEN
+EOF
+
+echo -e "${GREEN}✓ Updated apps/telesense/.env (for client)${NC}"
 echo ""
 
 # Step 2: KV Namespaces
 echo "═══════════════════════════════════════════════════════════"
-echo "  STEP 2: Create KV Namespaces"
+echo "  STEP 2: KV Namespaces"
 echo "═══════════════════════════════════════════════════════════"
 echo ""
 
 cd apps/usage-meter
 
-echo "Creating KV namespace for usage-meter..."
-KV_OUTPUT=$(wrangler kv:namespace create "BUDGET_KV" 2>&1) || true
-KV_ID=$(echo "$KV_OUTPUT" | grep -oP 'id = "\K[^"]+' || true)
+# Check for existing BUDGET_KV namespace
+KV_ID=""
+if [ "$FORCE" = false ]; then
+    KV_LIST=$(wrangler kv:namespace list --json 2>/dev/null || true)
+    if command -v jq &> /dev/null; then
+        KV_ID=$(echo "$KV_LIST" | jq -r '.[] | select(.title == "telesense-usage-meter-BUDGET_KV") | .id' 2>/dev/null || true)
+    else
+        # Fallback: extract id from entry matching our title
+        KV_ID=$(echo "$KV_LIST" | grep -B1 'telesense-usage-meter-BUDGET_KV' | grep '"id"' | grep -oP '"id": "\K[^"]+' | head -1 || true)
+    fi
+    if [ -n "$KV_ID" ]; then
+        echo -e "${BLUE}Found existing BUDGET_KV namespace: $KV_ID${NC}"
+    fi
+fi
 
 if [ -z "$KV_ID" ]; then
-    echo -e "${YELLOW}KV namespace may already exist. Checking...${NC}"
-    # Try to get existing
-    KV_LIST=$(wrangler kv:namespace list 2>&1 || true)
-    KV_ID=$(echo "$KV_LIST" | grep -oP '"id": "\K[^"]+' | head -1 || true)
+    echo "Creating KV namespace for usage-meter..."
+    KV_OUTPUT=$(wrangler kv:namespace create "BUDGET_KV" 2>&1) || true
+    KV_ID=$(echo "$KV_OUTPUT" | grep -oP 'id = "\K[^"]+' || true)
+    
+    if [ -z "$KV_ID" ]; then
+        echo -e "${YELLOW}KV namespace may already exist. Checking by listing...${NC}"
+        KV_LIST=$(wrangler kv:namespace list --json 2>/dev/null || true)
+        if command -v jq &> /dev/null; then
+            KV_ID=$(echo "$KV_LIST" | jq -r '.[] | select(.title == "telesense-usage-meter-BUDGET_KV") | .id' 2>/dev/null || true)
+        else
+            KV_ID=$(echo "$KV_LIST" | grep -B1 'telesense-usage-meter-BUDGET_KV' | grep '"id"' | grep -oP '"id": "\K[^"]+' | head -1 || true)
+        fi
+    fi
 fi
 
 if [ -n "$KV_ID" ]; then
@@ -125,9 +227,16 @@ echo "  STEP 3: Set Secrets"
 echo "═══════════════════════════════════════════════════════════"
 echo ""
 
+# Check if secrets already exist (wrangler doesn't have a "get secret", so we try a workaround)
+# We'll just set them - wrangler will update existing secrets
+
 echo "Setting REALTIME_APP_SECRET for telesense..."
 echo "$APP_SECRET" | wrangler secret put REALTIME_APP_SECRET --config apps/telesense/wrangler.toml
-echo -e "${GREEN}✓ Secret set for telesense${NC}"
+echo -e "${GREEN}✓ REALTIME_APP_SECRET set for telesense${NC}"
+
+echo "Setting GENERIC_USER_TOKEN for telesense..."
+echo "$GENERIC_TOKEN" | wrangler secret put GENERIC_USER_TOKEN --config apps/telesense/wrangler.toml
+echo -e "${GREEN}✓ GENERIC_USER_TOKEN set for telesense${NC}"
 echo ""
 
 # Step 4: Usage Meter Setup
@@ -136,28 +245,48 @@ echo "  STEP 4: Usage Meter Configuration"
 echo "═══════════════════════════════════════════════════════════"
 echo ""
 
-echo -e "${YELLOW}Create an API Token for Usage Meter:${NC}"
-echo ""
-echo "1. Go to: https://dash.cloudflare.com/profile/api-tokens"
-echo "2. Click 'Create Token'"
-echo "3. Use 'Create Custom Token'"
-echo "4. Permissions needed:"
-echo "   - Zone:Read (or Account:Read)"
-echo "   - Analytics:Read"
-echo "5. Copy the token"
-echo ""
-echo -e "${YELLOW}Enter your API Token:${NC}"
-read -rs API_TOKEN
-echo ""
+# Check if CF_API_TOKEN already set
+API_TOKEN_SET=false
+if [ "$FORCE" = false ]; then
+    # Try to check if secret exists by running a dummy command
+    if wrangler secret list --config apps/usage-meter/wrangler.toml 2>/dev/null | grep -q "CF_API_TOKEN"; then
+        echo -e "${BLUE}CF_API_TOKEN already set for usage-meter${NC}"
+        read -p "Update CF_API_TOKEN? [y/N] " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            API_TOKEN_SET=false
+        else
+            API_TOKEN_SET=true
+        fi
+    fi
+fi
 
-echo "Setting CF_API_TOKEN for usage-meter..."
-echo "$API_TOKEN" | wrangler secret put CF_API_TOKEN --config apps/usage-meter/wrangler.toml
-echo -e "${GREEN}✓ Secret set for usage-meter${NC}"
+if [ "$API_TOKEN_SET" = false ]; then
+    echo -e "${YELLOW}Create an API Token for Usage Meter:${NC}"
+    echo ""
+    echo "1. Go to: https://dash.cloudflare.com/profile/api-tokens"
+    echo "2. Click 'Create Token'"
+    echo "3. Use 'Create Custom Token'"
+    echo "4. Permissions needed:"
+    echo "   - Zone:Read (or Account:Read)"
+    echo "   - Analytics:Read"
+    echo "5. Copy the token"
+    echo ""
+    echo -e "${YELLOW}Enter your API Token:${NC}"
+    read -rs API_TOKEN
+    echo ""
+
+    echo "Setting CF_API_TOKEN for usage-meter..."
+    echo "$API_TOKEN" | wrangler secret put CF_API_TOKEN --config apps/usage-meter/wrangler.toml
+    echo -e "${GREEN}✓ Secret set for usage-meter${NC}"
+else
+    echo -e "${GREEN}✓ Skipping CF_API_TOKEN (already set)${NC}"
+fi
 echo ""
 
 # Update usage-meter vars
-sed -i.bak "s/# CF_ACCOUNT_ID = \"[^\"]*/CF_ACCOUNT_ID = \"$ACCOUNT_ID/" apps/usage-meter/wrangler.toml
-sed -i.bak "s/# REALTIME_APP_ID = \"[^\"]*/REALTIME_APP_ID = \"$APP_ID/" apps/usage-meter/wrangler.toml
+sed -i.bak "s/CF_ACCOUNT_ID = \"[^\"]*/CF_ACCOUNT_ID = \"$ACCOUNT_ID/" apps/usage-meter/wrangler.toml
+sed -i.bak "s/REALTIME_APP_ID = \"[^\"]*/REALTIME_APP_ID = \"$APP_ID/" apps/usage-meter/wrangler.toml
 rm -f apps/usage-meter/wrangler.toml.bak
 
 echo -e "${GREEN}✓ Updated apps/usage-meter/wrangler.toml${NC}"
@@ -189,11 +318,21 @@ echo "  Account ID: $ACCOUNT_ID"
 echo "  App ID: $APP_ID"
 echo "  KV Namespace: ${KV_ID:-'Not created (create manually)'}"
 echo ""
+echo -e "${GREEN}Token Management:${NC}"
+if [ "$FORCE" = true ] || [ ! -f "apps/telesense/.dev.vars.bak" ]; then
+    echo "  GENERIC_USER_TOKEN: ${GENERIC_TOKEN:0:16}... (new)"
+else
+    echo "  GENERIC_USER_TOKEN: ${GENERIC_TOKEN:0:16}... (existing preserved)"
+fi
+echo ""
 echo "Next steps:"
 echo "  1. Deploy: pnpm deploy"
 echo "  2. Or run locally: pnpm dev"
 echo "  3. For CI/CD, add these secrets to GitHub:"
 echo "     - CF_API_TOKEN"
 echo "     - REALTIME_APP_SECRET"
+echo "     - GENERIC_USER_TOKEN"
 echo ""
 echo -e "${YELLOW}Documentation:${NC} https://github.com/andrey-kokoev/telesense#readme"
+echo ""
+echo -e "${BLUE}To reconfigure, run: ./scripts/setup.sh --force${NC}"
