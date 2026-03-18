@@ -1,6 +1,6 @@
 # Task 20250318-001b: Verify Protocol from Real Examples (Phase 2)
 
-**Architectural Authority**: `docs/20260318-000-codex-review-summary.md`
+**Architectural Authority**: `docs/90-references/consensus-log.md`
 **Constraint**: Do not deviate from locked decisions without updating the consensus log.
 
 **Executor**: User or external agent with browser access

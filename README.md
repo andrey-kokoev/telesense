@@ -6,8 +6,8 @@ Raw Cloudflare Realtime SFU implementation with verified protocol from Echo Demo
 
 ## Current State
 
-- ✅ Documentation: Protocol wire contract ([`docs/20260318-001-realtime-wire-contract.md`](./docs/20260318-001-realtime-wire-contract.md))
-- ✅ Documentation: Open questions ([`docs/20260318-002-realtime-open-questions.md`](./docs/20260318-002-realtime-open-questions.md))
+- ✅ Documentation: Protocol wire contract ([`docs/90-references/wire-format.md`](./docs/90-references/wire-format.md))
+- ✅ Documentation: Open questions ([`docs/90-references/open-questions.md`](./docs/90-references/open-questions.md))
 - ✅ Implementation: Backend Worker with verified endpoints
 - ✅ Implementation: Browser client with full 1:1 flow
 - ✅ Testing: Two-tab video call **verified working**
@@ -154,9 +154,9 @@ Tab A (Publisher)          Backend                Cloudflare               Tab B
 ## Documentation
 
 - [`docs/README.md`](./docs/README.md) — Documentation index
-- [`docs/20260318-000-codex-review-summary.md`](./docs/20260318-000-codex-review-summary.md) — Architectural decisions (consensus-locked)
-- [`docs/20260318-001-realtime-wire-contract.md`](./docs/20260318-001-realtime-wire-contract.md) — Verified API payloads
-- [`docs/20260318-002-realtime-open-questions.md`](./docs/20260318-002-realtime-open-questions.md) — Q&A tracking (Q8 resolved)
+- [`docs/90-references/consensus-log.md`](./docs/90-references/consensus-log.md) — Architectural decisions (consensus-locked)
+- [`docs/90-references/wire-format.md`](./docs/90-references/wire-format.md) — Verified API payloads
+- [`docs/90-references/open-questions.md`](./docs/90-references/open-questions.md) — Q&A tracking (Q8 resolved)
 
 ## Warning
 

@@ -1,6 +1,6 @@
 # Task 20250318-001c: Minimal Backend Scaffold (Phase 3)
 
-**Architectural Authority**: `docs/20260318-000-codex-review-summary.md`
+**Architectural Authority**: `docs/90-references/consensus-log.md`
 **Constraint**: Do not deviate from locked decisions without updating the consensus log.
 
 ## Objective
