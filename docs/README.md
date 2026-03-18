@@ -65,6 +65,21 @@ https://rtc.live.cloudflare.com/v1/apps/{APP_ID}
 | tracks/new (pull) | ✅ Verified | `location: "remote"` → Offer |
 | renegotiate | ✅ Verified | PUT with Answer |
 | Q8 mechanism | ✅ Resolved | Pull model confirmed |
+| E2E test | ✅ Automated | Playwright 1:1 call test |
+
+## Automated Testing
+
+E2E tests in `e2e/` using Playwright:
+```bash
+pnpm test      # Run automated 1:1 call test
+pnpm test:ui   # Interactive mode
+```
+
+Tests verify:
+- Session creation
+- Track publishing
+- Discovery & subscription
+- Bidirectional media flow
 
 ## Contributing
 

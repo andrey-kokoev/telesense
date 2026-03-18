@@ -52,6 +52,9 @@ pnpm dev
 | `pnpm dev` | Start dev servers (Vite + Wrangler) with process management |
 | `pnpm dev:debug` | Start with verbose Cloudflare API logging |
 | `pnpm health` | Quick health check of running services |
+| `pnpm test` | **Run E2E tests** (automated 1:1 call test) |
+| `pnpm test:ui` | Run E2E tests with interactive UI |
+| `pnpm test:debug` | Run E2E tests in debug mode |
 | `pnpm test:call` | Reminder for manual 1:1 call test |
 | `pnpm build` | Build for production |
 | `pnpm deploy` | Deploy to Cloudflare Workers |
