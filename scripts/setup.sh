@@ -184,7 +184,7 @@ cd apps/usage-meter
 # Check for existing BUDGET_KV namespace
 KV_ID=""
 if [ "$FORCE" = false ]; then
-    KV_LIST=$(wrangler kv:namespace list --json 2>/dev/null || true)
+    KV_LIST=$(wrangler kv namespace list --json 2>/dev/null || true)
     if command -v jq &> /dev/null; then
         KV_ID=$(echo "$KV_LIST" | jq -r '.[] | select(.title == "telesense-usage-meter-BUDGET_KV") | .id' 2>/dev/null || true)
     else
@@ -198,12 +198,12 @@ fi
 
 if [ -z "$KV_ID" ]; then
     echo "Creating KV namespace for usage-meter..."
-    KV_OUTPUT=$(wrangler kv:namespace create "BUDGET_KV" 2>&1) || true
+    KV_OUTPUT=$(wrangler kv namespace create "BUDGET_KV" 2>&1) || true
     KV_ID=$(echo "$KV_OUTPUT" | grep -oP 'id = "\K[^"]+' || true)
     
     if [ -z "$KV_ID" ]; then
         echo -e "${YELLOW}KV namespace may already exist. Checking by listing...${NC}"
-        KV_LIST=$(wrangler kv:namespace list --json 2>/dev/null || true)
+        KV_LIST=$(wrangler kv namespace list --json 2>/dev/null || true)
         if command -v jq &> /dev/null; then
             KV_ID=$(echo "$KV_LIST" | jq -r '.[] | select(.title == "telesense-usage-meter-BUDGET_KV") | .id' 2>/dev/null || true)
         else
@@ -219,7 +219,7 @@ if [ -n "$KV_ID" ]; then
     echo -e "${GREEN}✓ Updated wrangler.toml${NC}"
 else
     echo -e "${RED}Failed to create/get KV namespace${NC}"
-    echo "Please create manually: wrangler kv:namespace create 'BUDGET_KV'"
+    echo "Please create manually: wrangler kv namespace create 'BUDGET_KV'"
 fi
 
 echo ""
