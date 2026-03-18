@@ -1,5 +1,20 @@
 # Cloudflare Realtime Pricing Calculator
 
+**⚠️ CORRECTED**: Cloudflare bills by **data egress only**, not per participant-minute.
+
+## Source
+
+https://developers.cloudflare.com/calls/pricing/
+
+## Cloudflare Pricing (Actual)
+
+| Component | Price | Notes |
+|-----------|-------|-------|
+| **Egress (SFU → clients)** | **$0.05/GB** | After 1,000 GB free tier |
+| Ingress (clients → SFU) | **FREE** | Always free |
+| TURN relay | $0.05/GB | Shared free tier with SFU |
+| **Free tier** | **1,000 GB/month** | Combined SFU + TURN |
+
 ## Assumptions
 
 ### Stream Characteristics (720p HD)
@@ -8,185 +23,155 @@
 | Video bitrate | 1.5 Mbps |
 | Audio bitrate | 64 kbps |
 | **Total stream** | **1.564 Mbps** |
-| Per minute data | ~11.7 MB/min |
-| Per hour data | ~704 MB/hour |
+| Per hour per stream | ~704 MB/hour |
 
-### Example Pricing (Verify Current Rates!)
-| Component | Example Rate | Your Rate |
-|-----------|--------------|-----------|
-| Participant minutes | **$0.004/min** | Check Cloudflare docs |
-| TURN relay | $0.05/GB | Check Cloudflare docs |
-| Egress bandwidth | $0.005/GB | Check Cloudflare docs |
+## Corrected Formula
 
-**⚠️ IMPORTANT**: These are **example rates** for calculation purposes. 
+### Egress Data (what you pay for)
 
-**Get current pricing:**
-- https://developers.cloudflare.com/calls/pricing/
-- Or: `curl https://api.cloudflare.com/client/v4/zones/{zone_id}/billing`
-
----
-
-## Formula: Cost for N Participants (Full Mesh)
-
-### Billing Units (Segments)
 ```
-Segments per minute = N²
+Total Egress = N × (N-1) × bitrate × time
 
 Where:
 - N = total participants
-- Each person sends 1 stream (upload)
-- Each person receives (N-1) streams (download)
-- Total = N + N(N-1) = N²
+- (N-1) = streams each person receives
+- Ingress is FREE (not counted)
 ```
 
 ### Cost Formula
+
 ```
-Cost per minute = N² × R
-Cost per hour   = N² × R × 60
-                = N² × H
+Cost/hour = N × (N-1) × 0.704 GB × $0.05
+          = N(N-1) × $0.0352
 
-Where:
-- R = rate per participant-minute (e.g., $0.004)
-- H = rate per segment-hour (R × 60)
-```
-
----
-
-## Cost Calculator (Example: R = $0.004/min)
-
-| Participants | Segments/min | Cost/min | Cost/hour | Cost/day |
-|--------------|--------------|----------|-----------|----------|
-| **2** (1:1) | 4 | $0.016 | $0.96 | $23.04 |
-| **3** (trio) | 9 | $0.036 | $2.16 | $51.84 |
-| **4** (small) | 16 | $0.064 | $3.84 | $92.16 |
-| **5** | 25 | $0.10 | $6.00 | $144.00 |
-| **10** | 100 | $0.40 | $24.00 | $576.00 |
-| **20** | 400 | $1.60 | $96.00 | $2,304.00 |
-| **50** | 2,500 | $10.00 | $600.00 | $14,400.00 |
-
-**Replace with your actual rate R:**
-```
-Your Cost/hour = N² × (R × 60)
+After free tier (first 1,000 GB/month):
+Cost = max(0, N(N-1) × hours × 0.704 - 1000) × $0.05
 ```
 
-### The Quadratic Wall
+## Cost Calculator
+
+### Hourly Costs (After Free Tier)
+
+| Participants | Egress Streams | GB/hour | Cost/hour | Monthly* |
+|--------------|----------------|---------|-----------|----------|
+| **2** | 2 | 1.4 GB | **$0.07** | $50 |
+| **3** | 6 | 4.2 GB | **$0.21** | $151 |
+| **4** | 12 | 8.4 GB | **$0.42** | $302 |
+| **5** | 20 | 14.1 GB | **$0.70** | $505 |
+| **10** | 90 | 63.4 GB | **$3.17** | $2,281 |
+| **20** | 380 | 267.5 GB | **$13.38** | $9,628 |
+| **50** | 2,450 | 1,725 GB | **$86.24** | $62,100 |
+
+\* Monthly = 8 hours/day × 22 work days, minus 1,000 GB free tier
+
+### The Free Tier Impact
+
+**1,000 GB free = ~1,420 participant-hours**
+
+| Scenario | Free Hours | Paid Hours/Month |
+|----------|------------|------------------|
+| 2 people, 8hr/day | 710 hours | **FREE** |
+| 5 people, 4hr/day | 71 hours | 105 hours paid |
+| 10 people, 2hr/day | 7 hours | 37 hours paid |
+
+## Comparison: Old vs New Model
+
+| Participants | Wrong (per-min) | Correct (per-GB) | Savings |
+|--------------|-----------------|------------------|---------|
+| 2 | $0.96/hr | $0.07/hr | **93%** |
+| 10 | $24/hr | $3.17/hr | **87%** |
+| 50 | $600/hr | $86/hr | **86%** |
+
+## Optimization Strategies
+
+### 1. Stay Within Free Tier
 ```
-10 people  = $24/hour  (manageable)
-20 people  = $96/hour  (ouch)
-50 people  = $600/hour (prohibitive)
-100 people = $2,400/hour (insane)
-```
+Max hours/month = 1000 GB / [N(N-1) × 0.704 GB/hr]
 
----
-
-## Data Transfer Formula
-
-### Per Participant
-```
-Upload:   1.564 Mbps
-Download: 1.564 × (N-1) Mbps
-Total per person: 1.564 × N Mbps
-
-Group total: 1.564 × N² Mbps
-```
-
-### Example: 10 People for 1 Hour
-```
-Total bandwidth: 1.564 Mbps × 100 segments × 3600 seconds
-               = 563,040 Mbit
-               = 70.38 GB
-
-At $0.005/GB egress: $0.35/hour (much smaller than participant cost)
-```
-
-**Conclusion**: Participant minutes dominate cost, not bandwidth.
-
----
-
-## Optimized Scenarios
-
-### Scenario A: 3 Speakers + 97 Viewers
-```
-Publishers (P) = 3
-Viewers (S) = 97
-
-Segments = P × (1 + S) 
-         = 3 × 98 
-         = 294 segments/min
-
-Cost/hour = 294 × $0.004 × 60 = $70.56
-
-vs full mesh: 10,000 segments = $2,400/hour
-Savings: 97% 🎉
+For 4 people: 1000 / 8.4 = 119 hours/month free
 ```
 
-### Scenario B: Screen Share (3 Mbps) + 2 Cameras
+### 2. Reduce Bitrate
 ```
-Screen: 3.0 Mbps
-Cam A:  1.5 Mbps  
-Cam B:  1.5 Mbps
-
-If 10 people subscribe to all 3:
-Segments = 3 streams × 10 subscribers = 30 segments/min
-Cost/hour = 30 × $0.004 × 60 = $7.20
+360p instead of 720p: ~0.5 Mbps vs 1.5 Mbps
+Cost reduction: 67% less
 ```
 
----
+### 3. Limit Simulcast Layers
+Don't send multiple quality tiers if not needed.
 
-## Cost Optimization Strategies
-
-### 1. Limit Simulcast
-Don't send multiple quality layers if not needed.
-
-### 2. Pause Inactive
-Mute video when tab not visible:
+### 4. Pause Inactive Tracks
 ```javascript
+// Stop billing for video when tab hidden
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) {
-    videoTrack.enabled = false  // Stops billing for that track
-  }
-})
+  videoTrack.enabled = !document.hidden;
+});
 ```
 
-### 3. Selective Subscription
-Only subscribe to visible speakers:
+### 5. Switch to CDN for Large Groups
 ```
-Instead of: 10 people × 10 video streams = 100 segments
-Do: 10 people × 3 visible = 30 segments
-Savings: 70%
+50 people SFU: $86/hour
+50 people CDN: ~$5/hour (HLS/DASH)
 ```
 
-### 4. Switch to CDN for 100+ Viewers
+## Real-World Scenarios
+
+### Scenario A: Small Team (5 people, 2 hours/day)
 ```
-SFU  (100 viewers): 10,000 segments = $2,400/hour
-CDN  (100 viewers): 1 stream + 100 HLS pulls = ~$50/hour
+Daily: 5 × 4 × 0.704 × 2 = 28.2 GB
+Monthly: 620 GB
+Cost: FREE (under 1,000 GB)
 ```
 
----
+### Scenario B: Startup Standup (10 people, 1 hour/day)
+```
+Daily: 10 × 9 × 0.704 × 1 = 63.4 GB
+Monthly: 1,395 GB
+Cost: 395 GB × $0.05 = $19.75/month
+```
 
-## Quick Formula Reference
+### Scenario C: Webinar (3 speakers, 97 viewers, 1 hour)
+```
+Speakers: 3 streams
+Viewers: 97 people × 3 streams each
+Egress: 3 × 97 × 0.704 = 205 GB
+Cost: 205 × $0.05 = $10.25/hour
+```
+
+## Alternative: RealtimeKit (Beta)
+
+If you want simpler billing:
+- **$0.002/min** for audio/video
+- **$0.0005/min** for audio-only
+- Per-participant-minute model
+
+Compare to SFU for 10 people, 1 hour:
+- SFU: 90 streams × 0.704 GB × $0.05 = $3.17
+- RealtimeKit: 10 people × 60 min × $0.002 = $1.20
+
+**RealtimeKit can be cheaper for small groups.**
+
+## Quick Formula
 
 ```
-Full mesh cost/hour = N² × H
+Monthly Cost = max(0, N(N-1) × hours × 0.704 - 1000) × $0.05
 
 Where:
 - N = participants
-- H = your cost per segment-hour (rate per min × 60)
-
-Data volume/hour = N² × 0.704 GB
-                  (at 1.564 Mbps per stream)
+- hours = total hours in month
+- 0.704 GB/hour = at 1.5 Mbps
+- 1000 GB = free tier
+- $0.05 = per GB rate
 ```
 
-## Break-Even Analysis
+## Key Takeaways
 
-| Use Case | Max Participants | Reason |
-|----------|------------------|--------|
-| 1:1 calls | 2 | Optimal use case |
-| Small meeting | 4-6 | Manageable cost |
-| Team standup | 8-10 | Budget limit |
-| Webinar | 3-5 speakers + CDN | Switch to CDN for viewers |
-| Broadcast | SFU not suitable | Use HLS/DASH |
+1. ✅ **Ingress is free** - Uploading costs nothing
+2. ✅ **1,000 GB free** - Generous free tier
+3. ✅ **Much cheaper** than per-minute assumptions
+4. ⚠️ **Still N² growth** - Large groups are expensive
+5. 💡 **Measure actual usage** - Cloudflare dashboard shows egress
 
 ---
 
-**⚠️ DISCLAIMER: All prices are EXAMPLES. Check https://developers.cloudflare.com/calls/pricing/ for current rates.**
+*Pricing as of 2026-03-18. Verify at https://developers.cloudflare.com/calls/pricing/*
