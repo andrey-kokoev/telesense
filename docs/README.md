@@ -36,7 +36,7 @@ docs/
 
 ## Key Concepts
 
-### Q8: The Critical Discovery ⭐
+### How Remote Subscription Works
 
 The breakthrough finding: **Remote subscription uses the same endpoint with `location: "remote"`**.
 

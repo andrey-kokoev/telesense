@@ -31,7 +31,7 @@ callId: "my-meeting-123"
 | **Track** | A media stream | Camera = 1 track, Mic = 1 track |
 | **Track Name** | Browser's track ID | `"a1b2c3d4-e5f6..."` (random UUID) |
 
-### The Q8 Discovery ⭐
+### How Remote Subscription Works
 
 The hardest part of Cloudflare Realtime: **How do you subscribe to someone else's tracks?**
 

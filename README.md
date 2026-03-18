@@ -117,9 +117,6 @@ pnpm --filter telesense deploy
 pnpm --filter usage-meter deploy
 ```
 
-## Key Insight: Q8 Resolved ⭐
-
-Remote subscription uses `POST /tracks/new` with `location: "remote"` to request an Offer from Cloudflare. This "pull model" was the breakthrough discovery.
 
 ## License
 
