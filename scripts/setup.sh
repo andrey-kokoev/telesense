@@ -81,7 +81,8 @@ echo ""
 
 # Get account ID
 echo "Getting Cloudflare account ID..."
-ACCOUNT_ID=$(wrangler whoami 2>/dev/null | grep -oP 'Account ID: \K\w+' || true)
+# Try to extract from wrangler whoami table format (wrangler 3.x+)
+ACCOUNT_ID=$(wrangler whoami 2>/dev/null | grep -oE '[a-f0-9]{32}' | head -1 || true)
 if [ -z "$ACCOUNT_ID" ]; then
     echo -e "${YELLOW}Enter your Cloudflare Account ID:${NC}"
     read -r ACCOUNT_ID
