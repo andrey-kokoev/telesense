@@ -156,6 +156,9 @@ rm -f apps/telesense/wrangler.toml.bak
 cat > apps/telesense/.dev.vars << EOF
 REALTIME_APP_SECRET=$APP_SECRET
 GENERIC_USER_TOKEN=$GENERIC_TOKEN
+
+# Dev-only: Disable auth enforcement for local development
+DO_NOT_ENFORCE_USER_TOKEN=true
 EOF
 
 echo -e "${GREEN}✓ Updated apps/telesense/.dev.vars${NC}"

@@ -59,6 +59,8 @@ echo "your-token" | wrangler secret put REALTIME_APP_SECRET --config apps/telese
 echo "your-user-token" | wrangler secret put GENERIC_USER_TOKEN --config apps/telesense/wrangler.toml
 ```
 
+> **Note**: The setup script sets `DO_NOT_ENFORCE_USER_TOKEN=true` in `.dev.vars` for local development. This disables authentication so you can test without sending the `X-User-Token` header. Remove or set to `false` to test auth locally. Production requires the token (this variable is not set in production).
+
 ## 3. Run Development Server
 
 ```bash

@@ -173,6 +173,36 @@ Even if K3 is compromised:
 - Only Session 3 is affected
 ```
 
+## Application-Level Access Control
+
+### Token-Based Authentication
+
+The worker implements simple token-based auth to control access:
+
+```
+Client ──X-User-Token──► Worker ──► Verify against GENERIC_USER_TOKEN
+```
+
+**Configuration**:
+| Environment | Variable | Purpose |
+|-------------|----------|---------|
+| All | `GENERIC_USER_TOKEN` | Secret token clients must provide |
+| Dev only | `DO_NOT_ENFORCE_USER_TOKEN` | Set `true` to disable auth locally |
+
+**Production**: Auth enforced (no `DO_NOT_ENFORCE_USER_TOKEN` set)  
+**Development**: Auth disabled by default (`DO_NOT_ENFORCE_USER_TOKEN=true` in `.dev.vars`)
+
+### Security Model
+
+| Aspect | Implementation |
+|--------|----------------|
+| Token storage | Wrangler secret (encrypted at rest) |
+| Token transmission | HTTP header (`X-User-Token`) |
+| Token validation | Constant-time comparison (Hono default) |
+| Dev bypass | Environment variable (dev only) |
+
+> **Note**: This is simple shared-token auth. Anyone with the token can use the app. For per-user auth, you'd need to add a user database and session management.
+
 ## Summary
 
 | Question | Answer |
@@ -182,6 +212,7 @@ Even if K3 is compromised:
 | Who can decrypt? | **Only the browsers** (endpoints) |
 | Can SFU decrypt? | **No** - by design |
 | Can you intercept? | **Only with browser cooperation** (SSLKEYLOGFILE) |
+| App access control? | **Token-based** (`X-User-Token` header) |
 
 ## See Also
 

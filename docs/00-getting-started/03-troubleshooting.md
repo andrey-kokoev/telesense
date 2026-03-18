@@ -49,6 +49,19 @@ echo "DEBUG=true" >> .dev.vars
 pnpm dev
 ```
 
+### "Missing authentication token" / "Invalid authentication token"
+**Cause**: `X-User-Token` header missing or incorrect.
+
+**Solutions**:
+1. **Development**: Check `DO_NOT_ENFORCE_USER_TOKEN=true` is in `.dev.vars` to disable auth
+2. **Production**: Ensure client sends correct `X-User-Token` header matching `GENERIC_USER_TOKEN`
+3. Check browser devtools Network tab for the header value
+
+```bash
+# Temporarily disable auth for testing (dev only)
+echo "DO_NOT_ENFORCE_USER_TOKEN=true" >> apps/telesense/.dev.vars
+```
+
 ### "ICE failed" or "ICE timeout"
 **Cause**: Network can't establish peer connection.
 

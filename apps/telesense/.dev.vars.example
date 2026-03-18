@@ -8,3 +8,7 @@ GENERIC_USER_TOKEN=your-generated-token-here
 
 # Debug mode - set to 'true' to enable verbose logging
 # DEBUG=true
+
+# Dev-only: Disable user token enforcement (skip auth in local dev)
+# Set to 'true' to allow requests without X-User-Token header
+DO_NOT_ENFORCE_USER_TOKEN=true

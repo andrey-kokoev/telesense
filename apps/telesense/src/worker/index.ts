@@ -15,6 +15,7 @@ type Env = {
   REALTIME_APP_ID: string
   REALTIME_APP_SECRET: string
   GENERIC_USER_TOKEN: string
+  DO_NOT_ENFORCE_USER_TOKEN?: string  // Dev-only: set 'true' to disable auth
   DEBUG?: string
   BUDGET_KV?: KVNamespace  // Optional: for usage limiting
 }
@@ -169,9 +170,15 @@ const app = new Hono<{ Bindings: Env }>()
 // Request logging in development
 app.use('*', logger())
 
-// Auth: Require GENERIC_USER_TOKEN for all API routes
+// Auth: Require GENERIC_USER_TOKEN for all API routes (unless disabled in dev)
 app.use('/api/*', async (c, next) => {
   const env = c.env
+  
+  // Skip auth in dev if DO_NOT_ENFORCE_USER_TOKEN is set
+  if (env.DO_NOT_ENFORCE_USER_TOKEN === 'true') {
+    return next()
+  }
+  
   const token = c.req.header('X-User-Token')
   
   if (!token) {
