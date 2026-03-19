@@ -1,10 +1,12 @@
 <template>
   <div class="landing">
     <header class="landing__header">
-      <div class="landing__header-top">
-        <ThemeToggle />
-      </div>
-      <h1 class="landing__title">Telesense</h1>
+      <h1 class="landing__title">
+        <span class="landing__title__glyph landing__title__glyph--t">t</span
+        ><span class="landing__title-rest"
+          >ele<span class="landing__title__glyph landing__title__glyph--s">s</span>ense</span
+        >
+      </h1>
       <p class="landing__subtitle">Secure video calls</p>
     </header>
 
@@ -12,11 +14,11 @@
       <!-- Authenticated User View -->
       <template v-if="isAuthenticated">
         <div class="landing__section">
-          <h2 class="landing__section-title">Start a Call</h2>
+          <h2 class="landing__section-title">Start a Room</h2>
 
-          <button class="landing__btn landing__btn--primary" @click="createNewChat">
+          <button class="landing__btn landing__btn--primary" @click="createNewRoom">
             <span class="landing__btn-icon">+</span>
-            <span>Create New Chat</span>
+            <span>Create New Room</span>
           </button>
         </div>
 
@@ -25,51 +27,46 @@
         </div>
 
         <div class="landing__section">
-          <h2 class="landing__section-title">Join a Call</h2>
+          <h2 class="landing__section-title">Join a Room</h2>
 
-          <form class="landing__form" @submit.prevent="joinExistingChat">
+          <form class="landing__form" @submit.prevent="joinExistingRoom">
             <input
-              v-model="chatIdInput"
+              v-model="roomIdInput"
               type="text"
               class="landing__input"
-              placeholder="Enter chat ID"
+              placeholder="Enter room ID"
               maxlength="20"
-              @input="chatIdInput = chatIdInput.toUpperCase()"
+              @input="roomIdInput = roomIdInput.toUpperCase()"
             />
             <button
               type="submit"
               class="landing__btn landing__btn--secondary"
-              :disabled="!chatIdInput.trim()"
+              :disabled="!roomIdInput.trim()"
             >
               Join
             </button>
           </form>
-        </div>
-
-        <div class="landing__token-status">
-          <span class="landing__token-badge">✓ Token set</span>
-          <button class="landing__link" @click="showTokenModal = true">Change token</button>
         </div>
       </template>
 
       <!-- Unauthenticated User View -->
       <template v-else>
         <div class="landing__section">
-          <h2 class="landing__section-title">Join a Call</h2>
+          <h2 class="landing__section-title">Join a Room</h2>
 
-          <form class="landing__form" @submit.prevent="joinExistingChat">
+          <form class="landing__form" @submit.prevent="joinExistingRoom">
             <input
-              v-model="chatIdInput"
+              v-model="roomIdInput"
               type="text"
               class="landing__input"
-              placeholder="Enter chat ID"
+              placeholder="Enter room ID"
               maxlength="20"
-              @input="chatIdInput = chatIdInput.toUpperCase()"
+              @input="roomIdInput = roomIdInput.toUpperCase()"
             />
             <button
               type="submit"
               class="landing__btn landing__btn--secondary"
-              :disabled="!chatIdInput.trim()"
+              :disabled="!roomIdInput.trim()"
             >
               Join
             </button>
@@ -81,8 +78,8 @@
         </div>
 
         <div class="landing__section">
-          <h2 class="landing__section-title">Create Calls</h2>
-          <p class="landing__hint">Enter your token to create new chats</p>
+          <h2 class="landing__section-title">Create Rooms</h2>
+          <p class="landing__hint">Enter your token to create new rooms</p>
 
           <form class="landing__form" @submit.prevent="saveToken">
             <input
@@ -90,6 +87,7 @@
               type="password"
               class="landing__input"
               placeholder="Enter your token"
+              autocomplete="off"
             />
             <button
               type="submit"
@@ -107,13 +105,13 @@
         <h3 class="landing__recent-title">Recent</h3>
         <ul class="landing__recent-list">
           <li
-            v-for="call in recentCalls"
-            :key="call.id"
+            v-for="room in recentCalls"
+            :key="room.id"
             class="landing__recent-item"
-            @click="goToCall(call.id)"
+            @click="goToRoom(room.id)"
           >
-            <span class="landing__recent-id">{{ call.id }}</span>
-            <span v-if="call.name" class="landing__recent-name">{{ call.name }}</span>
+            <span class="landing__recent-id">{{ room.id }}</span>
+            <span v-if="room.name" class="landing__recent-name">{{ room.name }}</span>
           </li>
         </ul>
       </div>
@@ -129,6 +127,7 @@
             type="password"
             class="landing__input"
             placeholder="Enter new token"
+            autocomplete="off"
           />
           <div class="landing__modal-actions">
             <button
@@ -149,6 +148,16 @@
         </form>
       </div>
     </div>
+
+    <div v-if="isAuthenticated" class="landing__token-status">
+      <span class="landing__token-badge">✓ Token set</span>
+      <button class="landing__link" @click="showTokenModal = true">Change token</button>
+      <button class="landing__link" @click="clearToken">Clear token</button>
+    </div>
+
+    <div class="landing__footer">
+      <ThemeToggle />
+    </div>
   </div>
 </template>
 
@@ -159,9 +168,9 @@ import { useAppStore } from "../composables/useAppStore"
 import { useToast } from "../composables/useToast"
 
 const { isAuthenticated, token, setToken, recentCalls, addRecentCall } = useAppStore()
-const { success } = useToast()
+const { show } = useToast()
 
-const chatIdInput = ref("")
+const roomIdInput = ref("")
 const tokenInput = ref("")
 const showTokenModal = ref(false)
 
@@ -174,23 +183,23 @@ function generateCallId(): string {
   return result
 }
 
-function createNewChat() {
-  const callId = generateCallId()
-  addRecentCall(callId)
-  success(`Created chat: ${callId}`)
-  goToCall(callId)
+function createNewRoom() {
+  const roomId = generateCallId()
+  addRecentCall(roomId)
+  show(`Created room: ${roomId}`, "success")
+  goToRoom(roomId)
 }
 
-function joinExistingChat() {
-  const id = chatIdInput.value.trim().toUpperCase()
+function joinExistingRoom() {
+  const id = roomIdInput.value.trim().toUpperCase()
   if (!id) return
 
   addRecentCall(id)
-  goToCall(id)
+  goToRoom(id)
 }
 
-function goToCall(callId: string) {
-  window.location.href = `/?call=${callId}`
+function goToRoom(roomId: string) {
+  window.location.href = `/?room=${roomId}`
 }
 
 function saveToken() {
@@ -199,12 +208,17 @@ function saveToken() {
 
   setToken(t)
   tokenInput.value = ""
-  success("Token saved")
+  show("Token saved", "success")
 }
 
 function updateToken() {
   saveToken()
   showTokenModal.value = false
+}
+
+function clearToken() {
+  setToken("")
+  tokenInput.value = ""
 }
 </script>
 
@@ -215,7 +229,6 @@ function updateToken() {
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  padding: var(--space-8) var(--space-4);
   background: var(--color-bg-primary);
 }
 
@@ -225,21 +238,42 @@ function updateToken() {
   display: flex;
   flex-direction: column;
   text-align: center;
-  gap: var(--space-4);
   margin-bottom: var(--space-10);
-}
-
-.landing__header-top {
-  display: flex;
-  justify-content: flex-end;
 }
 
 .landing__title {
   font-size: 2.5rem;
   font-weight: 700;
+  font-family: "Geist Mono", var(--font-mono);
   color: var(--color-text-primary);
+  opacity: 0.8;
   margin: 0;
-  letter-spacing: -0.02em;
+  letter-spacing: 0.1ch;
+}
+
+.landing__title-rest {
+  font-weight: 500;
+}
+
+.landing__title__glyph {
+  display: inline-block;
+  padding: 0 0.04em;
+  color: var(--color-bg-primary);
+  background: var(--color-text-primary);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  border-radius: 0.08em;
+}
+
+.landing__title__glyph--s {
+  padding-left: 0.02em;
+  margin-right: 0.02ch;
+}
+
+.landing__title__glyph--t {
+  padding-left: 0.035em;
+  margin-right: 0.02ch;
 }
 
 .landing__subtitle {
@@ -251,6 +285,15 @@ function updateToken() {
 .landing__main {
   width: 100%;
   max-width: 360px;
+}
+
+.landing__footer {
+  width: 100%;
+  max-width: 360px;
+  margin-top: auto;
+  padding-top: var(--space-8);
+  display: flex;
+  justify-content: center;
 }
 
 .landing__section {

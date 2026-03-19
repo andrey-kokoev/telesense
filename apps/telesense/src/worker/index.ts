@@ -27,8 +27,8 @@ type Env = {
 const REALTIME_API = "https://rtc.live.cloudflare.com/v1/apps"
 
 // Helper to get CallRoom DO instance
-function getCallRoom(env: Env, callId: string): DurableObjectStub {
-  const id = env.CALL_ROOMS.idFromName(callId)
+function getCallRoom(env: Env, roomId: string): DurableObjectStub {
+  const id = env.CALL_ROOMS.idFromName(roomId)
   return env.CALL_ROOMS.get(id)
 }
 
@@ -94,9 +94,9 @@ interface LeaveRequest {
   sessionId: string
 }
 
-// Normalize callId to uppercase for case-insensitive matching
-function normalizeCallId(callId: string): string {
-  return callId.toUpperCase()
+// Normalize roomId to uppercase for case-insensitive matching
+function normalizeRoomId(roomId: string): string {
+  return roomId.toUpperCase()
 }
 
 interface HealthResponse {
@@ -281,13 +281,13 @@ app.get("/health", (c) => {
 })
 
 // 1. SESSION — VERIFIED
-app.post("/api/calls/:callId/session", async (c) => {
+app.post("/api/rooms/:roomId/session", async (c) => {
   const env = c.env
-  const callId = normalizeCallId(c.req.param("callId"))
+  const roomId = normalizeRoomId(c.req.param("roomId"))
   const debug = isDebugEnabled(env)
 
   try {
-    requireNonEmptyString(callId, "callId")
+    requireNonEmptyString(roomId, "roomId")
   } catch (e) {
     return c.json(
       {
@@ -299,7 +299,7 @@ app.post("/api/calls/:callId/session", async (c) => {
   }
 
   if (debug) {
-    console.log(`[sessions/new] Creating session for call: ${callId}`)
+    console.log(`[sessions/new] Creating session for room: ${roomId}`)
   }
 
   // VERIFIED: Empty body, response is { sessionId: "..." }
@@ -338,7 +338,7 @@ app.post("/api/calls/:callId/session", async (c) => {
   const internalId = crypto.randomUUID()
 
   // Register with Durable Object for cross-device coordination
-  const callRoom = getCallRoom(env, callId)
+  const callRoom = getCallRoom(env, roomId)
   await callRoom.fetch(
     new Request("http://do.internal/?action=createSession", {
       method: "POST",
@@ -359,13 +359,13 @@ app.post("/api/calls/:callId/session", async (c) => {
 })
 
 // 2. PUBLISH (Push) — VERIFIED
-app.post("/api/calls/:callId/publish-offer", async (c) => {
+app.post("/api/rooms/:roomId/publish-offer", async (c) => {
   const env = c.env
-  const callId = normalizeCallId(c.req.param("callId"))
+  const roomId = normalizeRoomId(c.req.param("roomId"))
   const debug = isDebugEnabled(env)
 
   try {
-    requireNonEmptyString(callId, "callId")
+    requireNonEmptyString(roomId, "roomId")
   } catch (e) {
     return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
   }
@@ -382,7 +382,7 @@ app.post("/api/calls/:callId/publish-offer", async (c) => {
 
   // Look up session in Durable Object to get cfSessionId
   let cfSessionId: string
-  const callRoom = getCallRoom(env, callId)
+  const callRoom = getCallRoom(env, roomId)
 
   try {
     const sessionRes = await callRoom.fetch(
@@ -486,13 +486,13 @@ app.post("/api/calls/:callId/publish-offer", async (c) => {
 
 // 3. SUBSCRIBE (Pull) — VERIFIED ⭐ Q8 RESOLVED
 // Call tracks/new with location: "remote" to get Offer for remote tracks
-app.post("/api/calls/:callId/subscribe-offer", async (c) => {
+app.post("/api/rooms/:roomId/subscribe-offer", async (c) => {
   const env = c.env
-  const callId = normalizeCallId(c.req.param("callId"))
+  const roomId = normalizeRoomId(c.req.param("roomId"))
   const debug = isDebugEnabled(env)
 
   try {
-    requireNonEmptyString(callId, "callId")
+    requireNonEmptyString(roomId, "roomId")
   } catch (e) {
     return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
   }
@@ -507,7 +507,7 @@ app.post("/api/calls/:callId/subscribe-offer", async (c) => {
   }
 
   // Look up session in Durable Object to get cfSessionId
-  const callRoom = getCallRoom(env, callId)
+  const callRoom = getCallRoom(env, roomId)
   const sessionRes = await callRoom.fetch(
     new Request(`http://do.internal/?action=getSession&internalId=${body.sessionId}`),
   )
@@ -595,13 +595,13 @@ app.post("/api/calls/:callId/subscribe-offer", async (c) => {
 
 // 4. COMPLETE-SUBSCRIBE — VERIFIED
 // Send Answer to Cloudflare via PUT /renegotiate
-app.post("/api/calls/:callId/complete-subscribe", async (c) => {
+app.post("/api/rooms/:roomId/complete-subscribe", async (c) => {
   const env = c.env
-  const callId = normalizeCallId(c.req.param("callId"))
+  const roomId = normalizeRoomId(c.req.param("roomId"))
   const debug = isDebugEnabled(env)
 
   try {
-    requireNonEmptyString(callId, "callId")
+    requireNonEmptyString(roomId, "roomId")
   } catch (e) {
     return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
   }
@@ -616,7 +616,7 @@ app.post("/api/calls/:callId/complete-subscribe", async (c) => {
   }
 
   // Look up session in Durable Object to get cfSessionId
-  const callRoom = getCallRoom(env, callId)
+  const callRoom = getCallRoom(env, roomId)
   const sessionRes = await callRoom.fetch(
     new Request(`http://do.internal/?action=getSession&internalId=${body.sessionId}`),
   )
@@ -668,13 +668,13 @@ app.post("/api/calls/:callId/complete-subscribe", async (c) => {
 
 // 5. DISCOVER-REMOTE-TRACKS
 // App-level discovery — returns other participants' track refs
-app.get("/api/calls/:callId/discover-remote-tracks", async (c) => {
+app.get("/api/rooms/:roomId/discover-remote-tracks", async (c) => {
   const env = c.env
-  const callId = normalizeCallId(c.req.param("callId"))
+  const roomId = normalizeRoomId(c.req.param("roomId"))
   const debug = isDebugEnabled(env)
 
   try {
-    requireNonEmptyString(callId, "callId")
+    requireNonEmptyString(roomId, "roomId")
   } catch (e) {
     return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
   }
@@ -700,7 +700,7 @@ app.get("/api/calls/:callId/discover-remote-tracks", async (c) => {
   const selfId = c.req.query("sessionId")
 
   // Get remote tracks from Durable Object
-  const callRoom = getCallRoom(env, callId)
+  const callRoom = getCallRoom(env, roomId)
   const tracksRes = await callRoom.fetch(
     new Request(`http://do.internal/?action=getRemoteTracks&selfId=${selfId || ""}`),
   )
@@ -713,7 +713,7 @@ app.get("/api/calls/:callId/discover-remote-tracks", async (c) => {
 
   if (debug) {
     console.log(
-      `[discover] callId: ${callId}, selfId: ${selfId?.slice(0, 8)}, remote tracks: ${tracksData.tracks.length}`,
+      `[discover] roomId: ${roomId}, selfId: ${selfId?.slice(0, 8)}, remote tracks: ${tracksData.tracks.length}`,
     )
   }
 
@@ -721,12 +721,12 @@ app.get("/api/calls/:callId/discover-remote-tracks", async (c) => {
 })
 
 // 6. LEAVE
-app.post("/api/calls/:callId/leave", async (c) => {
+app.post("/api/rooms/:roomId/leave", async (c) => {
   const env = c.env
-  const callId = normalizeCallId(c.req.param("callId"))
+  const roomId = normalizeRoomId(c.req.param("roomId"))
 
   try {
-    requireNonEmptyString(callId, "callId")
+    requireNonEmptyString(roomId, "roomId")
   } catch (e) {
     return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
   }
@@ -740,7 +740,7 @@ app.post("/api/calls/:callId/leave", async (c) => {
   }
 
   // Remove from Durable Object
-  const callRoom = getCallRoom(env, callId)
+  const callRoom = getCallRoom(env, roomId)
   await callRoom.fetch(
     new Request("http://do.internal/?action=leave", {
       method: "POST",
@@ -781,7 +781,7 @@ app.get("*", async (c) => {
 
   // Fallback API response if no assets or 404
   return c.json({
-    message: "Telesense API",
+    message: "telesence API",
     version: "1.0.0",
     status: "running",
     note: "Frontend not built or ASSETS binding not configured",

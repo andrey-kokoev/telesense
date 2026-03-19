@@ -26,7 +26,7 @@ interface DiscoverResponse {
   tracks: Array<{ trackName: string; sessionId: string; mid: string }>
 }
 
-const props = defineProps<{ callId: string }>()
+const props = defineProps<{ roomId: string }>()
 const { show: showToast } = useToast()
 const store = useAppStore()
 
@@ -146,7 +146,7 @@ async function pollAndSubscribe(pc: RTCPeerConnection, sessionId: string) {
   const poll = async () => {
     try {
       const res = await apiCall(
-        `/api/calls/${props.callId}/discover-remote-tracks?sessionId=${sessionId}`,
+        `/api/rooms/${props.roomId}/discover-remote-tracks?sessionId=${sessionId}`,
       )
       if (!res.ok) return
       const data = (await res.json()) as DiscoverResponse
@@ -183,7 +183,7 @@ async function subscribeToTracks(
     log(`   Local session: ${sessionId.slice(0, 8)}`)
     log(`   Remote sessions: ${remoteTracks.map((t) => t.sessionId.slice(0, 8)).join(", ")}`)
 
-    const subscribeRes = await apiCall(`/api/calls/${props.callId}/subscribe-offer`, {
+    const subscribeRes = await apiCall(`/api/rooms/${props.roomId}/subscribe-offer`, {
       method: "POST",
       body: JSON.stringify({
         sessionId,
@@ -211,7 +211,7 @@ async function subscribeToTracks(
     await pc.setLocalDescription(answer)
 
     log(`📤 Completing subscription...`)
-    const completeRes = await apiCall(`/api/calls/${props.callId}/complete-subscribe`, {
+    const completeRes = await apiCall(`/api/rooms/${props.roomId}/complete-subscribe`, {
       method: "POST",
       body: JSON.stringify({
         sessionId,
@@ -252,8 +252,8 @@ async function togglePiP(enable: boolean) {
 }
 
 onMounted(async () => {
-  log("🚀 Starting call...")
-  log(`📞 Call ID: ${props.callId}`)
+  log("🚀 Starting room...")
+  log(`🚪 Room ID: ${props.roomId}`)
 
   // 1. Capture local media
   log("📹 Requesting camera access...")
@@ -295,7 +295,7 @@ onMounted(async () => {
   try {
     // 3. Create session
     log("🔑 Creating session...")
-    const sessionRes = await apiCall(`/api/calls/${props.callId}/session`, { method: "POST" })
+    const sessionRes = await apiCall(`/api/rooms/${props.roomId}/session`, { method: "POST" })
     if (!sessionRes.ok) throw new Error(`Session failed: ${sessionRes.status}`)
     const sessionData = (await sessionRes.json()) as SessionResponse
     const sessionId = sessionData.sessionId
@@ -312,7 +312,7 @@ onMounted(async () => {
 
     // 6. Publish tracks
     log("📤 Publishing...")
-    const publishRes = await apiCall(`/api/calls/${props.callId}/publish-offer`, {
+    const publishRes = await apiCall(`/api/rooms/${props.roomId}/publish-offer`, {
       method: "POST",
       body: JSON.stringify({
         sessionId,
@@ -388,7 +388,7 @@ onMounted(async () => {
       "
     >
       <h2 class="card-title" style="margin: 0; text-align: left">
-        Call: <code>{{ callId }}</code>
+        Room: <code>{{ roomId }}</code>
       </h2>
       <button
         class="btn btn-secondary btn-sm"

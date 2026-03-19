@@ -53,8 +53,8 @@ export function useAppStore() {
   // Recent calls
   const recentCalls = computed(() => state.value.recentCalls)
 
-  function addRecentCall(callId: string, name?: string) {
-    const normalizedId = callId.toUpperCase()
+  function addRecentCall(roomId: string, name?: string) {
+    const normalizedId = roomId.toUpperCase()
     const normalizedName = name?.trim() || undefined
 
     // Remove if exists, add to front, keep max 10
@@ -64,16 +64,16 @@ export function useAppStore() {
     ].slice(0, 10)
   }
 
-  function renameRecentCall(callId: string, name: string) {
-    const normalizedId = callId.toUpperCase()
+  function renameRecentCall(roomId: string, name: string) {
+    const normalizedId = roomId.toUpperCase()
     const call = state.value.recentCalls.find((c) => c.id === normalizedId)
     if (call) {
       call.name = name.trim() || undefined
     }
   }
 
-  function removeRecentCall(callId: string) {
-    const normalizedId = callId.toUpperCase()
+  function removeRecentCall(roomId: string) {
+    const normalizedId = roomId.toUpperCase()
     state.value.recentCalls = state.value.recentCalls.filter((c) => c.id !== normalizedId)
   }
 

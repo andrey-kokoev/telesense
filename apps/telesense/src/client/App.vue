@@ -4,8 +4,9 @@ import LandingView from "./views/LandingView.vue"
 import CallView from "./views/CallView.vue"
 import ToastContainer from "./components/ToastContainer.vue"
 
-const callId = computed(() => {
-  const raw = new URLSearchParams(location.search).get("call")
+const roomId = computed(() => {
+  const params = new URLSearchParams(location.search)
+  const raw = params.get("room")
   return raw ? raw.toUpperCase() : null
 })
 </script>
@@ -14,8 +15,8 @@ const callId = computed(() => {
   <div class="container">
     <main>
       <Transition name="page" mode="out-in">
-        <LandingView v-if="!callId" key="landing" />
-        <CallView v-else :callId="callId" key="call" />
+        <LandingView v-if="!roomId" key="landing" />
+        <CallView v-else :roomId="roomId" key="call" />
       </Transition>
     </main>
   </div>
