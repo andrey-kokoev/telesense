@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TV Static: SVG vs Canvas</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #000;
+        color: #fff;
+        font-family: system-ui, sans-serif;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+      #controls {
+        padding: 12px 20px;
+        background: #111;
+        border-bottom: 1px solid #333;
+        display: flex;
+        gap: 20px;
+        align-items: center;
+        font-size: 14px;
+      }
+      button {
+        background: #333;
+        color: #fff;
+        border: 1px solid #555;
+        padding: 6px 16px;
+        cursor: pointer;
+        font-size: 13px;
+      }
+      button:hover {
+        background: #444;
+      }
+      button.active {
+        background: #0066cc;
+        border-color: #0088ff;
+      }
+      #fps {
+        font-variant-numeric: tabular-nums;
+        color: #888;
+        margin-left: auto;
+      }
+
+      #viewport {
+        flex: 1;
+        position: relative;
+        overflow: hidden;
+        background: #000;
+      }
+
+      /* SVG Method */
+      #svg-layer {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+      #svg-layer rect.static {
+        width: 100%;
+        height: 100%;
+        filter: url(#tv-noise);
+      }
+
+      /* Canvas Method */
+      #canvas-layer {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        image-rendering: pixelated;
+      }
+
+      /* Scanlines overlay (CSS-only, runs on compositor) */
+      #scanlines {
+        position: absolute;
+        inset: 0;
+        background: repeating-linear-gradient(
+          0deg,
+          rgba(0, 0, 0, 0.15),
+          rgba(0, 0, 0, 0.15) 1px,
+          transparent 1px,
+          transparent 2px
+        );
+        pointer-events: none;
+      }
+
+      /* Vintage "No Signal" text */
+      #nosignal {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: clamp(24px, 5vw, 64px);
+        letter-spacing: 0.2em;
+        color: rgba(255, 255, 255, 0.8);
+        text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.8);
+        pointer-events: none;
+        mix-blend-mode: difference;
+      }
+
+      .hidden {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="controls">
+      <button id="btn-svg" class="active" onclick="setMode('svg')">SVG Filter (GPU)</button>
+      <button id="btn-canvas" onclick="setMode('canvas')">Canvas Pixel (CPU)</button>
+      <label style="display: flex; align-items: center; gap: 8px; cursor: pointer">
+        <input type="checkbox" id="scanline-toggle" checked onchange="toggleScanlines()" />
+        Scanlines
+      </label>
+      <label style="display: flex; align-items: center; gap: 8px; cursor: pointer">
+        <input type="checkbox" id="text-toggle" checked onchange="toggleText()" />
+        No Signal Text
+      </label>
+      <span id="fps">60 FPS</span>
+    </div>
+
+    <div id="viewport">
+      <!-- SVG Implementation -->
+      <svg id="svg-layer" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="tv-noise" x="0" y="0" width="100%" height="100%">
+            <feTurbulence
+              id="turbulence"
+              type="fractalNoise"
+              baseFrequency="0.3"
+              numOctaves="1"
+              seed="0"
+              result="noise"
+            />
+
+            <!-- Desaturate -->
+            <feColorMatrix type="saturate" values="0" in="noise" result="gray" />
+
+            <!-- Contrast crush: steep slope + intercept -->
+            <!-- slope 3 maps [0.33, 0.66] to full [0, 1] range -->
+            <feComponentTransfer in="gray" result="crushed">
+              <feFuncR type="linear" slope="5" intercept="-1.0" />
+              <feFuncG type="linear" slope="5" intercept="-1.0" />
+              <feFuncB type="linear" slope="5" intercept="-1.0" />
+            </feComponentTransfer>
+
+            <!-- Optional: clip hard to black/white only (uncomment for 1-bit look) -->
+
+            <feComponentTransfer in="crushed">
+              <feFuncR type="discrete" tableValues="0 1" />
+              <feFuncG type="discrete" tableValues="0 1" />
+              <feFuncB type="discrete" tableValues="0 1" />
+            </feComponentTransfer>
+          </filter>
+        </defs>
+        <rect class="static" />
+      </svg>
+
+      <!-- Canvas Implementation -->
+      <canvas id="canvas-layer" class="hidden"></canvas>
+
+      <!-- Overlays -->
+      <div id="scanlines"></div>
+      <div id="nosignal">NO SIGNAL</div>
+    </div>
+
+    <script>
+      let mode = "svg"
+      let rafId = null
+      let frameCount = 0
+      let lastTime = performance.now()
+      const fpsEl = document.getElementById("fps")
+
+      // SVG Animation: Mutate baseFrequency for "tuning" effect
+      let seed = 0
+      function animateSVG() {
+        if (mode !== "svg") return
+        seed = (seed + 1) % 1000 // Cycle through seeds
+        document.getElementById("turbulence").setAttribute("seed", seed)
+        requestAnimationFrame(animateSVG)
+      }
+
+      // Canvas Animation: Direct pixel manipulation
+      const canvas = document.getElementById("canvas-layer")
+      const ctx = canvas.getContext("2d", { alpha: false })
+      let imgData, buf32
+
+      function resizeCanvas() {
+        canvas.width = window.innerWidth
+        canvas.height = window.innerHeight
+        imgData = ctx.createImageData(canvas.width, canvas.height)
+        // Create 32-bit view for faster pixel writes (ABGR format in little-endian)
+        buf32 = new Uint32Array(imgData.data.buffer)
+      }
+      window.addEventListener("resize", resizeCanvas)
+      resizeCanvas()
+
+      function animateCanvas() {
+        if (mode !== "canvas") return
+
+        // Fill with random grayscale values
+        // 0xFF000000 = alpha channel (255), then BGR channels
+        for (let i = 0; i < buf32.length; i++) {
+          const v = (Math.random() * 255) | 0
+          buf32[i] = 0xff000000 | (v << 16) | (v << 8) | v
+        }
+
+        ctx.putImageData(imgData, 0, 0)
+        frameCount++
+        rafId = requestAnimationFrame(animateCanvas)
+      }
+
+      // FPS Counter
+      setInterval(() => {
+        const now = performance.now()
+        const fps = Math.round((frameCount * 1000) / (now - lastTime))
+        fpsEl.textContent = `${fps} FPS`
+        frameCount = 0
+        lastTime = now
+      }, 1000)
+
+      // Mode Switching
+      function setMode(newMode) {
+        mode = newMode
+        document.getElementById("btn-svg").classList.toggle("active", mode === "svg")
+        document.getElementById("btn-canvas").classList.toggle("active", mode === "canvas")
+
+        if (mode === "svg") {
+          document.getElementById("svg-layer").classList.remove("hidden")
+          document.getElementById("canvas-layer").classList.add("hidden")
+          cancelAnimationFrame(rafId)
+          animateSVG()
+        } else {
+          document.getElementById("svg-layer").classList.add("hidden")
+          document.getElementById("canvas-layer").classList.remove("hidden")
+          cancelAnimationFrame(rafId)
+          resizeCanvas() // Ensure dimensions match window
+          animateCanvas()
+        }
+      }
+
+      // Toggles
+      function toggleScanlines() {
+        document.getElementById("scanlines").style.display = document.getElementById(
+          "scanline-toggle",
+        ).checked
+          ? "block"
+          : "none"
+      }
+
+      function toggleText() {
+        document.getElementById("nosignal").style.display = document.getElementById("text-toggle")
+          .checked
+          ? "flex"
+          : "none"
+      }
+
+      // Start
+      animateSVG()
+    </script>
+  </body>
+</html>
