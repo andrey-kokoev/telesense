@@ -34,7 +34,7 @@ setup: ## Setup instructions for new developers
 	@echo "   cp .dev.vars.example .dev.vars"
 	@echo ""
 	@echo "2. Edit .dev.vars and add your Cloudflare Realtime credentials:"
-	@echo "   - REALTIME_APP_SECRET from https://dash.cloudflare.com/?to=/:account/calls"
+	@echo "   - CF_CALLS_SECRET from https://dash.cloudflare.com/?to=/:account/calls"
 	@echo ""
 	@echo "3. Edit wrangler.toml and set REALTIME_APP_ID"
 	@echo ""

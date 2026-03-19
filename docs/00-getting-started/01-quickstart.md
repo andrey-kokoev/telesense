@@ -48,14 +48,14 @@ If you prefer manual configuration:
 cp apps/telesense/.dev.vars.example apps/telesense/.dev.vars
 
 # Edit .dev.vars
-REALTIME_APP_SECRET=your-token-here
+CF_CALLS_SECRET=your-token-here
 GENERIC_USER_TOKEN=$(openssl rand -hex 32)
 
 # Edit wrangler.toml
 # Set: REALTIME_APP_ID = "your-app-id"
 
 # Set secrets in Cloudflare
-echo "your-token" | wrangler secret put REALTIME_APP_SECRET --config apps/telesense/wrangler.toml
+echo "your-token" | wrangler secret put CF_CALLS_SECRET --config apps/telesense/wrangler.toml
 echo "your-user-token" | wrangler secret put GENERIC_USER_TOKEN --config apps/telesense/wrangler.toml
 ```
 

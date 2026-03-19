@@ -13,8 +13,8 @@ triggers = { crons = ["*/5 * * * *"] }
 
 [[kv_namespaces]]
 binding = "BUDGET_KV"
-id = "your-kv-namespace-id"
-preview_id = "your-preview-kv-namespace-id"
+id = "d4f25720b4cd4c6abd3a5086bb7c02d8"
+preview_id = "d4f25720b4cd4c6abd3a5086bb7c02d8"
 
 # Secrets to set via `wrangler secret put --config wrangler.usage-meter.toml`:
 # CF_API_TOKEN - Cloudflare API token with Analytics:Read permission

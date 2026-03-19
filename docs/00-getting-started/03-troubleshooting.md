@@ -39,7 +39,7 @@ pnpm install
 
 **Check**:
 1. `REALTIME_APP_ID` in `wrangler.toml` is correct
-2. `REALTIME_APP_SECRET` in `.dev.vars` is correct
+2. `CF_CALLS_SECRET` in `.dev.vars` is correct
 3. Credentials are from the same Cloudflare Calls app
 
 **Debug**:

@@ -13,7 +13,7 @@ import { logger } from 'hono/logger'
 
 type Env = {
   REALTIME_APP_ID: string
-  REALTIME_APP_SECRET: string
+  CF_CALLS_SECRET: string
   GENERIC_USER_TOKEN: string
   DO_NOT_ENFORCE_USER_TOKEN?: string  // Dev-only: set 'true' to disable auth
   DEBUG?: string
@@ -110,7 +110,7 @@ function isDebugEnabled(env: Env): boolean {
 
 function apiHeaders(env: Env) {
   return {
-    'Authorization': `Bearer ${env.REALTIME_APP_SECRET}`,
+    'Authorization': `Bearer ${env.CF_CALLS_SECRET}`,
     'Content-Type': 'application/json'
   }
 }

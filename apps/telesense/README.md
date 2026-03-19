@@ -32,7 +32,7 @@ pnpm health           # Check health endpoint
 ## Configuration
 
 Copy `.dev.vars.example` to `.dev.vars` and set:
-- `REALTIME_APP_SECRET` - From Cloudflare dashboard
+- `CF_CALLS_SECRET` - From Cloudflare dashboard
 
 Edit `wrangler.toml`:
 - `REALTIME_APP_ID` - Your app ID

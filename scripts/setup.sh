@@ -108,7 +108,7 @@ if [ -f "apps/telesense/wrangler.toml" ] && [ "$FORCE" = false ]; then
             APP_ID=$EXISTING_APP_ID
             # Try to get existing secret
             if [ -f "apps/telesense/.dev.vars" ]; then
-                APP_SECRET=$(grep "REALTIME_APP_SECRET=" apps/telesense/.dev.vars | cut -d'=' -f2 || true)
+                APP_SECRET=$(grep "CF_CALLS_SECRET=" apps/telesense/.dev.vars | cut -d'=' -f2 || true)
             fi
         fi
     fi
@@ -163,7 +163,7 @@ rm -f apps/telesense/wrangler.toml.bak
 
 # Create/Update .dev.vars with both secrets
 cat > apps/telesense/.dev.vars << EOF
-REALTIME_APP_SECRET=$APP_SECRET
+CF_CALLS_SECRET=$APP_SECRET
 GENERIC_USER_TOKEN=$GENERIC_TOKEN
 
 # Dev-only: Disable auth enforcement for local development
@@ -242,9 +242,9 @@ echo ""
 # Check if secrets already exist (wrangler doesn't have a "get secret", so we try a workaround)
 # We'll just set them - wrangler will update existing secrets
 
-echo "Setting REALTIME_APP_SECRET for telesense..."
-echo "$APP_SECRET" | wrangler secret put REALTIME_APP_SECRET --config apps/telesense/wrangler.toml
-echo -e "${GREEN}✓ REALTIME_APP_SECRET set for telesense${NC}"
+echo "Setting CF_CALLS_SECRET for telesense..."
+echo "$APP_SECRET" | wrangler secret put CF_CALLS_SECRET --config apps/telesense/wrangler.toml
+echo -e "${GREEN}✓ CF_CALLS_SECRET set for telesense${NC}"
 
 echo "Setting GENERIC_USER_TOKEN for telesense..."
 echo "$GENERIC_TOKEN" | wrangler secret put GENERIC_USER_TOKEN --config apps/telesense/wrangler.toml
@@ -344,7 +344,7 @@ echo "  2. Run tests (requires valid credentials): pnpm test"
 echo "  3. Deploy: pnpm deploy"
 echo "  4. For CI/CD, add these secrets to GitHub:"
 echo "     - CF_API_TOKEN"
-echo "     - REALTIME_APP_SECRET"
+echo "     - CF_CALLS_SECRET"
 echo "     - GENERIC_USER_TOKEN"
 echo ""
 echo -e "${YELLOW}Documentation:${NC} https://github.com/andrey-kokoev/telesense#readme"
