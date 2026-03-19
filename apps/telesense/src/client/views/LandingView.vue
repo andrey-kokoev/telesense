@@ -2,17 +2,17 @@
 import { ref, computed } from 'vue'
 import { useClipboard } from '@vueuse/core'
 import { useToast } from '../composables/useToast'
-import { useAuth } from '../composables/useAuth'
+import { useAppStore } from '../composables/useAppStore'
 
 const callId = ref('')
 const tokenInput = ref('')
 const { copy } = useClipboard({ source: callId })
 const { show: showToast } = useToast()
-const { setToken, isAuthenticated, token } = useAuth()
+const store = useAppStore()
 
-// If already have token in localStorage, we're good
-if (isAuthenticated.value) {
-  tokenInput.value = token.value
+// Initialize token input from store
+if (store.isAuthenticated.value) {
+  tokenInput.value = store.token.value
 }
 
 const isValidLength = computed(() => callId.value.length === 6)
@@ -43,8 +43,18 @@ function saveToken() {
     showToast('Please enter a token', 'error')
     return
   }
-  setToken(tokenInput.value.trim())
+  store.setToken(tokenInput.value.trim())
   showToast('Token saved!', 'success')
+}
+
+function clearToken() {
+  store.clearToken()
+  tokenInput.value = ''
+  showToast('Token cleared', 'info')
+}
+
+function useRecentCall(id: string) {
+  callId.value = id
 }
 
 function joinCall() {
@@ -52,10 +62,14 @@ function joinCall() {
     showToast('Call ID must be exactly 6 characters', 'error')
     return
   }
-  if (!isAuthenticated.value) {
+  if (!store.isAuthenticated.value) {
     showToast('Please enter and save your access token first', 'error')
     return
   }
+  
+  // Add to recent calls
+  store.addRecentCall(callId.value)
+  
   window.location.search = `?call=${encodeURIComponent(callId.value)}`
 }
 
@@ -69,9 +83,9 @@ function onKeydown(e: KeyboardEvent) {
     <h2 class="card-title">Join a Video Call</h2>
     
     <!-- Token Section -->
-    <div class="token-section">
+    <div class="section">
       <h3>🔐 Access Token</h3>
-      <p class="token-description">
+      <p class="section-description">
         Enter your access token to use the system. 
         <a href="#" @click.prevent="showToast('Contact your admin for a token', 'info')">Get a token</a>
       </p>
@@ -88,11 +102,36 @@ function onKeydown(e: KeyboardEvent) {
           @click="saveToken"
           :disabled="!tokenInput.trim()"
         >
-          {{ isAuthenticated ? 'Update Token' : 'Save Token' }}
+          {{ store.isAuthenticated ? 'Update' : 'Save' }}
+        </button>
+        <button 
+          v-if="store.isAuthenticated"
+          class="btn btn-secondary"
+          @click="clearToken"
+        >
+          Clear
         </button>
       </div>
-      <div v-if="isAuthenticated" class="token-status token-valid">
-        ✅ Token saved. You're ready to make calls.
+      <div v-if="store.isAuthenticated" class="status-success">
+        ✅ Token saved. Ready to call.
+      </div>
+    </div>
+
+    <!-- Recent Calls -->
+    <div v-if="store.recentCalls.length > 0" class="section">
+      <h3>📞 Recent Calls</h3>
+      <div class="recent-calls">
+        <button
+          v-for="id in store.recentCalls"
+          :key="id"
+          class="btn btn-sm btn-secondary recent-call-btn"
+          @click="useRecentCall(id)"
+        >
+          {{ id }}
+        </button>
+        <button class="btn btn-sm btn-link" @click="store.clearRecentCalls">
+          Clear history
+        </button>
       </div>
     </div>
 
@@ -101,8 +140,8 @@ function onKeydown(e: KeyboardEvent) {
     </div>
     
     <!-- Call ID Section -->
-    <div class="call-section">
-      <h3>📞 Call ID</h3>
+    <div class="section">
+      <h3>🆕 New Call</h3>
       <div class="input-group">
         <div class="input-with-icon">
           <input 
@@ -138,7 +177,7 @@ function onKeydown(e: KeyboardEvent) {
       <button 
         class="btn btn-primary btn-lg btn-full" 
         @click="joinCall"
-        :disabled="!isValidLength || !isAuthenticated"
+        :disabled="!isValidLength || !store.isAuthenticated"
       >
         Join Call
       </button>
@@ -151,41 +190,60 @@ function onKeydown(e: KeyboardEvent) {
 </template>
 
 <style scoped>
-.token-section {
+.section {
   margin-bottom: 1.5rem;
 }
 
-.token-section h3 {
+.section h3 {
   font-size: 1rem;
   font-weight: 600;
   margin-bottom: 0.5rem;
   color: var(--ui-text);
 }
 
-.token-description {
+.section-description {
   font-size: 0.875rem;
   color: var(--ui-text-muted);
   margin-bottom: 1rem;
 }
 
-.token-description a {
+.section-description a {
   color: var(--ui-primary);
   text-decoration: underline;
 }
 
-.token-status {
+.status-success {
   margin-top: 0.75rem;
   font-size: 0.875rem;
-}
-
-.token-valid {
   color: var(--ui-success);
 }
 
-.call-section h3 {
-  font-size: 1rem;
-  font-weight: 600;
-  margin-bottom: 1rem;
+.recent-calls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.recent-call-btn {
+  font-family: monospace;
+  font-size: 0.875rem;
+}
+
+.btn-sm {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--ui-text-muted);
+  text-decoration: underline;
+  padding: 0.5rem;
+}
+
+.btn-link:hover {
   color: var(--ui-text);
 }
 </style>

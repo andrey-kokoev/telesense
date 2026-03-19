@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useToast } from '../composables/useToast'
-import { useAuth } from '../composables/useAuth'
+import { useAppStore } from '../composables/useAppStore'
 
 interface SessionResponse {
   sessionId: string
@@ -25,7 +25,7 @@ interface DiscoverResponse {
 
 const props = defineProps<{ callId: string }>()
 const { show: showToast } = useToast()
-const { getAuthHeaders } = useAuth()
+const store = useAppStore()
 
 const statusEl = ref<HTMLDivElement>()
 const localVid = ref<HTMLVideoElement>()
@@ -43,7 +43,7 @@ async function apiCall(url: string, options: RequestInit = {}) {
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      ...getAuthHeaders(),
+      ...store.getAuthHeaders(),
       ...options.headers,
     },
   })
