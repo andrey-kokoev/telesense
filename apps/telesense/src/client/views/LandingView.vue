@@ -108,10 +108,67 @@
             v-for="room in recentCalls"
             :key="room.id"
             class="landing__recent-item"
-            @click="goToRoom(room.id)"
+            @click="editingRoomId !== room.id && goToRoom(room.id)"
           >
-            <span class="landing__recent-id">{{ room.id }}</span>
-            <span v-if="room.name" class="landing__recent-name">{{ room.name }}</span>
+            <template v-if="editingRoomId === room.id">
+              <form class="landing__recent-edit" @submit.prevent="saveRoomLabel(room.id)">
+                <input
+                  v-model="editingRoomLabel"
+                  type="text"
+                  class="landing__input landing__recent-input"
+                  maxlength="20"
+                  @click.stop
+                  @keydown.esc.prevent="cancelRoomEdit"
+                  v-focus
+                />
+                <button
+                  type="submit"
+                  class="landing__recent-icon"
+                  @click.stop
+                  aria-label="Save label"
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                </button>
+              </form>
+            </template>
+            <template v-else>
+              <div class="landing__recent-copy">
+                <span v-if="room.name" class="landing__recent-label">{{ room.name }}</span>
+                <span
+                  class="landing__recent-id"
+                  :class="{ 'landing__recent-id--muted': room.name }"
+                >
+                  {{ room.id }}
+                </span>
+              </div>
+              <button
+                class="landing__recent-icon"
+                @click.stop="startRoomEdit(room.id, room.name)"
+                aria-label="Edit label"
+                title="Edit label"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z" />
+                </svg>
+              </button>
+            </template>
           </li>
         </ul>
       </div>
@@ -173,12 +230,15 @@ const {
   recentCalls,
   addRecentCall,
   clearToken: clearStoredToken,
+  renameRecentCall,
 } = useAppStore()
 const { show } = useToast()
 
 const roomIdInput = ref("")
 const tokenInput = ref("")
 const showTokenModal = ref(false)
+const editingRoomId = ref<string | null>(null)
+const editingRoomLabel = ref("")
 
 function generateCallId(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -206,6 +266,22 @@ function joinExistingRoom() {
 
 function goToRoom(roomId: string) {
   window.location.href = `/?room=${roomId}`
+}
+
+function startRoomEdit(roomId: string, currentLabel?: string) {
+  editingRoomId.value = roomId
+  editingRoomLabel.value = currentLabel || roomId
+}
+
+function cancelRoomEdit() {
+  editingRoomId.value = null
+  editingRoomLabel.value = ""
+}
+
+function saveRoomLabel(roomId: string) {
+  const nextLabel = editingRoomLabel.value.trim()
+  renameRecentCall(roomId, nextLabel === roomId ? "" : nextLabel)
+  cancelRoomEdit()
 }
 
 async function verifyToken(candidateToken: string) {
@@ -300,8 +376,10 @@ function clearToken() {
 }
 
 .landing__subtitle {
+  font-family: "Geist Mono", var(--font-mono);
   font-size: 1rem;
   color: var(--color-text-secondary);
+  letter-spacing: 0.04ch;
   margin: var(--space-2) 0 0;
 }
 
@@ -526,6 +604,21 @@ function clearToken() {
   border-color: var(--color-border-hover);
 }
 
+.landing__recent-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.landing__recent-label {
+  font-size: 0.875rem;
+  color: var(--color-text-primary);
+  font-weight: 500;
+  line-height: 1.2;
+}
+
 .landing__recent-id {
   font-family: var(--font-mono);
   font-size: 0.875rem;
@@ -534,10 +627,50 @@ function clearToken() {
   letter-spacing: 0.05em;
 }
 
-.landing__recent-name {
-  font-size: 0.875rem;
+.landing__recent-id--muted {
+  font-size: 0.75rem;
+  font-weight: 500;
   color: var(--color-text-secondary);
-  margin-left: auto;
+}
+
+.landing__recent-icon {
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius);
+  opacity: 0;
+  cursor: pointer;
+  transition:
+    opacity 0.15s ease,
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.landing__recent-item:hover .landing__recent-icon,
+.landing__recent-item:focus-within .landing__recent-icon {
+  opacity: 1;
+}
+
+.landing__recent-icon:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-tertiary);
+}
+
+.landing__recent-edit {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.landing__recent-input {
+  padding: var(--space-2) var(--space-3);
 }
 
 .landing__modal {
@@ -588,6 +721,10 @@ function clearToken() {
 
   .landing__title {
     font-size: 2rem;
+  }
+
+  .landing__recent-icon {
+    opacity: 1;
   }
 }
 </style>
