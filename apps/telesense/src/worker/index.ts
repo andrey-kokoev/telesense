@@ -171,15 +171,6 @@ const app = new Hono<{ Bindings: Env }>()
 // Request logging in development
 app.use('*', logger())
 
-// Serve static assets (Workers Sites)
-app.get('/', async (c) => {
-  const asset = await c.env.ASSETS?.fetch(new Request(c.req.url))
-  if (asset && asset.status === 200) {
-    return asset
-  }
-  return c.json({ error: 'Not found', code: 'NOT_FOUND' }, 404)
-})
-
 // Auth: Require GENERIC_USER_TOKEN for all API routes (unless disabled in dev)
 app.use('/api/*', async (c, next) => {
   const env = c.env
@@ -581,6 +572,43 @@ app.post('/api/calls/:callId/leave', async (c) => {
   if (calls.get(callId)?.size === 0) calls.delete(callId)
 
   return c.json({ ok: true } as OkResponse)
+})
+
+/**
+ * Serve static assets (SPA)
+ * When ASSETS binding is available, serve the frontend
+ * This catch-all must be LAST after all API routes
+ */
+app.get('*', async (c) => {
+  // Try to serve from ASSETS binding if available
+  if (c.env.ASSETS) {
+    try {
+      const assetResponse = await c.env.ASSETS.fetch(c.req.raw)
+      if (assetResponse.status !== 404) {
+        return assetResponse
+      }
+    } catch {
+      // Fall through to serve index.html for SPA routing
+    }
+
+    // For SPA routing, serve index.html for non-API routes
+    try {
+      const indexResponse = await c.env.ASSETS.fetch(new URL('/index.html', c.req.url))
+      if (indexResponse.ok) {
+        return indexResponse
+      }
+    } catch {
+      // Fall through to API response
+    }
+  }
+
+  // Fallback API response if no assets or 404
+  return c.json({
+    message: 'Telesense API',
+    version: '1.0.0',
+    status: 'running',
+    note: 'Frontend not built or ASSETS binding not configured',
+  })
 })
 
 export default app
