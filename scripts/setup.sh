@@ -302,20 +302,15 @@ else
 fi
 echo ""
 
-# Step 5: Test Build
+# Step 5: Type Check
 echo "═══════════════════════════════════════════════════════════"
-echo "  STEP 5: Test Build"
+echo "  STEP 5: Type Check"
 echo "═══════════════════════════════════════════════════════════"
 echo ""
 
 echo "Running type check..."
 pnpm typecheck
 echo -e "${GREEN}✓ Type check passed${NC}"
-echo ""
-
-echo "Running tests..."
-pnpm test
-echo -e "${GREEN}✓ Tests passed${NC}"
 echo ""
 
 # Summary
@@ -336,9 +331,10 @@ else
 fi
 echo ""
 echo "Next steps:"
-echo "  1. Deploy: pnpm deploy"
-echo "  2. Or run locally: pnpm dev"
-echo "  3. For CI/CD, add these secrets to GitHub:"
+echo "  1. Run locally: pnpm dev"
+echo "  2. Run tests (requires valid credentials): pnpm test"
+echo "  3. Deploy: pnpm deploy"
+echo "  4. For CI/CD, add these secrets to GitHub:"
 echo "     - CF_API_TOKEN"
 echo "     - REALTIME_APP_SECRET"
 echo "     - GENERIC_USER_TOKEN"
