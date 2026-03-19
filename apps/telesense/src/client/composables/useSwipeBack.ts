@@ -1,4 +1,4 @@
-import { ref, onMounted, onUnmounted } from "vue"
+import { computed, ref, onMounted, onUnmounted } from "vue"
 
 const EDGE_THRESHOLD = 20
 const SWIPE_THRESHOLD = 100
@@ -89,6 +89,3 @@ export function useSwipeBack(onBack: () => void) {
     backdropStyle,
   }
 }
-
-// Helper for computed in setup
-import { computed } from "vue"

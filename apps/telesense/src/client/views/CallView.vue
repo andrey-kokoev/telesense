@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue"
+import { computed, ref, onMounted } from "vue"
 import { useToast } from "../composables/useToast"
 import { useAppStore } from "../composables/useAppStore"
 import BottomSheet from "../components/BottomSheet.vue"
