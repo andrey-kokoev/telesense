@@ -98,12 +98,15 @@ function renderLandingPage() {
 function renderCallPage(callId: string) {
   appEl.innerHTML = `
     <div class="card" style="max-width: 900px;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
         <h2 class="card-title" style="margin: 0; text-align: left;">Call: <code>${escapeHtml(callId)}</code></h2>
-        <button id="leaveBtn" class="btn btn-secondary" style="font-size: 0.875rem;">Leave</button>
+        <div style="display: flex; gap: 0.5rem;">
+          <button id="toggleLogBtn" class="btn btn-secondary" style="font-size: 0.875rem;">📋 Show Logs</button>
+          <button id="leaveBtn" class="btn btn-secondary" style="font-size: 0.875rem;">Leave</button>
+        </div>
       </div>
       
-      <div id="status" class="status status-info">Initializing...</div>
+      <div id="status" class="status status-info" style="display: none;">Initializing...</div>
       
       <div class="video-grid">
         <div class="video-container">
@@ -117,6 +120,15 @@ function renderCallPage(callId: string) {
       </div>
     </div>
   `
+  
+  const statusEl = document.getElementById('status') as HTMLDivElement
+  const toggleBtn = document.getElementById('toggleLogBtn') as HTMLButtonElement
+  
+  toggleBtn.onclick = () => {
+    const isHidden = statusEl.style.display === 'none'
+    statusEl.style.display = isHidden ? 'block' : 'none'
+    toggleBtn.textContent = isHidden ? '📋 Hide Logs' : '📋 Show Logs'
+  }
   
   document.getElementById('leaveBtn')!.onclick = () => {
     window.location.search = ''
