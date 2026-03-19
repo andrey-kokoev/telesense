@@ -1,6 +1,6 @@
 // Haptic feedback composable - wraps navigator.vibrate with patterns
 
-type VibratePattern = number | number[];
+type VibratePattern = number | number[]
 
 const PATTERNS: Record<string, VibratePattern> = {
   // Light tap - button press, selection
@@ -26,12 +26,12 @@ const PATTERNS: Record<string, VibratePattern> = {
 
   // Delete action
   delete: [30, 50, 30],
-};
+}
 
-type HapticPattern = keyof typeof PATTERNS;
+type HapticPattern = keyof typeof PATTERNS
 
 // Check if haptics are supported
-const isSupported = typeof navigator !== "undefined" && "vibrate" in navigator;
+const isSupported = typeof navigator !== "undefined" && "vibrate" in navigator
 
 export function useHaptics() {
   /**
@@ -39,12 +39,12 @@ export function useHaptics() {
    * @param pattern Named pattern or custom vibration pattern
    */
   function vibrate(pattern: HapticPattern | number | number[]): void {
-    if (!isSupported) return;
+    if (!isSupported) return
 
-    const value = typeof pattern === "string" ? PATTERNS[pattern] : pattern;
+    const value = typeof pattern === "string" ? PATTERNS[pattern] : pattern
 
     try {
-      navigator.vibrate(value);
+      navigator.vibrate(value)
     } catch {
       // Silently fail if haptics not available
     }
@@ -54,42 +54,42 @@ export function useHaptics() {
    * Light tap - use for button presses
    */
   function tap(): void {
-    vibrate("light");
+    vibrate("light")
   }
 
   /**
    * Success feedback - use for completed actions
    */
   function success(): void {
-    vibrate("success");
+    vibrate("success")
   }
 
   /**
    * Error feedback - use for errors/warnings
    */
   function error(): void {
-    vibrate("error");
+    vibrate("error")
   }
 
   /**
    * Selection feedback - use when selecting items
    */
   function selection(): void {
-    vibrate("selection");
+    vibrate("selection")
   }
 
   /**
    * Swipe confirmation - threshold reached
    */
   function swipeConfirm(): void {
-    vibrate("swipeConfirm");
+    vibrate("swipeConfirm")
   }
 
   /**
    * Delete action feedback
    */
   function deleteAction(): void {
-    vibrate("delete");
+    vibrate("delete")
   }
 
   return {
@@ -101,5 +101,5 @@ export function useHaptics() {
     swipeConfirm,
     deleteAction,
     isSupported,
-  };
+  }
 }

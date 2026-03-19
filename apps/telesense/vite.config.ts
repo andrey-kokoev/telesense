@@ -1,5 +1,5 @@
-import { defineConfig } from "vite-plus";
-import vue from "@vitejs/plugin-vue";
+import { defineConfig } from "vite-plus"
+import vue from "@vitejs/plugin-vue"
 
 export default defineConfig({
   plugins: [vue()],
@@ -49,9 +49,9 @@ export default defineConfig({
           // Separate vendor chunks for better caching
           if (id.includes("node_modules")) {
             if (id.includes("vue") || id.includes("@vueuse")) {
-              return "vue-vendor";
+              return "vue-vendor"
             }
-            return "vendor";
+            return "vendor"
           }
         },
       },
@@ -85,7 +85,7 @@ export default defineConfig({
   experimental: {
     // Enable renderBuiltUrl for CDN support if needed
     renderBuiltUrl(filename) {
-      return "/" + filename;
+      return "/" + filename
     },
   },
-});
+})

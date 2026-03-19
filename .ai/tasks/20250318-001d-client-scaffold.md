@@ -21,7 +21,7 @@ Required functionality:
 1. **Capture local camera/mic**
 
    ```typescript
-   navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+   navigator.mediaDevices.getUserMedia({ video: true, audio: true })
    ```
 
 2. **Create RTCPeerConnection**
@@ -29,7 +29,7 @@ Required functionality:
    ```typescript
    new RTCPeerConnection({
      iceServers: [{ urls: "stun:stun.cloudflare.com:3478" }],
-   });
+   })
    ```
 
 3. **Set up track handlers**
@@ -37,10 +37,10 @@ Required functionality:
    ```typescript
    pc.ontrack = (e) => {
      /* attach to remote video element */
-   };
+   }
    pc.oniceconnectionstatechange = () => {
      /* log state */
-   };
+   }
    ```
 
 4. **Display status**

@@ -15,8 +15,8 @@ Camera → Encoder → RTP → SRTP → UDP → Cloudflare → UDP → SRTP → 
 
 ```javascript
 // Raw video from webcam
-const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-const track = stream.getVideoTracks()[0];
+const stream = await navigator.mediaDevices.getUserMedia({ video: true })
+const track = stream.getVideoTracks()[0]
 ```
 
 **Format**: Raw YUV 4:2:0  

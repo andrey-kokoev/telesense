@@ -107,8 +107,8 @@ Don't send multiple quality tiers if not needed.
 ```javascript
 // Stop billing for video when tab hidden
 document.addEventListener("visibilitychange", () => {
-  videoTrack.enabled = !document.hidden;
-});
+  videoTrack.enabled = !document.hidden
+})
 ```
 
 ### 5. Switch to CDN for Large Groups

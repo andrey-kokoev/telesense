@@ -1,33 +1,33 @@
-import { createApp } from "vue";
-import App from "./App.vue";
-import { useTheme } from "./composables/useTheme";
+import { createApp } from "vue"
+import App from "./App.vue"
+import { useTheme } from "./composables/useTheme"
 
 // Initialize theme before mounting
-useTheme();
+useTheme()
 
-const app = createApp(App);
+const app = createApp(App)
 
 // Auto-focus directive for editing inputs
 app.directive("focus", {
   mounted(el) {
-    el.focus();
-    el.select?.();
+    el.focus()
+    el.select?.()
   },
-});
+})
 
 // Click-outside directive
 app.directive("click-outside", {
   mounted(el, binding) {
     el._clickOutside = (event: Event) => {
       if (!(el === event.target || el.contains(event.target as Node))) {
-        binding.value(event);
+        binding.value(event)
       }
-    };
-    document.addEventListener("click", el._clickOutside, true);
+    }
+    document.addEventListener("click", el._clickOutside, true)
   },
   unmounted(el) {
-    document.removeEventListener("click", el._clickOutside, true);
+    document.removeEventListener("click", el._clickOutside, true)
   },
-});
+})
 
-app.mount("#app");
+app.mount("#app")

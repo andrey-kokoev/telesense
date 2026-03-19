@@ -48,11 +48,11 @@ const calls = new Map<
   Map<
     string,
     {
-      cfSessionId: string;
-      publishedTrackIds: Set<string>;
+      cfSessionId: string
+      publishedTrackIds: Set<string>
     }
   >
->();
+>()
 ```
 
 Near remote discovery route:
@@ -117,11 +117,11 @@ Map<
   Map<
     internalSessionId,
     {
-      cfSessionId: string;
-      publishedTrackIds: Set<string>;
+      cfSessionId: string
+      publishedTrackIds: Set<string>
     }
   >
->;
+>
 ```
 
 Important:

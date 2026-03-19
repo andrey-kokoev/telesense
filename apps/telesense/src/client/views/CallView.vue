@@ -1,96 +1,96 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
-import { useToast } from "../composables/useToast";
-import { useAppStore } from "../composables/useAppStore";
-import BottomSheet from "../components/BottomSheet.vue";
-import { useSwipeBack } from "../composables/useSwipeBack";
-import { usePinchZoom } from "../composables/usePinchZoom";
+import { ref, onMounted } from "vue"
+import { useToast } from "../composables/useToast"
+import { useAppStore } from "../composables/useAppStore"
+import BottomSheet from "../components/BottomSheet.vue"
+import { useSwipeBack } from "../composables/useSwipeBack"
+import { usePinchZoom } from "../composables/usePinchZoom"
 
 interface SessionResponse {
-  sessionId: string;
-  cloudflareSessionId: string;
+  sessionId: string
+  cloudflareSessionId: string
 }
 
 interface PublishResponse {
-  sessionDescription: RTCSessionDescriptionInit;
-  tracks: Array<{ mid: string; trackName: string }>;
+  sessionDescription: RTCSessionDescriptionInit
+  tracks: Array<{ mid: string; trackName: string }>
 }
 
 interface SubscribeResponse {
-  sessionDescription: RTCSessionDescriptionInit;
-  tracks: Array<{ sessionId: string; trackName: string; mid: string }>;
-  requiresImmediateRenegotiation: boolean;
+  sessionDescription: RTCSessionDescriptionInit
+  tracks: Array<{ sessionId: string; trackName: string; mid: string }>
+  requiresImmediateRenegotiation: boolean
 }
 
 interface DiscoverResponse {
-  tracks: Array<{ trackName: string; sessionId: string; mid: string }>;
+  tracks: Array<{ trackName: string; sessionId: string; mid: string }>
 }
 
-const props = defineProps<{ callId: string }>();
-const { show: showToast } = useToast();
-const store = useAppStore();
+const props = defineProps<{ callId: string }>()
+const { show: showToast } = useToast()
+const store = useAppStore()
 
 // Swipe back to leave
 const swipeBack = useSwipeBack(() => {
-  leave();
-});
+  leave()
+})
 
 // Pinch zoom for remote video
-const remoteZoom = usePinchZoom();
+const remoteZoom = usePinchZoom()
 
 // Swap video positions
-const isSwapped = ref(false);
+const isSwapped = ref(false)
 function swapVideos() {
-  isSwapped.value = !isSwapped.value;
+  isSwapped.value = !isSwapped.value
 }
 
-const statusEl = ref<HTMLDivElement>();
-const localVid = ref<HTMLVideoElement>();
-const remoteVid = ref<HTMLVideoElement>();
-const showLogs = ref(false);
-const logs = ref<string[]>(["Initializing..."]);
+const statusEl = ref<HTMLDivElement>()
+const localVid = ref<HTMLVideoElement>()
+const remoteVid = ref<HTMLVideoElement>()
+const showLogs = ref(false)
+const logs = ref<string[]>(["Initializing..."])
 
 // Media controls
-const localStream = ref<MediaStream | null>(null);
-const isAudioMuted = ref(false);
-const isVideoOff = ref(false);
-const isConnecting = ref(true);
-const sheetState = ref<"collapsed" | "half" | "full">("half");
-const isFullscreen = ref(false);
-const fullscreenVideo = ref<"local" | "remote" | null>(null);
+const localStream = ref<MediaStream | null>(null)
+const isAudioMuted = ref(false)
+const isVideoOff = ref(false)
+const isConnecting = ref(true)
+const sheetState = ref<"collapsed" | "half" | "full">("half")
+const isFullscreen = ref(false)
+const fullscreenVideo = ref<"local" | "remote" | null>(null)
 
 // Smart layout: when connecting, local video is larger
 // When connected, both videos are equal
 const videoLayout = computed(() => {
   if (isConnecting.value) {
-    return "solo"; // Local large, remote small/placeholder
+    return "solo" // Local large, remote small/placeholder
   }
-  return "duo"; // Both equal
-});
+  return "duo" // Both equal
+})
 
 function log(msg: string) {
-  console.log(msg);
-  logs.value.push(msg);
+  console.log(msg)
+  logs.value.push(msg)
 }
 
 function toggleAudio() {
-  if (!localStream.value) return;
-  const audioTracks = localStream.value.getAudioTracks();
+  if (!localStream.value) return
+  const audioTracks = localStream.value.getAudioTracks()
   audioTracks.forEach((track) => {
-    track.enabled = !track.enabled;
-  });
-  isAudioMuted.value = !isAudioMuted.value;
-  log(isAudioMuted.value ? "🎤 Microphone muted" : "🎤 Microphone unmuted");
+    track.enabled = !track.enabled
+  })
+  isAudioMuted.value = !isAudioMuted.value
+  log(isAudioMuted.value ? "🎤 Microphone muted" : "🎤 Microphone unmuted")
 }
 
 function toggleVideo() {
-  if (!localStream.value) return;
-  const videoTracks = localStream.value.getVideoTracks();
+  if (!localStream.value) return
+  const videoTracks = localStream.value.getVideoTracks()
   videoTracks.forEach((track) => {
-    track.enabled = !track.enabled;
-  });
-  isVideoOff.value = !isVideoOff.value;
-  log(isVideoOff.value ? "📹 Camera off" : "📹 Camera on");
+    track.enabled = !track.enabled
+  })
+  isVideoOff.value = !isVideoOff.value
+  log(isVideoOff.value ? "📹 Camera off" : "📹 Camera on")
 }
 
 async function apiCall(url: string, options: RequestInit = {}) {
@@ -101,76 +101,76 @@ async function apiCall(url: string, options: RequestInit = {}) {
       ...store.getAuthHeaders(),
       ...options.headers,
     },
-  });
+  })
 }
 
 function leave() {
-  window.location.search = "";
+  window.location.search = ""
 }
 
 // Fullscreen handling
 async function toggleFullscreen(videoType: "local" | "remote") {
-  const videoEl = videoType === "local" ? localVid.value : remoteVid.value;
-  if (!videoEl) return;
+  const videoEl = videoType === "local" ? localVid.value : remoteVid.value
+  if (!videoEl) return
 
   try {
     if (document.fullscreenElement) {
-      await document.exitFullscreen();
-      isFullscreen.value = false;
-      fullscreenVideo.value = null;
+      await document.exitFullscreen()
+      isFullscreen.value = false
+      fullscreenVideo.value = null
     } else {
-      await videoEl.requestFullscreen();
-      isFullscreen.value = true;
-      fullscreenVideo.value = videoType;
+      await videoEl.requestFullscreen()
+      isFullscreen.value = true
+      fullscreenVideo.value = videoType
     }
   } catch (err) {
-    log(`Fullscreen error: ${err}`);
+    log(`Fullscreen error: ${err}`)
   }
 }
 
 // Double-tap detection
-let lastTap = 0;
+let lastTap = 0
 function onVideoTap(videoType: "local" | "remote") {
-  const now = Date.now();
-  const delta = now - lastTap;
+  const now = Date.now()
+  const delta = now - lastTap
   if (delta < 300) {
     // Double tap detected
-    toggleFullscreen(videoType);
+    toggleFullscreen(videoType)
   }
-  lastTap = now;
+  lastTap = now
 }
 
 async function pollAndSubscribe(pc: RTCPeerConnection, sessionId: string) {
-  const checkedTracks = new Set<string>();
+  const checkedTracks = new Set<string>()
 
   const poll = async () => {
     try {
       const res = await apiCall(
         `/api/calls/${props.callId}/discover-remote-tracks?sessionId=${sessionId}`,
-      );
-      if (!res.ok) return;
-      const data = (await res.json()) as DiscoverResponse;
+      )
+      if (!res.ok) return
+      const data = (await res.json()) as DiscoverResponse
 
-      const newTracks = data.tracks.filter((t) => !checkedTracks.has(t.trackName));
+      const newTracks = data.tracks.filter((t) => !checkedTracks.has(t.trackName))
 
       if (newTracks.length > 0) {
-        log(`🔔 Remote participant joined!`);
-        log(`   Tracks: ${newTracks.map((t) => t.trackName.slice(0, 8)).join(", ")}`);
+        log(`🔔 Remote participant joined!`)
+        log(`   Tracks: ${newTracks.map((t) => t.trackName.slice(0, 8)).join(", ")}`)
 
         for (const track of newTracks) {
-          checkedTracks.add(track.trackName);
+          checkedTracks.add(track.trackName)
         }
 
-        await subscribeToTracks(pc, sessionId, newTracks);
+        await subscribeToTracks(pc, sessionId, newTracks)
       }
     } catch (e) {
-      console.error("Poll error:", e);
+      console.error("Poll error:", e)
     }
 
-    setTimeout(poll, 2000);
-  };
+    setTimeout(poll, 2000)
+  }
 
-  poll();
+  poll()
 }
 
 async function subscribeToTracks(
@@ -179,9 +179,9 @@ async function subscribeToTracks(
   remoteTracks: Array<{ trackName: string; sessionId: string; mid: string }>,
 ) {
   try {
-    log(`📤 Subscribing to ${remoteTracks.length} remote tracks...`);
-    log(`   Local session: ${sessionId.slice(0, 8)}`);
-    log(`   Remote sessions: ${remoteTracks.map((t) => t.sessionId.slice(0, 8)).join(", ")}`);
+    log(`📤 Subscribing to ${remoteTracks.length} remote tracks...`)
+    log(`   Local session: ${sessionId.slice(0, 8)}`)
+    log(`   Remote sessions: ${remoteTracks.map((t) => t.sessionId.slice(0, 8)).join(", ")}`)
 
     const subscribeRes = await apiCall(`/api/calls/${props.callId}/subscribe-offer`, {
       method: "POST",
@@ -192,59 +192,59 @@ async function subscribeToTracks(
           sessionId: t.sessionId,
         })),
       }),
-    });
+    })
 
     if (!subscribeRes.ok) {
-      const errorData = await subscribeRes.json().catch(() => ({}));
-      log(`❌ Subscribe failed: ${subscribeRes.status}`);
-      log(`   Error: ${errorData.error || "Unknown"}`);
-      log(`   Code: ${errorData.code || "N/A"}`);
-      throw new Error(`Subscribe failed: ${subscribeRes.status}`);
+      const errorData = await subscribeRes.json().catch(() => ({}))
+      log(`❌ Subscribe failed: ${subscribeRes.status}`)
+      log(`   Error: ${errorData.error || "Unknown"}`)
+      log(`   Code: ${errorData.code || "N/A"}`)
+      throw new Error(`Subscribe failed: ${subscribeRes.status}`)
     }
 
-    const subscribeData = (await subscribeRes.json()) as SubscribeResponse;
-    log(`✅ Got subscribe offer, ${subscribeData.tracks?.length || 0} tracks`);
+    const subscribeData = (await subscribeRes.json()) as SubscribeResponse
+    log(`✅ Got subscribe offer, ${subscribeData.tracks?.length || 0} tracks`)
 
-    await pc.setRemoteDescription(subscribeData.sessionDescription);
+    await pc.setRemoteDescription(subscribeData.sessionDescription)
 
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
+    const answer = await pc.createAnswer()
+    await pc.setLocalDescription(answer)
 
-    log(`📤 Completing subscription...`);
+    log(`📤 Completing subscription...`)
     const completeRes = await apiCall(`/api/calls/${props.callId}/complete-subscribe`, {
       method: "POST",
       body: JSON.stringify({
         sessionId,
         sdpAnswer: answer.sdp,
       }),
-    });
+    })
 
     if (!completeRes.ok) {
-      const errorData = await completeRes.json().catch(() => ({}));
-      log(`❌ Complete subscribe failed: ${completeRes.status}`);
-      log(`   Error: ${errorData.error || "Unknown"}`);
-      throw new Error(`Complete subscribe failed: ${completeRes.status}`);
+      const errorData = await completeRes.json().catch(() => ({}))
+      log(`❌ Complete subscribe failed: ${completeRes.status}`)
+      log(`   Error: ${errorData.error || "Unknown"}`)
+      throw new Error(`Complete subscribe failed: ${completeRes.status}`)
     }
 
-    log("✅ Connected to remote participant!");
-    showToast("Remote participant connected!", "success");
+    log("✅ Connected to remote participant!")
+    showToast("Remote participant connected!", "success")
   } catch (e) {
-    log(`❌ Subscribe error: ${e}`);
+    log(`❌ Subscribe error: ${e}`)
   }
 }
 
 // Picture-in-Picture handling
 async function togglePiP(enable: boolean) {
-  const videoEl = remoteVid.value;
-  if (!videoEl || !document.pictureInPictureEnabled) return;
+  const videoEl = remoteVid.value
+  if (!videoEl || !document.pictureInPictureEnabled) return
 
   try {
     if (enable && document.pictureInPictureElement !== videoEl) {
-      await videoEl.requestPictureInPicture();
-      log("📺 Picture-in-Picture enabled");
+      await videoEl.requestPictureInPicture()
+      log("📺 Picture-in-Picture enabled")
     } else if (!enable && document.pictureInPictureElement === videoEl) {
-      await document.exitPictureInPicture();
-      log("📺 Picture-in-Picture disabled");
+      await document.exitPictureInPicture()
+      log("📺 Picture-in-Picture disabled")
     }
   } catch (err) {
     // Silently fail - PiP might not be supported
@@ -252,66 +252,66 @@ async function togglePiP(enable: boolean) {
 }
 
 onMounted(async () => {
-  log("🚀 Starting call...");
-  log(`📞 Call ID: ${props.callId}`);
+  log("🚀 Starting call...")
+  log(`📞 Call ID: ${props.callId}`)
 
   // 1. Capture local media
-  log("📹 Requesting camera access...");
+  log("📹 Requesting camera access...")
   try {
-    localStream.value = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    localStream.value = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     if (localVid.value) {
-      localVid.value.srcObject = localStream.value;
+      localVid.value.srcObject = localStream.value
     }
-    log("✅ Camera connected");
+    log("✅ Camera connected")
   } catch (e) {
-    log(`❌ Camera error: ${e}`);
-    showToast("Camera access denied", "error");
-    return;
+    log(`❌ Camera error: ${e}`)
+    showToast("Camera access denied", "error")
+    return
   }
 
   // 2. Create PeerConnection
   const pc = new RTCPeerConnection({
     iceServers: [{ urls: "stun:stun.cloudflare.com:3478" }],
     bundlePolicy: "max-bundle",
-  });
+  })
 
   pc.ontrack = (e) => {
-    log("📡 Remote video received!");
-    isConnecting.value = false;
-    let stream = remoteVid.value?.srcObject as MediaStream | null;
+    log("📡 Remote video received!")
+    isConnecting.value = false
+    let stream = remoteVid.value?.srcObject as MediaStream | null
     if (!stream) {
-      stream = new MediaStream();
+      stream = new MediaStream()
       if (remoteVid.value) {
-        remoteVid.value.srcObject = stream;
+        remoteVid.value.srcObject = stream
       }
     }
-    stream.addTrack(e.track);
-  };
+    stream.addTrack(e.track)
+  }
 
   pc.oniceconnectionstatechange = () => {
-    log(`🧊 Connection: ${pc.iceConnectionState}`);
-  };
+    log(`🧊 Connection: ${pc.iceConnectionState}`)
+  }
 
   try {
     // 3. Create session
-    log("🔑 Creating session...");
-    const sessionRes = await apiCall(`/api/calls/${props.callId}/session`, { method: "POST" });
-    if (!sessionRes.ok) throw new Error(`Session failed: ${sessionRes.status}`);
-    const sessionData = (await sessionRes.json()) as SessionResponse;
-    const sessionId = sessionData.sessionId;
-    log(`✅ Session ready`);
+    log("🔑 Creating session...")
+    const sessionRes = await apiCall(`/api/calls/${props.callId}/session`, { method: "POST" })
+    if (!sessionRes.ok) throw new Error(`Session failed: ${sessionRes.status}`)
+    const sessionData = (await sessionRes.json()) as SessionResponse
+    const sessionId = sessionData.sessionId
+    log(`✅ Session ready`)
 
     // 4. Add local tracks
     const transceivers = localStream
       .value!.getTracks()
-      .map((track) => pc.addTransceiver(track, { direction: "sendonly" }));
+      .map((track) => pc.addTransceiver(track, { direction: "sendonly" }))
 
     // 5. Create offer
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
+    const offer = await pc.createOffer()
+    await pc.setLocalDescription(offer)
 
     // 6. Publish tracks
-    log("📤 Publishing...");
+    log("📤 Publishing...")
     const publishRes = await apiCall(`/api/calls/${props.callId}/publish-offer`, {
       method: "POST",
       body: JSON.stringify({
@@ -322,49 +322,49 @@ onMounted(async () => {
           trackName: sender.track?.id || crypto.randomUUID(),
         })),
       }),
-    });
-    if (!publishRes.ok) throw new Error(`Publish failed: ${publishRes.status}`);
-    const publishData = (await publishRes.json()) as PublishResponse;
+    })
+    if (!publishRes.ok) throw new Error(`Publish failed: ${publishRes.status}`)
+    const publishData = (await publishRes.json()) as PublishResponse
 
-    await pc.setRemoteDescription(publishData.sessionDescription);
-    log("✅ Connected to Cloudflare");
+    await pc.setRemoteDescription(publishData.sessionDescription)
+    log("✅ Connected to Cloudflare")
 
     // Wait for ICE
     await new Promise<void>((res, rej) => {
-      const timeout = setTimeout(() => rej(new Error("Connection timeout")), 15000);
+      const timeout = setTimeout(() => rej(new Error("Connection timeout")), 15000)
       const check = () => {
         if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
-          clearTimeout(timeout);
-          res();
+          clearTimeout(timeout)
+          res()
         } else if (pc.iceConnectionState === "failed") {
-          clearTimeout(timeout);
-          rej(new Error("Connection failed"));
+          clearTimeout(timeout)
+          rej(new Error("Connection failed"))
         }
-      };
-      pc.addEventListener("iceconnectionstatechange", check);
-      check();
-    });
-    log("🟢 Ready for calls!");
-    showToast("Ready for calls!", "success");
-    isConnecting.value = false;
+      }
+      pc.addEventListener("iceconnectionstatechange", check)
+      check()
+    })
+    log("🟢 Ready for calls!")
+    showToast("Ready for calls!", "success")
+    isConnecting.value = false
 
     // 7. Start polling for remote tracks
-    log("👀 Waiting for remote participant...");
-    pollAndSubscribe(pc, sessionId);
+    log("👀 Waiting for remote participant...")
+    pollAndSubscribe(pc, sessionId)
 
     // Auto PiP on tab blur
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "hidden") {
-        togglePiP(true);
+        togglePiP(true)
       } else {
-        togglePiP(false);
+        togglePiP(false)
       }
-    });
+    })
   } catch (e) {
-    log(`❌ Error: ${e}`);
-    showToast("Connection failed", "error");
+    log(`❌ Error: ${e}`)
+    showToast("Connection failed", "error")
   }
-});
+})
 </script>
 
 <template>

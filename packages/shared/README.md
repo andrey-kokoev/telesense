@@ -13,5 +13,5 @@ When multiple apps need shared:
 Add them here and import via:
 
 ```typescript
-import { MyType } from "@telesense/shared";
+import { MyType } from "@telesense/shared"
 ```

@@ -1,4 +1,4 @@
-import { defineConfig } from "vite-plus";
+import { defineConfig } from "vite-plus"
 
 export default defineConfig({
   staged: {
@@ -6,6 +6,7 @@ export default defineConfig({
   },
   lint: { options: { typeAware: true, typeCheck: true } },
   fmt: {
+    semi: false,
     ignore: ["dist", ".wrangler", "node_modules", ".history"],
   },
-});
+})

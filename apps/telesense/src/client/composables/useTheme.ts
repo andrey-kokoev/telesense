@@ -1,51 +1,51 @@
-import { computed, watchEffect } from "vue";
-import { useStorage } from "@vueuse/core";
+import { computed, watchEffect } from "vue"
+import { useStorage } from "@vueuse/core"
 
-export type Theme = "light" | "dark" | "system";
+export type Theme = "light" | "dark" | "system"
 
-const STORAGE_KEY = "telesense:theme";
+const STORAGE_KEY = "telesense:theme"
 
-const theme = useStorage<Theme>(STORAGE_KEY, "system");
+const theme = useStorage<Theme>(STORAGE_KEY, "system")
 
-const systemDark = window.matchMedia("(prefers-color-scheme: dark)");
+const systemDark = window.matchMedia("(prefers-color-scheme: dark)")
 
 export const isDark = computed(() => {
   if (theme.value === "system") {
-    return systemDark.matches;
+    return systemDark.matches
   }
-  return theme.value === "dark";
-});
+  return theme.value === "dark"
+})
 
 export function useTheme() {
   // Apply theme to document
   watchEffect(() => {
-    const dark = isDark.value;
-    document.documentElement.classList.toggle("dark", dark);
-    document.documentElement.style.colorScheme = dark ? "dark" : "light";
-  });
+    const dark = isDark.value
+    document.documentElement.classList.toggle("dark", dark)
+    document.documentElement.style.colorScheme = dark ? "dark" : "light"
+  })
 
   // Listen for system theme changes
   watchEffect((onCleanup) => {
-    if (theme.value !== "system") return;
+    if (theme.value !== "system") return
 
     const handler = (e: MediaQueryListEvent) => {
-      document.documentElement.classList.toggle("dark", e.matches);
-      document.documentElement.style.colorScheme = e.matches ? "dark" : "light";
-    };
+      document.documentElement.classList.toggle("dark", e.matches)
+      document.documentElement.style.colorScheme = e.matches ? "dark" : "light"
+    }
 
-    systemDark.addEventListener("change", handler);
-    onCleanup(() => systemDark.removeEventListener("change", handler));
-  });
+    systemDark.addEventListener("change", handler)
+    onCleanup(() => systemDark.removeEventListener("change", handler))
+  })
 
   function setTheme(newTheme: Theme) {
-    theme.value = newTheme;
+    theme.value = newTheme
   }
 
   function cycleTheme() {
-    const modes: Theme[] = ["light", "dark", "system"];
-    const currentIndex = modes.indexOf(theme.value);
-    const nextIndex = (currentIndex + 1) % modes.length;
-    theme.value = modes[nextIndex];
+    const modes: Theme[] = ["light", "dark", "system"]
+    const currentIndex = modes.indexOf(theme.value)
+    const nextIndex = (currentIndex + 1) % modes.length
+    theme.value = modes[nextIndex]
   }
 
   return {
@@ -53,5 +53,5 @@ export function useTheme() {
     isDark,
     setTheme,
     cycleTheme,
-  };
+  }
 }

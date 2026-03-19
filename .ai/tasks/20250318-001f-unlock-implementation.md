@@ -102,12 +102,12 @@ Replace blocked message with full implementation:
 
 ```typescript
 // BEFORE (scaffold):
-log("[BLOCKED] Cannot create session: worker routes return 503");
+log("[BLOCKED] Cannot create session: worker routes return 503")
 
 // AFTER (verified):
 async function createSession() {
-  const res = await fetch(`/api/calls/${callId}/session`, { method: "POST" });
-  const data = await res.json();
+  const res = await fetch(`/api/calls/${callId}/session`, { method: "POST" })
+  const data = await res.json()
   // ... full implementation
 }
 ```

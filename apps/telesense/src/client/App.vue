@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import LandingView from "./views/LandingView.vue";
-import CallView from "./views/CallView.vue";
-import ToastContainer from "./components/ToastContainer.vue";
+import { computed } from "vue"
+import LandingView from "./views/LandingView.vue"
+import CallView from "./views/CallView.vue"
+import ToastContainer from "./components/ToastContainer.vue"
 
 const callId = computed(() => {
-  const raw = new URLSearchParams(location.search).get("call");
-  return raw ? raw.toUpperCase() : null;
-});
+  const raw = new URLSearchParams(location.search).get("call")
+  return raw ? raw.toUpperCase() : null
+})
 </script>
 
 <template>

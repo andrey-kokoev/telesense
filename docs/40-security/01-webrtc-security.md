@@ -43,7 +43,7 @@ const keyPair = await crypto.subtle.generateKey(
   { name: "ECDH", namedCurve: "P-256" },
   true, // extractable
   ["deriveBits"],
-);
+)
 // Private key NEVER leaves the browser
 ```
 

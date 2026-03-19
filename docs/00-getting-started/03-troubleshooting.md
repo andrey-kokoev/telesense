@@ -81,7 +81,7 @@ echo "DO_NOT_ENFORCE_USER_TOKEN=true" >> apps/telesense/.dev.vars
 3. Check STUN connectivity:
    ```javascript
    // In browser console
-   pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.cloudflare.com:3478" }] });
+   pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.cloudflare.com:3478" }] })
    // Check iceConnectionState
    ```
 
@@ -142,7 +142,7 @@ Tests use fake media devices. Check `playwright.config.ts` has:
 
 ```typescript
 launchOptions: {
-  args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"];
+  args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"]
 }
 ```
 
@@ -151,16 +151,16 @@ launchOptions: {
 Increase timeout in `playwright.config.ts`:
 
 ```typescript
-timeout: 60000; // 60 seconds
+timeout: 60000 // 60 seconds
 ```
 
 Or extend specific test:
 
 ```typescript
 test("slow test", async () => {
-  test.setTimeout(60000);
+  test.setTimeout(60000)
   // ...
-});
+})
 ```
 
 ## Still Stuck?
