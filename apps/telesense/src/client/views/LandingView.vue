@@ -1,11 +1,20 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useClipboard } from '@vueuse/core'
 import { useToast } from '../composables/useToast'
 
 const callId = ref('')
 const { copy } = useClipboard({ source: callId })
 const { show: showToast } = useToast()
+
+const isValidLength = computed(() => callId.value.length === 6)
+
+function formatInput(e: Event) {
+  const input = e.target as HTMLInputElement
+  // Remove non-alphanumeric, convert to uppercase, limit to 6
+  let value = input.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 6)
+  callId.value = value
+}
 
 function generateRandomId() {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
@@ -24,9 +33,11 @@ function generateRandomId() {
 }
 
 function joinCall() {
-  if (!callId.value.trim()) return
-  const normalized = callId.value.trim().toUpperCase()
-  window.location.search = `?call=${encodeURIComponent(normalized)}`
+  if (callId.value.length !== 6) {
+    showToast('Call ID must be exactly 6 characters', 'error')
+    return
+  }
+  window.location.search = `?call=${encodeURIComponent(callId.value)}`
 }
 
 function onKeydown(e: KeyboardEvent) {
@@ -37,7 +48,7 @@ function onKeydown(e: KeyboardEvent) {
 <template>
   <div class="card">
     <h2 class="card-title">Join a Video Call</h2>
-    <p class="card-description">Enter a call ID or generate a random one to start</p>
+    <p class="card-description">Enter a 6-character call ID or generate one</p>
     
     <div class="input-group">
       <div class="input-with-icon">
@@ -45,8 +56,10 @@ function onKeydown(e: KeyboardEvent) {
           v-model="callId"
           type="text" 
           class="input" 
-          placeholder="Enter call ID (e.g., team-meeting)"
+          placeholder="XXXXXX"
           autocomplete="off"
+          maxlength="6"
+          @input="formatInput"
           @keydown="onKeydown"
         >
         <button 
@@ -64,9 +77,16 @@ function onKeydown(e: KeyboardEvent) {
           </svg>
         </button>
       </div>
+      <div class="input-hint" :class="{ 'input-hint-valid': isValidLength }">
+        {{ callId.length }}/6 characters
+      </div>
     </div>
     
-    <button class="btn btn-primary btn-lg btn-full" @click="joinCall">
+    <button 
+      class="btn btn-primary btn-lg btn-full" 
+      @click="joinCall"
+      :disabled="!isValidLength"
+    >
       Join Call
     </button>
     

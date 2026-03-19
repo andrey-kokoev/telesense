@@ -174,6 +174,18 @@ body {
   transform: translateY(-50%) scale(0.95);
 }
 
+.input-hint {
+  font-size: 0.875rem;
+  color: var(--ui-text-muted);
+  margin-top: 0.5rem;
+  text-align: right;
+}
+
+.input-hint-valid {
+  color: var(--ui-success);
+  font-weight: 500;
+}
+
 /* Buttons */
 .btn {
   display: inline-flex;
