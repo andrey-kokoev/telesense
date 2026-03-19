@@ -25,9 +25,12 @@ export class CallRoom {
     if (this.initialized) return
     
     // Load persisted state
-    const stored = await this.state.storage.get<Map<string, Session>>('sessions')
-    if (stored) {
+    const stored = await this.state.storage.get<[string, Session][]>('sessions')
+    if (stored && Array.isArray(stored)) {
       this.sessions = new Map(stored)
+      console.log(`[CallRoom] Loaded ${this.sessions.size} sessions from storage`)
+    } else {
+      console.log(`[CallRoom] No stored sessions found`)
     }
     this.initialized = true
   }
@@ -37,6 +40,8 @@ export class CallRoom {
     
     const url = new URL(request.url)
     const action = url.searchParams.get('action')
+    
+    console.log(`[CallRoom] Received request: action=${action}, sessions=${this.sessions.size}`)
     
     try {
       switch (action) {
@@ -53,7 +58,8 @@ export class CallRoom {
         case 'getState':
           return this.getState()
         default:
-          return new Response('Unknown action', { status: 400 })
+          console.error(`[CallRoom] Unknown action: ${action}`)
+          return new Response(JSON.stringify({ error: `Unknown action: ${action}` }), { status: 400, headers: { 'Content-Type': 'application/json' } })
       }
     } catch (e) {
       console.error('[CallRoom] Error:', e)
@@ -200,6 +206,8 @@ export class CallRoom {
 
   private async persist() {
     // Persist to storage
-    await this.state.storage.put('sessions', Array.from(this.sessions.entries()))
+    const entries = Array.from(this.sessions.entries())
+    console.log(`[CallRoom] Persisting ${entries.length} sessions`)
+    await this.state.storage.put('sessions', entries)
   }
 }
