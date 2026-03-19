@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev --local",
-    "deploy": "wrangler deploy",
+    "ship": "wrangler deploy",
+    "deploy": "pnpm run ship",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "clean": "rm -rf .wrangler/tmp",

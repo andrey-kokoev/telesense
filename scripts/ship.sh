@@ -16,7 +16,7 @@ NC='\033[0m'
 
 # Deploy telesense (always)
 echo "Deploying telesense..."
-pnpm --filter telesense deploy
+pnpm --filter telesense ship
 echo -e "${GREEN}✓ Telesense deployed${NC}"
 echo ""
 
@@ -25,11 +25,11 @@ CF_API_TOKEN_SET=$(cd apps/usage-meter && wrangler secret list 2>/dev/null | gre
 
 if [ "$CF_API_TOKEN_SET" -gt 0 ]; then
     echo "Deploying usage-meter..."
-    pnpm --filter usage-meter deploy
+    pnpm --filter usage-meter ship
     echo -e "${GREEN}✓ Usage-meter deployed${NC}"
 else
     echo -e "${YELLOW}⚠ Skipping usage-meter (CF_API_TOKEN not set)${NC}"
-    echo -e "${BLUE}  To deploy usage-meter later, run: pnpm deploy:meter${NC}"
+    echo -e "${BLUE}  To deploy usage-meter later, run: pnpm ship:meter${NC}"
     echo ""
     echo "  Or set up with:"
     echo "    1. Create API token at https://dash.cloudflare.com/profile/api-tokens"
