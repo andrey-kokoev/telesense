@@ -8,7 +8,11 @@ const { copy } = useClipboard({ source: callId })
 const { show: showToast } = useToast()
 
 function generateRandomId() {
-  const randomId = Math.random().toString(36).substring(2, 10)
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+  let randomId = ''
+  for (let i = 0; i < 6; i++) {
+    randomId += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
   callId.value = randomId
   
   // Copy to clipboard
