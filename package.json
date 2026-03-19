@@ -9,7 +9,7 @@
     "build": "pnpm -r build",
     "test": "pnpm --filter telesense test",
     "test:e2e": "pnpm --filter telesense test:e2e",
-    "deploy": "pnpm -r deploy",
+    "deploy": "./scripts/deploy.sh",
     "deploy:telesense": "pnpm --filter telesense deploy",
     "deploy:meter": "pnpm --filter usage-meter deploy",
     "typecheck": "pnpm -r typecheck",
