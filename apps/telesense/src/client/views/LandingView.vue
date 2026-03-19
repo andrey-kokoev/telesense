@@ -103,29 +103,59 @@
       <!-- Recent Calls -->
       <div v-if="recentCalls.length > 0" class="landing__recent">
         <h3 class="landing__recent-title">Recent</h3>
-        <ul class="landing__recent-list">
-          <li
-            v-for="room in recentCalls"
-            :key="room.id"
-            class="landing__recent-item"
-            @click="editingRoomId !== room.id && goToRoom(room.id)"
-          >
-            <template v-if="editingRoomId === room.id">
-              <form class="landing__recent-edit" @submit.prevent="saveRoomLabel(room.id)">
-                <input
-                  v-model="editingRoomLabel"
-                  type="text"
-                  class="landing__input landing__recent-input"
-                  maxlength="20"
-                  @click.stop
-                  @keydown.esc.prevent="cancelRoomEdit"
-                  v-focus
-                />
+        <div class="landing__recent-scroll">
+          <ul class="landing__recent-list">
+            <li
+              v-for="room in recentCalls"
+              :key="room.id"
+              class="landing__recent-item"
+              @click="editingRoomId !== room.id && goToRoom(room.id)"
+            >
+              <template v-if="editingRoomId === room.id">
+                <form class="landing__recent-edit" @submit.prevent="saveRoomLabel(room.id)">
+                  <input
+                    v-model="editingRoomLabel"
+                    type="text"
+                    class="landing__input landing__recent-input"
+                    maxlength="20"
+                    @click.stop
+                    @keydown.esc.prevent="cancelRoomEdit"
+                    v-focus
+                  />
+                  <button
+                    type="submit"
+                    class="landing__recent-icon"
+                    @click.stop
+                    aria-label="Save label"
+                  >
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  </button>
+                </form>
+              </template>
+              <template v-else>
+                <div class="landing__recent-copy">
+                  <span v-if="room.name" class="landing__recent-label">{{ room.name }}</span>
+                  <span
+                    class="landing__recent-id"
+                    :class="{ 'landing__recent-id--muted': room.name }"
+                  >
+                    {{ room.id }}
+                  </span>
+                </div>
                 <button
-                  type="submit"
                   class="landing__recent-icon"
-                  @click.stop
-                  aria-label="Save label"
+                  @click.stop="startRoomEdit(room.id, room.name)"
+                  aria-label="Edit label"
+                  title="Edit label"
                 >
                   <svg
                     width="16"
@@ -135,42 +165,14 @@
                     stroke="currentColor"
                     stroke-width="2"
                   >
-                    <polyline points="20 6 9 17 4 12" />
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z" />
                   </svg>
                 </button>
-              </form>
-            </template>
-            <template v-else>
-              <div class="landing__recent-copy">
-                <span v-if="room.name" class="landing__recent-label">{{ room.name }}</span>
-                <span
-                  class="landing__recent-id"
-                  :class="{ 'landing__recent-id--muted': room.name }"
-                >
-                  {{ room.id }}
-                </span>
-              </div>
-              <button
-                class="landing__recent-icon"
-                @click.stop="startRoomEdit(room.id, room.name)"
-                aria-label="Edit label"
-                title="Edit label"
-              >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <path d="M12 20h9" />
-                  <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z" />
-                </svg>
-              </button>
-            </template>
-          </li>
-        </ul>
+              </template>
+            </li>
+          </ul>
+        </div>
       </div>
     </main>
 
@@ -208,8 +210,34 @@
 
     <div v-if="isAuthenticated" class="landing__token-status">
       <span class="landing__token-badge">✓ Token set</span>
-      <button class="landing__link" @click="showTokenModal = true">Change token</button>
-      <button class="landing__link" @click="clearToken">Clear token</button>
+      <button class="landing__token-action" @click="showTokenModal = true">
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M12 20h9" />
+          <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z" />
+        </svg>
+        <span>Change token</span>
+      </button>
+      <button class="landing__token-action" @click="clearToken">
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+        <span>Clear token</span>
+      </button>
     </div>
 
     <div class="landing__footer">
@@ -548,19 +576,25 @@ function clearToken() {
   border-radius: var(--radius-full);
 }
 
-.landing__link {
-  padding: var(--space-1) var(--space-2);
+.landing__token-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   font-size: 0.875rem;
   color: var(--color-text-secondary);
   background: none;
   border: none;
   cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  border-radius: var(--radius-full);
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
 }
 
-.landing__link:hover {
+.landing__token-action:hover {
   color: var(--color-text-primary);
+  background: var(--color-bg-tertiary);
 }
 
 .landing__recent {
@@ -574,6 +608,12 @@ function clearToken() {
   font-weight: 600;
   color: var(--color-text-secondary);
   margin: 0 0 var(--space-3);
+}
+
+.landing__recent-scroll {
+  min-height: 100px;
+  max-height: 60vh;
+  overflow-y: auto;
 }
 
 .landing__recent-list {
