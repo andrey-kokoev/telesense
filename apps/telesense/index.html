@@ -1,32 +1,22 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Telesense — Cloudflare Realtime 1:1 Call</title>
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }
-    video { width: 45%; margin: 10px; background: #222; border-radius: 4px; }
-    #status {
-      background: #f0f8ff;
-      border-left: 4px solid #0066cc;
-      padding: 15px;
-      margin: 20px 0;
-      white-space: pre-wrap;
-      font-family: monospace;
-    }
-    .success { color: #060; }
-    .error { color: #c00; }
-  </style>
+  <title>Telesense — Cloudflare Realtime 1:1 Video Call</title>
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <h1>Telesense <span style="font-weight:normal;color:#666">(1:1 Video Call)</span></h1>
-  <p class="success">✅ Protocol verified — Ready for 1:1 calls</p>
+  <div class="container">
+    <header class="header">
+      <h1>Telesense</h1>
+      <p class="subtitle">Cloudflare Realtime 1:1 Video Call</p>
+    </header>
 
-  <div id="status">Initializing...</div>
-
-  <video id="local" autoplay muted playsinline></video>
-  <video id="remote" autoplay playsinline></video>
+    <main id="app">
+      <!-- Content injected by JS -->
+    </main>
+  </div>
 
   <script type="module" src="/src/client/main.ts"></script>
 </body>

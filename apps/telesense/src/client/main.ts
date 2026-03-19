@@ -22,7 +22,6 @@ interface DiscoverResponse {
 }
 
 // User token for API authentication
-// In production, this should be injected at build time or obtained from auth flow
 const USER_TOKEN = import.meta.env.VITE_USER_TOKEN || 'dev-token'
 
 // Helper for API calls with auth
@@ -37,30 +36,39 @@ async function apiCall(url: string, options: RequestInit = {}) {
   })
 }
 
-const statusEl = document.getElementById('status') as HTMLDivElement
-const localVid = document.getElementById('local') as HTMLVideoElement
-const remoteVid = document.getElementById('remote') as HTMLVideoElement
+const appEl = document.getElementById('app') as HTMLDivElement
 
-function log(msg: string) {
-  console.log(msg)
-  statusEl.textContent += msg + '\n'
-}
-
-function showLandingPage() {
-  statusEl.innerHTML = `
-    <div style="text-align: center; padding: 40px 20px;">
-      <h2>Start a Video Call</h2>
-      <p>Enter a call ID or generate a random one</p>
-      <div style="margin: 20px 0;">
-        <input type="text" id="callIdInput" placeholder="Enter call ID (e.g., meeting-123)" 
-               style="padding: 10px; font-size: 16px; width: 250px; border: 1px solid #ccc; border-radius: 4px;">
-        <button id="joinBtn" style="padding: 10px 20px; font-size: 16px; margin-left: 10px; cursor: pointer; background: #0066cc; color: white; border: none; border-radius: 4px;">Join Call</button>
+function renderLandingPage() {
+  appEl.innerHTML = `
+    <div class="card">
+      <h2 class="card-title">Join a Video Call</h2>
+      <p class="card-description">Enter a call ID or generate a random one to start</p>
+      
+      <div class="input-group">
+        <input 
+          type="text" 
+          id="callIdInput" 
+          class="input" 
+          placeholder="Enter call ID (e.g., team-meeting)"
+          autocomplete="off"
+        >
       </div>
-      <p style="color: #666;">— or —</p>
-      <button id="randomBtn" style="padding: 10px 20px; font-size: 16px; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 4px;">🎲 Generate Random Call ID</button>
-      <p style="margin-top: 30px; font-size: 14px; color: #666;">
-        Share the call ID with someone to start a 1:1 video call
-      </p>
+      
+      <button id="joinBtn" class="btn btn-primary btn-lg btn-full">
+        Join Call
+      </button>
+      
+      <div class="divider">
+        <span>or</span>
+      </div>
+      
+      <button id="randomBtn" class="btn btn-secondary btn-full">
+        🎲 Generate Random Call ID
+      </button>
+      
+      <div class="info-box">
+        💡 <strong>Tip:</strong> Share your call ID with someone to start a 1:1 video call. Both participants use the same ID.
+      </div>
     </div>
   `
   
@@ -69,7 +77,10 @@ function showLandingPage() {
   const randomBtn = document.getElementById('randomBtn') as HTMLButtonElement
   
   const startCall = (callId: string) => {
-    if (!callId.trim()) return
+    if (!callId.trim()) {
+      callIdInput.focus()
+      return
+    }
     window.location.search = `?call=${encodeURIComponent(callId.trim())}`
   }
   
@@ -77,32 +88,80 @@ function showLandingPage() {
   callIdInput.onkeypress = (e) => { if (e.key === 'Enter') startCall(callIdInput.value) }
   randomBtn.onclick = () => {
     const randomId = Math.random().toString(36).substring(2, 10)
+    callIdInput.value = randomId
     startCall(randomId)
+  }
+  
+  callIdInput.focus()
+}
+
+function renderCallPage(callId: string) {
+  appEl.innerHTML = `
+    <div class="card" style="max-width: 900px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h2 class="card-title" style="margin: 0; text-align: left;">Call: <code>${escapeHtml(callId)}</code></h2>
+        <button id="leaveBtn" class="btn btn-secondary" style="font-size: 0.875rem;">Leave</button>
+      </div>
+      
+      <div id="status" class="status status-info">Initializing...</div>
+      
+      <div class="video-grid">
+        <div class="video-container">
+          <video id="local" autoplay muted playsinline></video>
+          <span class="video-label">You</span>
+        </div>
+        <div class="video-container">
+          <video id="remote" autoplay playsinline></video>
+          <span class="video-label">Remote</span>
+        </div>
+      </div>
+    </div>
+  `
+  
+  document.getElementById('leaveBtn')!.onclick = () => {
+    window.location.search = ''
   }
 }
 
-async function init() {
-  log('🚀 Initializing Telesense...')
+function escapeHtml(text: string): string {
+  const div = document.createElement('div')
+  div.textContent = text
+  return div.innerHTML
+}
 
+function log(statusEl: HTMLDivElement, msg: string) {
+  console.log(msg)
+  statusEl.textContent += msg + '\n'
+}
+
+async function init() {
   const callId = new URLSearchParams(location.search).get('call')
   
-  // Show landing page if no call ID provided
   if (!callId) {
-    showLandingPage()
+    renderLandingPage()
     return
   }
   
-  log(`📞 Call ID: ${callId}`)
+  renderCallPage(callId)
+  
+  const statusEl = document.getElementById('status') as HTMLDivElement
+  const localVid = document.getElementById('local') as HTMLVideoElement
+  const remoteVid = document.getElementById('remote') as HTMLVideoElement
+  
+  log(statusEl, '🚀 Starting call...')
+  log(statusEl, `📞 Call ID: ${callId}`)
 
   // 1. Capture local media
-  log('📹 Capturing local media...')
+  log(statusEl, '📹 Requesting camera access...')
   let localStream: MediaStream
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     localVid.srcObject = localStream
-    log('✅ Local media captured')
+    log(statusEl, '✅ Camera connected')
+    statusEl.className = 'status status-success'
   } catch (e) {
-    log(`❌ Failed to capture: ${e}`)
+    log(statusEl, `❌ Camera error: ${e}`)
+    statusEl.className = 'status status-error'
     return
   }
 
@@ -113,7 +172,7 @@ async function init() {
   })
 
   pc.ontrack = (e) => {
-    log('📡 Received remote track!')
+    log(statusEl, '📡 Remote video received!')
     let stream = remoteVid.srcObject as MediaStream | null
     if (!stream) {
       stream = new MediaStream()
@@ -123,17 +182,17 @@ async function init() {
   }
 
   pc.oniceconnectionstatechange = () => {
-    log(`🧊 ICE state: ${pc.iceConnectionState}`)
+    log(statusEl, `🧊 Connection: ${pc.iceConnectionState}`)
   }
 
   try {
     // 3. Create session
-    log('🔑 Creating session...')
+    log(statusEl, '🔑 Creating session...')
     const sessionRes = await apiCall(`/api/calls/${callId}/session`, { method: 'POST' })
     if (!sessionRes.ok) throw new Error(`Session failed: ${sessionRes.status}`)
     const sessionData = await sessionRes.json() as SessionResponse
     const sessionId = sessionData.sessionId
-    log(`✅ Session created: ${sessionId.slice(0, 8)}...`)
+    log(statusEl, `✅ Session ready`)
 
     // 4. Add local tracks
     const transceivers = localStream.getTracks().map(track => 
@@ -145,7 +204,7 @@ async function init() {
     await pc.setLocalDescription(offer)
 
     // 6. Publish tracks
-    log('📤 Publishing tracks...')
+    log(statusEl, '📤 Publishing...')
     const publishRes = await apiCall(`/api/calls/${callId}/publish-offer`, {
       method: 'POST',
       body: JSON.stringify({
@@ -161,35 +220,41 @@ async function init() {
     const publishData = await publishRes.json() as PublishResponse
     
     await pc.setRemoteDescription(publishData.sessionDescription)
-    log('✅ Published and connected to Cloudflare')
+    log(statusEl, '✅ Connected to Cloudflare')
 
-    // Wait for ICE to connect for publishing
+    // Wait for ICE
     await new Promise<void>((res, rej) => {
-      const timeout = setTimeout(() => rej(new Error('ICE timeout')), 10000)
+      const timeout = setTimeout(() => rej(new Error('Connection timeout')), 15000)
       const check = () => {
         if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
           clearTimeout(timeout)
           res()
         } else if (pc.iceConnectionState === 'failed') {
           clearTimeout(timeout)
-          rej(new Error('ICE failed'))
+          rej(new Error('Connection failed'))
         }
       }
       pc.addEventListener('iceconnectionstatechange', check)
       check()
     })
-    log('🟢 Publish ICE connected')
+    log(statusEl, '🟢 Ready for calls!')
 
     // 7. Start polling for remote tracks
-    log('👀 Polling for remote tracks...')
-    pollAndSubscribe(callId, sessionId, pc)
+    log(statusEl, '👀 Waiting for remote participant...')
+    pollAndSubscribe(callId, sessionId, pc, statusEl)
 
   } catch (e) {
-    log(`❌ Error: ${e}`)
+    log(statusEl, `❌ Error: ${e}`)
+    statusEl.className = 'status status-error'
   }
 }
 
-async function pollAndSubscribe(callId: string, sessionId: string, pc: RTCPeerConnection) {
+async function pollAndSubscribe(
+  callId: string, 
+  sessionId: string, 
+  pc: RTCPeerConnection,
+  statusEl: HTMLDivElement
+) {
   const checkedTracks = new Set<string>()
   
   const poll = async () => {
@@ -201,20 +266,18 @@ async function pollAndSubscribe(callId: string, sessionId: string, pc: RTCPeerCo
       const newTracks = data.tracks.filter(t => !checkedTracks.has(t.trackName))
       
       if (newTracks.length > 0) {
-        log(`🔔 Found ${newTracks.length} new remote track(s)`)
+        log(statusEl, `🔔 Remote participant joined!`)
         
         for (const track of newTracks) {
           checkedTracks.add(track.trackName)
         }
         
-        // Subscribe to new tracks
-        await subscribeToTracks(callId, sessionId, pc, newTracks)
+        await subscribeToTracks(callId, sessionId, pc, newTracks, statusEl)
       }
     } catch (e) {
       console.error('Poll error:', e)
     }
     
-    // Poll every 2 seconds
     setTimeout(poll, 2000)
   }
   
@@ -225,12 +288,10 @@ async function subscribeToTracks(
   callId: string, 
   sessionId: string, 
   pc: RTCPeerConnection,
-  remoteTracks: Array<{ trackName: string; sessionId: string; mid: string }>
+  remoteTracks: Array<{ trackName: string; sessionId: string; mid: string }>,
+  statusEl: HTMLDivElement
 ) {
-  log('📥 Subscribing to remote tracks...')
-  
   try {
-    // 1. Request subscription offer from backend
     const subscribeRes = await apiCall(`/api/calls/${callId}/subscribe-offer`, {
       method: 'POST',
       body: JSON.stringify({
@@ -244,14 +305,11 @@ async function subscribeToTracks(
     if (!subscribeRes.ok) throw new Error(`Subscribe failed: ${subscribeRes.status}`)
     const subscribeData = await subscribeRes.json() as SubscribeResponse
     
-    // 2. Set remote description (Cloudflare's Offer)
     await pc.setRemoteDescription(subscribeData.sessionDescription)
     
-    // 3. Create answer
     const answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
     
-    // 4. Complete subscription
     const completeRes = await apiCall(`/api/calls/${callId}/complete-subscribe`, {
       method: 'POST',
       body: JSON.stringify({
@@ -261,10 +319,10 @@ async function subscribeToTracks(
     })
     if (!completeRes.ok) throw new Error(`Complete subscribe failed: ${completeRes.status}`)
     
-    log('✅ Subscribed to remote tracks! Media should flow shortly...')
+    log(statusEl, '✅ Connected to remote participant!')
     
   } catch (e) {
-    log(`❌ Subscribe error: ${e}`)
+    log(statusEl, `❌ Subscribe error: ${e}`)
   }
 }
 
