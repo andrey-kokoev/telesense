@@ -25,7 +25,8 @@ function generateRandomId() {
 
 function joinCall() {
   if (!callId.value.trim()) return
-  window.location.search = `?call=${encodeURIComponent(callId.value.trim())}`
+  const normalized = callId.value.trim().toUpperCase()
+  window.location.search = `?call=${encodeURIComponent(normalized)}`
 }
 
 function onKeydown(e: KeyboardEvent) {

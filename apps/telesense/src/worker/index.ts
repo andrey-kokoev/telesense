@@ -89,6 +89,11 @@ interface LeaveRequest {
   sessionId: string
 }
 
+// Normalize callId to uppercase for case-insensitive matching
+function normalizeCallId(callId: string): string {
+  return callId.toUpperCase()
+}
+
 interface HealthResponse {
   status: 'healthy'
   version: string
@@ -252,7 +257,7 @@ app.get('/health', (c) => {
 // 1. SESSION — VERIFIED
 app.post('/api/calls/:callId/session', async (c) => {
   const env = c.env
-  const callId = c.req.param('callId')
+  const callId = normalizeCallId(c.req.param('callId'))
   const debug = isDebugEnabled(env)
 
   try {
@@ -319,7 +324,7 @@ app.post('/api/calls/:callId/session', async (c) => {
 // 2. PUBLISH (Push) — VERIFIED
 app.post('/api/calls/:callId/publish-offer', async (c) => {
   const env = c.env
-  const callId = c.req.param('callId')
+  const callId = normalizeCallId(c.req.param('callId'))
   const debug = isDebugEnabled(env)
 
   try {
@@ -402,7 +407,7 @@ app.post('/api/calls/:callId/publish-offer', async (c) => {
 // Call tracks/new with location: "remote" to get Offer for remote tracks
 app.post('/api/calls/:callId/subscribe-offer', async (c) => {
   const env = c.env
-  const callId = c.req.param('callId')
+  const callId = normalizeCallId(c.req.param('callId'))
   const debug = isDebugEnabled(env)
 
   try {
@@ -479,7 +484,7 @@ app.post('/api/calls/:callId/subscribe-offer', async (c) => {
 // Send Answer to Cloudflare via PUT /renegotiate
 app.post('/api/calls/:callId/complete-subscribe', async (c) => {
   const env = c.env
-  const callId = c.req.param('callId')
+  const callId = normalizeCallId(c.req.param('callId'))
   const debug = isDebugEnabled(env)
 
   try {
@@ -537,7 +542,7 @@ app.post('/api/calls/:callId/complete-subscribe', async (c) => {
 // 5. DISCOVER-REMOTE-TRACKS
 // App-level discovery — returns other participants' track refs
 app.get('/api/calls/:callId/discover-remote-tracks', (c) => {
-  const callId = c.req.param('callId')
+  const callId = normalizeCallId(c.req.param('callId'))
 
   try {
     requireNonEmptyString(callId, 'callId')
@@ -585,7 +590,7 @@ app.get('/api/calls/:callId/discover-remote-tracks', (c) => {
 
 // 6. LEAVE
 app.post('/api/calls/:callId/leave', async (c) => {
-  const callId = c.req.param('callId')
+  const callId = normalizeCallId(c.req.param('callId'))
 
   try {
     requireNonEmptyString(callId, 'callId')
