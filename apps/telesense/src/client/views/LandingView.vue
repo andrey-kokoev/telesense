@@ -1,6 +1,9 @@
 <template>
   <div class="landing">
     <header class="landing__header">
+      <div class="landing__header-top">
+        <ThemeToggle />
+      </div>
       <h1 class="landing__title">Telesense</h1>
       <p class="landing__subtitle">Secure video calls</p>
     </header>
@@ -151,6 +154,7 @@
 
 <script setup lang="ts">
 import { ref } from "vue";
+import ThemeToggle from "../components/ThemeToggle.vue";
 import { useAppStore } from "../composables/useAppStore";
 import { useToast } from "../composables/useToast";
 
@@ -216,8 +220,15 @@ function updateToken() {
 }
 
 .landing__header {
+  position: relative;
   text-align: center;
   margin-bottom: var(--space-10);
+}
+
+.landing__header-top {
+  position: absolute;
+  top: 0;
+  right: 0;
 }
 
 .landing__title {

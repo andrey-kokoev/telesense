@@ -1,5 +1,9 @@
 import { createApp } from "vue";
 import App from "./App.vue";
+import { useTheme } from "./composables/useTheme";
+
+// Initialize theme before mounting
+useTheme();
 
 const app = createApp(App);
 
