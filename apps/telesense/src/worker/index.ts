@@ -305,7 +305,7 @@ app.post('/api/calls/:callId/session', async (c) => {
   
   // Register with Durable Object for cross-device coordination
   const callRoom = getCallRoom(env, callId)
-  await callRoom.fetch(new Request('http://do.internal/createSession', {
+  await callRoom.fetch(new Request('http://do.internal/?action=createSession', {
     method: 'POST',
     body: JSON.stringify({ internalId, cfSessionId })
   }))
@@ -347,7 +347,7 @@ app.post('/api/calls/:callId/publish-offer', async (c) => {
   const callRoom = getCallRoom(env, callId)
   
   try {
-    const sessionRes = await callRoom.fetch(new Request(`http://do.internal/getSession?internalId=${body.sessionId}`))
+    const sessionRes = await callRoom.fetch(new Request(`http://do.internal/?action=getSession?internalId=${body.sessionId}`))
     
     if (!sessionRes.ok) {
       const errorText = await sessionRes.text()
@@ -408,7 +408,7 @@ app.post('/api/calls/:callId/publish-offer', async (c) => {
   }
 
   // Store published tracks in Durable Object for remote discovery
-  await callRoom.fetch(new Request('http://do.internal/publishTracks', {
+  await callRoom.fetch(new Request('http://do.internal/?action=publishTracks', {
     method: 'POST',
     body: JSON.stringify({ 
       internalId: body.sessionId,
@@ -450,7 +450,7 @@ app.post('/api/calls/:callId/subscribe-offer', async (c) => {
 
   // Look up session in Durable Object to get cfSessionId
   const callRoom = getCallRoom(env, callId)
-  const sessionRes = await callRoom.fetch(new Request(`http://do.internal/getSession?internalId=${body.sessionId}`))
+  const sessionRes = await callRoom.fetch(new Request(`http://do.internal/?action=getSession?internalId=${body.sessionId}`))
   
   if (!sessionRes.ok) {
     if (sessionRes.status === 404) {
@@ -548,7 +548,7 @@ app.post('/api/calls/:callId/complete-subscribe', async (c) => {
 
   // Look up session in Durable Object to get cfSessionId
   const callRoom = getCallRoom(env, callId)
-  const sessionRes = await callRoom.fetch(new Request(`http://do.internal/getSession?internalId=${body.sessionId}`))
+  const sessionRes = await callRoom.fetch(new Request(`http://do.internal/?action=getSession?internalId=${body.sessionId}`))
   
   if (!sessionRes.ok) {
     if (sessionRes.status === 404) {
@@ -624,7 +624,7 @@ app.get('/api/calls/:callId/discover-remote-tracks', async (c) => {
   
   // Get remote tracks from Durable Object
   const callRoom = getCallRoom(env, callId)
-  const tracksRes = await callRoom.fetch(new Request(`http://do.internal/getRemoteTracks?selfId=${selfId || ''}`))
+  const tracksRes = await callRoom.fetch(new Request(`http://do.internal/?action=getRemoteTracks?selfId=${selfId || ''}`))
   
   if (!tracksRes.ok) {
     return c.json({ tracks: [] } as DiscoverRemoteTracksResponse)
@@ -660,7 +660,7 @@ app.post('/api/calls/:callId/leave', async (c) => {
 
   // Remove from Durable Object
   const callRoom = getCallRoom(env, callId)
-  await callRoom.fetch(new Request('http://do.internal/leave', {
+  await callRoom.fetch(new Request('http://do.internal/?action=leave', {
     method: 'POST',
     body: JSON.stringify({ internalId: body.sessionId })
   }))
