@@ -69,6 +69,7 @@ async function pollAndSubscribe(
       
       if (newTracks.length > 0) {
         log(`🔔 Remote participant joined!`)
+        log(`   Tracks: ${newTracks.map(t => t.trackName.slice(0, 8)).join(', ')}`)
         
         for (const track of newTracks) {
           checkedTracks.add(track.trackName)
@@ -92,6 +93,8 @@ async function subscribeToTracks(
   remoteTracks: Array<{ trackName: string; sessionId: string; mid: string }>
 ) {
   try {
+    log(`📤 Subscribing to ${remoteTracks.length} remote tracks...`)
+    
     const subscribeRes = await apiCall(`/api/calls/${props.callId}/subscribe-offer`, {
       method: 'POST',
       body: JSON.stringify({
@@ -102,14 +105,24 @@ async function subscribeToTracks(
         }))
       })
     })
-    if (!subscribeRes.ok) throw new Error(`Subscribe failed: ${subscribeRes.status}`)
+    
+    if (!subscribeRes.ok) {
+      const errorData = await subscribeRes.json().catch(() => ({}))
+      log(`❌ Subscribe failed: ${subscribeRes.status}`)
+      log(`   Error: ${errorData.error || 'Unknown'}`)
+      log(`   Code: ${errorData.code || 'N/A'}`)
+      throw new Error(`Subscribe failed: ${subscribeRes.status}`)
+    }
+    
     const subscribeData = await subscribeRes.json() as SubscribeResponse
+    log(`✅ Got subscribe offer, ${subscribeData.tracks?.length || 0} tracks`)
     
     await pc.setRemoteDescription(subscribeData.sessionDescription)
     
     const answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
     
+    log(`📤 Completing subscription...`)
     const completeRes = await apiCall(`/api/calls/${props.callId}/complete-subscribe`, {
       method: 'POST',
       body: JSON.stringify({
@@ -117,7 +130,13 @@ async function subscribeToTracks(
         sdpAnswer: answer.sdp
       })
     })
-    if (!completeRes.ok) throw new Error(`Complete subscribe failed: ${completeRes.status}`)
+    
+    if (!completeRes.ok) {
+      const errorData = await completeRes.json().catch(() => ({}))
+      log(`❌ Complete subscribe failed: ${completeRes.status}`)
+      log(`   Error: ${errorData.error || 'Unknown'}`)
+      throw new Error(`Complete subscribe failed: ${completeRes.status}`)
+    }
     
     log('✅ Connected to remote participant!')
     showToast('Remote participant connected!', 'success')

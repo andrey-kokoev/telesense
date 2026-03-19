@@ -553,7 +553,9 @@ app.post('/api/calls/:callId/complete-subscribe', async (c) => {
 // 5. DISCOVER-REMOTE-TRACKS
 // App-level discovery — returns other participants' track refs
 app.get('/api/calls/:callId/discover-remote-tracks', (c) => {
+  const env = c.env
   const callId = normalizeCallId(c.req.param('callId'))
+  const debug = isDebugEnabled(env)
 
   try {
     requireNonEmptyString(callId, 'callId')
@@ -579,6 +581,10 @@ app.get('/api/calls/:callId/discover-remote-tracks', (c) => {
   const selfId = c.req.query('sessionId')
   const call = calls.get(callId)
   
+  if (debug) {
+    console.log(`[discover] callId: ${callId}, selfId: ${selfId?.slice(0, 8)}, sessions: ${call?.size || 0}`)
+  }
+  
   if (!call) {
     return c.json({ tracks: [] } as DiscoverRemoteTracksResponse)
   }
@@ -586,7 +592,13 @@ app.get('/api/calls/:callId/discover-remote-tracks', (c) => {
   // Collect all tracks from other sessions
   const remoteTracks: DiscoverRemoteTracksResponse['tracks'] = []
   for (const [sessionId, session] of call.entries()) {
-    if (sessionId === selfId) continue
+    if (debug) {
+      console.log(`[discover] checking session: ${sessionId.slice(0, 8)}, tracks: ${session.publishedTracks.length}`)
+    }
+    if (sessionId === selfId) {
+      if (debug) console.log(`[discover] skipping self`)
+      continue
+    }
     for (const track of session.publishedTracks) {
       remoteTracks.push({
         trackName: track.trackName,
@@ -594,6 +606,10 @@ app.get('/api/calls/:callId/discover-remote-tracks', (c) => {
         mid: track.mid
       })
     }
+  }
+  
+  if (debug) {
+    console.log(`[discover] returning ${remoteTracks.length} remote tracks`)
   }
 
   return c.json({ tracks: remoteTracks })
