@@ -153,58 +153,58 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
-import ThemeToggle from "../components/ThemeToggle.vue";
-import { useAppStore } from "../composables/useAppStore";
-import { useToast } from "../composables/useToast";
+import { ref } from "vue"
+import ThemeToggle from "../components/ThemeToggle.vue"
+import { useAppStore } from "../composables/useAppStore"
+import { useToast } from "../composables/useToast"
 
-const { isAuthenticated, token, setToken, recentCalls, addRecentCall } = useAppStore();
-const { success } = useToast();
+const { isAuthenticated, token, setToken, recentCalls, addRecentCall } = useAppStore()
+const { success } = useToast()
 
-const chatIdInput = ref("");
-const tokenInput = ref("");
-const showTokenModal = ref(false);
+const chatIdInput = ref("")
+const tokenInput = ref("")
+const showTokenModal = ref(false)
 
 function generateCallId(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let result = "";
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+  let result = ""
   for (let i = 0; i < 6; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
+    result += chars.charAt(Math.floor(Math.random() * chars.length))
   }
-  return result;
+  return result
 }
 
 function createNewChat() {
-  const callId = generateCallId();
-  addRecentCall(callId);
-  success(`Created chat: ${callId}`);
-  goToCall(callId);
+  const callId = generateCallId()
+  addRecentCall(callId)
+  success(`Created chat: ${callId}`)
+  goToCall(callId)
 }
 
 function joinExistingChat() {
-  const id = chatIdInput.value.trim().toUpperCase();
-  if (!id) return;
+  const id = chatIdInput.value.trim().toUpperCase()
+  if (!id) return
 
-  addRecentCall(id);
-  goToCall(id);
+  addRecentCall(id)
+  goToCall(id)
 }
 
 function goToCall(callId: string) {
-  window.location.href = `/?call=${callId}`;
+  window.location.href = `/?call=${callId}`
 }
 
 function saveToken() {
-  const t = tokenInput.value.trim();
-  if (!t) return;
+  const t = tokenInput.value.trim()
+  if (!t) return
 
-  setToken(t);
-  tokenInput.value = "";
-  success("Token saved");
+  setToken(t)
+  tokenInput.value = ""
+  success("Token saved")
 }
 
 function updateToken() {
-  saveToken();
-  showTokenModal.value = false;
+  saveToken()
+  showTokenModal.value = false
 }
 </script>
 
@@ -220,15 +220,18 @@ function updateToken() {
 }
 
 .landing__header {
-  position: relative;
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
   text-align: center;
+  gap: var(--space-4);
   margin-bottom: var(--space-10);
 }
 
 .landing__header-top {
-  position: absolute;
-  top: 0;
-  right: 0;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .landing__title {

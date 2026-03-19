@@ -1,50 +1,38 @@
 <template>
   <button class="theme-toggle" :title="`Theme: ${theme} (click to cycle)`" @click="cycleTheme">
-    <span class="theme-toggle__icon">{{ icon }}</span>
-    <span class="theme-toggle__label">{{ label }}</span>
+    <Icon :icon="iconName" class="theme-toggle__icon" aria-hidden="true" />
   </button>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { useTheme } from "../composables/useTheme";
+import { computed } from "vue"
+import { Icon } from "@iconify/vue"
+import { useTheme } from "../composables/useTheme"
 
-const { theme, cycleTheme } = useTheme();
+const { theme, cycleTheme } = useTheme()
 
-const icon = computed(() => {
+const iconName = computed(() => {
   switch (theme.value) {
     case "light":
-      return "☀️";
+      return "heroicons:sun"
     case "dark":
-      return "🌙";
+      return "heroicons:moon"
     case "system":
-      return "💻";
+      return "heroicons:computer-desktop"
     default:
-      return "☀️";
+      return "heroicons:sun"
   }
-});
-
-const label = computed(() => {
-  switch (theme.value) {
-    case "light":
-      return "Light";
-    case "dark":
-      return "Dark";
-    case "system":
-      return "System";
-    default:
-      return "Light";
-  }
-});
+})
 </script>
 
 <style scoped>
 .theme-toggle {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  font-size: 0.875rem;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
   font-family: inherit;
   color: var(--color-text-secondary);
   background: var(--color-bg-secondary);
@@ -64,17 +52,8 @@ const label = computed(() => {
 }
 
 .theme-toggle__icon {
-  font-size: 1rem;
+  width: 1.1rem;
+  height: 1.1rem;
   line-height: 1;
-}
-
-.theme-toggle__label {
-  font-weight: 500;
-}
-
-@media (max-width: 480px) {
-  .theme-toggle__label {
-    display: none;
-  }
 }
 </style>
