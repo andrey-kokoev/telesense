@@ -94,6 +94,8 @@ async function subscribeToTracks(
 ) {
   try {
     log(`📤 Subscribing to ${remoteTracks.length} remote tracks...`)
+    log(`   Local session: ${sessionId.slice(0, 8)}`)
+    log(`   Remote sessions: ${remoteTracks.map(t => t.sessionId.slice(0, 8)).join(', ')}`)
     
     const subscribeRes = await apiCall(`/api/calls/${props.callId}/subscribe-offer`, {
       method: 'POST',
