@@ -1,11 +1,11 @@
 {
-	"folders": [
+  "folders": [
     {
-      "path": "."
+      "path": ".",
     },
     {
-      "path": "../realtime-examples"
-    }
+      "path": "../realtime-examples",
+    },
   ],
-  "settings": {}
+  "settings": {},
 }

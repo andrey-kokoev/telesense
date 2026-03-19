@@ -76,8 +76,8 @@ Complete sequence of API calls for a 1:1 video call.
 
 ```javascript
 // Browser
-const res = await fetch('/api/calls/test/session', { method: 'POST' })
-const { sessionId } = await res.json()
+const res = await fetch("/api/calls/test/session", { method: "POST" });
+const { sessionId } = await res.json();
 ```
 
 ```http
@@ -125,10 +125,10 @@ WebRTC establishes UDP connection to Cloudflare.
 
 ```javascript
 pc.oniceconnectionstatechange = () => {
-  if (pc.iceConnectionState === 'connected') {
+  if (pc.iceConnectionState === "connected") {
     // Media flowing to Cloudflare
   }
-}
+};
 ```
 
 ## Phase 2: Session Setup (Tab B)
@@ -137,8 +137,8 @@ Same as Phase 1, but for Browser B.
 
 ```javascript
 // Browser B does the same thing
-const res = await fetch('/api/calls/test/session', { method: 'POST' })
-const { sessionId: sessionIdB } = await res.json()
+const res = await fetch("/api/calls/test/session", { method: "POST" });
+const { sessionId: sessionIdB } = await res.json();
 // ... publish tracks ...
 ```
 
@@ -150,25 +150,26 @@ Browser A polls every 2 seconds:
 
 ```javascript
 const poll = async () => {
-  const res = await fetch(`/api/calls/test/discover-remote-tracks?sessionId=${sessionIdA}`)
-  const { tracks } = await res.json()
-  
+  const res = await fetch(`/api/calls/test/discover-remote-tracks?sessionId=${sessionIdA}`);
+  const { tracks } = await res.json();
+
   if (tracks.length > 0) {
     // Found B's tracks!
-    await subscribeToTracks(tracks)
+    await subscribeToTracks(tracks);
   }
-  
-  setTimeout(poll, 2000)
-}
+
+  setTimeout(poll, 2000);
+};
 ```
 
 **Worker logic**:
+
 ```typescript
 // Find all tracks from other sessions in same call
-const remoteTracks = []
+const remoteTracks = [];
 for (const [sid, session] of callSessions) {
-  if (sid === selfSessionId) continue
-  remoteTracks.push(...session.publishedTracks)
+  if (sid === selfSessionId) continue;
+  remoteTracks.push(...session.publishedTracks);
 }
 ```
 
@@ -179,16 +180,18 @@ for (const [sid, session] of callSessions) {
 Browser A asks Cloudflare for an Offer to receive B's tracks.
 
 ```javascript
-await fetch('/api/calls/test/subscribe-offer', {
-  method: 'POST',
+await fetch("/api/calls/test/subscribe-offer", {
+  method: "POST",
   body: JSON.stringify({
     sessionId: sessionIdA,
-    remoteTracks: [{
-      trackName: "B's-video-track-id",
-      sessionId: "B's-cloudflare-session-id"
-    }]
-  })
-})
+    remoteTracks: [
+      {
+        trackName: "B's-video-track-id",
+        sessionId: "B's-cloudflare-session-id",
+      },
+    ],
+  }),
+});
 ```
 
 ```http
@@ -210,19 +213,19 @@ POST /v1/apps/{APP_ID}/sessions/{sessionIdA}/tracks/new
 Browser A creates Answer, sends to Cloudflare.
 
 ```javascript
-const offer = subscribeResponse.sessionDescription  // From Cloudflare!
-await pc.setRemoteDescription(offer)
+const offer = subscribeResponse.sessionDescription; // From Cloudflare!
+await pc.setRemoteDescription(offer);
 
-const answer = await pc.createAnswer()
-await pc.setLocalDescription(answer)
+const answer = await pc.createAnswer();
+await pc.setLocalDescription(answer);
 
-await fetch('/api/calls/test/complete-subscribe', {
-  method: 'POST',
+await fetch("/api/calls/test/complete-subscribe", {
+  method: "POST",
   body: JSON.stringify({
     sessionId: sessionIdA,
-    sdpAnswer: answer.sdp
-  })
-})
+    sdpAnswer: answer.sdp,
+  }),
+});
 ```
 
 ```http
@@ -236,6 +239,7 @@ PUT /v1/apps/{APP_ID}/sessions/{sessionIdA}/renegotiate
 ## Phase 5: Bidirectional Media
 
 Now both browsers:
+
 - **Send** their camera/mic to Cloudflare
 - **Receive** the other person's video from Cloudflare
 
@@ -246,14 +250,14 @@ Browser A ◄──UDP/SRTP── Cloudflare ◄──UDP/SRTP── Browser B
 
 ## Timing Summary
 
-| Phase | Typical Duration | Notes |
-|-------|-----------------|-------|
-| Session creation | 100-500ms | API round-trip |
-| Publish offer/answer | 200-800ms | Cloudflare processing |
-| ICE connection | 1-5 seconds | UDP hole punching |
-| Discovery | 2-5 seconds | Polling interval |
-| Subscription | 500-1000ms | 2 API calls |
-| **Total to media** | **5-15 seconds** | End-to-end |
+| Phase                | Typical Duration | Notes                 |
+| -------------------- | ---------------- | --------------------- |
+| Session creation     | 100-500ms        | API round-trip        |
+| Publish offer/answer | 200-800ms        | Cloudflare processing |
+| ICE connection       | 1-5 seconds      | UDP hole punching     |
+| Discovery            | 2-5 seconds      | Polling interval      |
+| Subscription         | 500-1000ms       | 2 API calls           |
+| **Total to media**   | **5-15 seconds** | End-to-end            |
 
 ## Error Handling
 
@@ -261,15 +265,15 @@ At each phase, handle errors:
 
 ```javascript
 try {
-  const res = await fetch('/api/calls/test/session', { method: 'POST' })
+  const res = await fetch("/api/calls/test/session", { method: "POST" });
   if (!res.ok) {
-    const error = await res.json()
+    const error = await res.json();
     // error.code: 'UPSTREAM_ERROR', 'BAD_REQUEST', etc.
-    throw new Error(error.error)
+    throw new Error(error.error);
   }
 } catch (e) {
   // Network error or exception
-  console.error('Failed to create session:', e)
+  console.error("Failed to create session:", e);
 }
 ```
 

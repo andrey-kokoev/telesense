@@ -29,6 +29,7 @@ POST   /api/calls/:callId/leave
 ### Required Code Comments
 
 Top of file:
+
 ```typescript
 // SPEC ONLY: wire-format fields and negotiation details must be verified against
 // current Cloudflare docs/examples before implementation hardening.
@@ -38,19 +39,27 @@ Top of file:
 ```
 
 Near state store:
+
 ```typescript
 // Dev-only ephemeral rendezvous state; invalid across isolates/restarts/deploys.
 // Production requires Durable Objects or external shared state.
-const calls = new Map<string, Map<string, {
-  cfSessionId: string
-  publishedTrackIds: Set<string>
-}>>()
+const calls = new Map<
+  string,
+  Map<
+    string,
+    {
+      cfSessionId: string;
+      publishedTrackIds: Set<string>;
+    }
+  >
+>();
 ```
 
 Near remote discovery route:
+
 ```typescript
 // BLOCKER: this endpoint exposes remote track IDs only.
-// The verified mechanism for how the browser receives the SFU-generated 
+// The verified mechanism for how the browser receives the SFU-generated
 // remote-subscribe offer must be documented in docs/realtime-wire-contract.md.
 ```
 
@@ -108,14 +117,15 @@ Map<
   Map<
     internalSessionId,
     {
-      cfSessionId: string
-      publishedTrackIds: Set<string>
+      cfSessionId: string;
+      publishedTrackIds: Set<string>;
     }
   >
->
+>;
 ```
 
 Important:
+
 - Store only Cloudflare-assigned track IDs for remote discovery
 - Do not use browser `MediaStreamTrack.id` as remote subscription identifier
 

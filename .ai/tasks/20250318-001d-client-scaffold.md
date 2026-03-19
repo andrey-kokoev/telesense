@@ -19,21 +19,28 @@ Implement the absolute minimum browser client for protocol verification. No fram
 Required functionality:
 
 1. **Capture local camera/mic**
+
    ```typescript
-   navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+   navigator.mediaDevices.getUserMedia({ video: true, audio: true });
    ```
 
 2. **Create RTCPeerConnection**
+
    ```typescript
    new RTCPeerConnection({
-     iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }]
-   })
+     iceServers: [{ urls: "stun:stun.cloudflare.com:3478" }],
+   });
    ```
 
 3. **Set up track handlers**
+
    ```typescript
-   pc.ontrack = (e) => { /* attach to remote video element */ }
-   pc.oniceconnectionstatechange = () => { /* log state */ }
+   pc.ontrack = (e) => {
+     /* attach to remote video element */
+   };
+   pc.oniceconnectionstatechange = () => {
+     /* log state */
+   };
    ```
 
 4. **Display status**
@@ -43,6 +50,7 @@ Required functionality:
 ### Required Code Comments
 
 Top of file:
+
 ```typescript
 // SPEC ONLY: Client cannot function until protocol verification complete.
 // BLOCKED: Missing verified mechanism for receiving remote subscribe offer.
@@ -55,30 +63,33 @@ Minimal HTML with only:
 ```html
 <!DOCTYPE html>
 <html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Telesense — Protocol Verification Spike</title>
-  <style>
-    /* Minimal styles: local video, remote video, status area */
-  </style>
-</head>
-<body>
-  <h1>Telesense <span style="font-weight:normal;color:#666">(Protocol Verification Spike)</span></h1>
-  
-  <!-- Status display -->
-  <div id="status">Loading...</div>
-  
-  <!-- Video elements -->
-  <video id="local" autoplay muted playsinline></video>
-  <video id="remote" autoplay playsinline></video>
-  
-  <script type="module" src="/src/client/main.ts"></script>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Telesense — Protocol Verification Spike</title>
+    <style>
+      /* Minimal styles: local video, remote video, status area */
+    </style>
+  </head>
+  <body>
+    <h1>
+      Telesense <span style="font-weight:normal;color:#666">(Protocol Verification Spike)</span>
+    </h1>
+
+    <!-- Status display -->
+    <div id="status">Loading...</div>
+
+    <!-- Video elements -->
+    <video id="local" autoplay muted playsinline></video>
+    <video id="remote" autoplay playsinline></video>
+
+    <script type="module" src="/src/client/main.ts"></script>
+  </body>
 </html>
 ```
 
 Required elements:
+
 - [ ] Local video element (autoplay, muted, playsinline)
 - [ ] Remote video element (autoplay, playsinline)
 - [ ] Status text area

@@ -15,8 +15,8 @@ Camera → Encoder → RTP → SRTP → UDP → Cloudflare → UDP → SRTP → 
 
 ```javascript
 // Raw video from webcam
-const stream = await navigator.mediaDevices.getUserMedia({ video: true })
-const track = stream.getVideoTracks()[0]
+const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+const track = stream.getVideoTracks()[0];
 ```
 
 **Format**: Raw YUV 4:2:0  
@@ -31,12 +31,14 @@ Raw YUV → VP8 Encoder → Compressed bitstream
 ```
 
 **Codec options**:
+
 - VP8 (baseline, always supported)
 - VP9 (better compression, more CPU)
 - H264 (hardware accelerated)
 - AV1 (best compression, high CPU)
 
 **Frame types**:
+
 - **I-frame** (Intra): Full image, ~1 per second
 - **P-frame** (Predicted): Differences only, much smaller
 
@@ -92,6 +94,7 @@ STUN server helped find public IP
 ```
 
 **Characteristics**:
+
 - No guarantee of delivery
 - No ordering guarantee
 - Fast (no retransmission delay)
@@ -108,6 +111,7 @@ STUN server helped find public IP
 ```
 
 **SFU Logic**:
+
 ```python
 # Simplified
 subscribers = get_subscribers(track_id)
@@ -120,11 +124,13 @@ for subscriber in subscribers:
 ### 7. Cloudflare Forwarding
 
 **Selective Forwarding**:
+
 - Doesn't decode video
 - Doesn't mix audio
 - Just routes packets
 
 **Bandwidth adaptation**:
+
 - If subscriber has low bandwidth: drop some packets
 - If packet loss detected: request retransmission (NACK)
 
@@ -143,6 +149,7 @@ Decode
 ```
 
 **Jitter Buffer**:
+
 ```
 Packets arrive: [1, 3, 2, 5, 4, 6]
 Buffer waits:   [1, _, 3, _, 5, _]
@@ -157,6 +164,7 @@ RTP payload → VP8 Decoder → Raw YUV frame
 ```
 
 **Latency budget**:
+
 - Encode: 5-20ms
 - Network: 20-100ms
 - Decode: 5-10ms
@@ -170,20 +178,21 @@ RTP payload → VP8 Decoder → Raw YUV frame
 ```
 
 **Pipeline**:
+
 ```
 YUV frame → Texture upload → GPU compositing → Screen
 ```
 
 ## Protocol Stack
 
-| Layer | Protocol | Purpose |
-|-------|----------|---------|
-| 7 Application | WebRTC API | JavaScript interface |
-| 6 Presentation | RTP | Media packetization |
-| 5 Session | SRTP | Encryption |
-| 4 Transport | DTLS | Key exchange |
-| 3 Network | UDP | Fast delivery |
-| 2 Link | ICE/STUN/TURN | NAT traversal |
+| Layer          | Protocol      | Purpose              |
+| -------------- | ------------- | -------------------- |
+| 7 Application  | WebRTC API    | JavaScript interface |
+| 6 Presentation | RTP           | Media packetization  |
+| 5 Session      | SRTP          | Encryption           |
+| 4 Transport    | DTLS          | Key exchange         |
+| 3 Network      | UDP           | Fast delivery        |
+| 2 Link         | ICE/STUN/TURN | NAT traversal        |
 
 ## Why UDP?
 
@@ -199,6 +208,7 @@ UDP Approach:
 ```
 
 WebRTC uses UDP because:
+
 1. Real-time needs speed over reliability
 2. Video codecs can handle some packet loss
 3. Forward error correction (FEC) recovers some loss
@@ -207,11 +217,13 @@ WebRTC uses UDP because:
 ## Bandwidth Estimation
 
 **VP8 @ 1280×720 @ 30fps**:
+
 - Average: 1.5 Mbps
 - Peak (I-frame): 3 Mbps
 - Minimum: 0.5 Mbps (low motion)
 
 **For 1:1 call**:
+
 - Up: 1.5 Mbps (your video)
 - Down: 1.5 Mbps (their video)
 - Total: 3 Mbps symmetric
@@ -219,6 +231,7 @@ WebRTC uses UDP because:
 ## Tools for Debugging
 
 ### Browser DevTools
+
 ```javascript
 // Check connection stats
 const pc = /* your RTCPeerConnection */
@@ -233,18 +246,21 @@ stats.forEach(stat => {
 ```
 
 ### Network Inspection
+
 ```bash
 # Capture RTP packets (requires sudo)
 tshark -i any -f "udp portrange 10000-20000" -w capture.pcap
 ```
 
 ### WebRTC Internals
+
 ```
 chrome://webrtc-internals/  (Chrome)
 about:webrtc                (Firefox)
 ```
 
 Shows:
+
 - ICE candidates
 - Connection state
 - Bandwidth estimates

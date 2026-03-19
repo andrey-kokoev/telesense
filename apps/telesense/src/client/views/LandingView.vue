@@ -1,46 +1,48 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useClipboard } from '@vueuse/core'
-import { useToast } from '../composables/useToast'
-import { useAppStore, type RecentCall } from '../composables/useAppStore'
-import { useSwipeActions } from '../composables/useSwipeActions'
-import { useHaptics } from '../composables/useHaptics'
-import { usePullToRefresh } from '../composables/usePullToRefresh'
-import { useLongPress } from '../composables/useLongPress'
-import SkeletonRow from '../components/SkeletonRow.vue'
-import ActionSheet from '../components/ActionSheet.vue'
+import { ref, computed } from "vue";
+import { useClipboard } from "@vueuse/core";
+import { useToast } from "../composables/useToast";
+import { useAppStore, type RecentCall } from "../composables/useAppStore";
+import { useSwipeActions } from "../composables/useSwipeActions";
+import { useHaptics } from "../composables/useHaptics";
+import { usePullToRefresh } from "../composables/usePullToRefresh";
+import { useLongPress } from "../composables/useLongPress";
+import SkeletonRow from "../components/SkeletonRow.vue";
+import ActionSheet from "../components/ActionSheet.vue";
 
 // Component for swipeable row
 const SwipeableCallRow = {
-  props: ['call', 'isEditing', 'isSelected', 'editName'],
-  emits: ['select', 'edit', 'delete', 'saveEdit', 'cancelEdit', 'update:editName', 'longPress'],
-  setup(props: { call: RecentCall; isEditing: boolean; isSelected: boolean; editName: string }, 
-        { emit }: { emit: (e: string, ...args: any[]) => void }) {
-    const swipe = useSwipeActions()
-    const { tap } = useHaptics()
+  props: ["call", "isEditing", "isSelected", "editName"],
+  emits: ["select", "edit", "delete", "saveEdit", "cancelEdit", "update:editName", "longPress"],
+  setup(
+    props: { call: RecentCall; isEditing: boolean; isSelected: boolean; editName: string },
+    { emit }: { emit: (e: string, ...args: any[]) => void },
+  ) {
+    const swipe = useSwipeActions();
+    const { tap } = useHaptics();
     const longPress = useLongPress(() => {
-      emit('longPress', props.call)
-    })
-    
+      emit("longPress", props.call);
+    });
+
     function onTouchEnd() {
-      const action = swipe.onTouchEnd()
-      if (action === 'delete') {
-        emit('delete', props.call)
-        swipe.reset()
-      } else if (action === 'edit') {
-        tap()
-        emit('edit', props.call)
-        swipe.reset()
+      const action = swipe.onTouchEnd();
+      if (action === "delete") {
+        emit("delete", props.call);
+        swipe.reset();
+      } else if (action === "edit") {
+        tap();
+        emit("edit", props.call);
+        swipe.reset();
       }
     }
-    
+
     function onClick() {
       if (!props.isEditing && Math.abs(swipe.offsetX.value) < 10) {
-        emit('select', props.call)
+        emit("select", props.call);
       }
     }
-    
-    return { swipe, longPress, onTouchEnd, onClick }
+
+    return { swipe, longPress, onTouchEnd, onClick };
   },
   template: `
     <div
@@ -50,7 +52,7 @@ const SwipeableCallRow = {
       @touchend="(e: TouchEvent) => { onTouchEnd(); longPress.onTouchEnd(); }"
     >
       <!-- Swipe background layer -->
-      <div 
+      <div
         class="swipe-bg"
         :class="swipe.bgClass"
       >
@@ -69,7 +71,7 @@ const SwipeableCallRow = {
           Edit
         </span>
       </div>
-      
+
       <!-- Main row -->
       <div
         class="recent-call-row"
@@ -107,7 +109,7 @@ const SwipeableCallRow = {
             </button>
           </div>
         </template>
-        
+
         <template v-else>
           <div class="call-row-main">
             <span v-if="call.name" class="call-name">{{ call.name }}</span>
@@ -135,228 +137,235 @@ const SwipeableCallRow = {
         </template>
       </div>
     </div>
-  `
-}
+  `,
+};
 
-const callId = ref('')
-const tokenInput = ref('')
-const editingCall = ref<string | null>(null)
-const editingName = ref('')
-const { copy } = useClipboard({ source: callId })
-const { show: showToast } = useToast()
-const store = useAppStore()
-const { tap, success, error, selection, deleteAction } = useHaptics()
+const callId = ref("");
+const tokenInput = ref("");
+const editingCall = ref<string | null>(null);
+const editingName = ref("");
+const { copy } = useClipboard({ source: callId });
+const { show: showToast } = useToast();
+const store = useAppStore();
+const { tap, success, error, selection, deleteAction } = useHaptics();
 
 // Loading state for skeleton screens
-const isLoading = ref(true)
+const isLoading = ref(true);
 
 // Simulate initial loading
 setTimeout(() => {
-  isLoading.value = false
-}, 800)
+  isLoading.value = false;
+}, 800);
 
 // Long-press action sheet
-const actionSheetOpen = ref(false)
-const actionSheetCall = ref<RecentCall | null>(null)
+const actionSheetOpen = ref(false);
+const actionSheetCall = ref<RecentCall | null>(null);
 const actionSheetActions = [
-  { id: 'edit', label: 'Edit Name', icon: '✏️' },
-  { id: 'copy', label: 'Copy ID', icon: '📋' },
-  { id: 'delete', label: 'Delete', icon: '🗑️', danger: true }
-]
+  { id: "edit", label: "Edit Name", icon: "✏️" },
+  { id: "copy", label: "Copy ID", icon: "📋" },
+  { id: "delete", label: "Delete", icon: "🗑️", danger: true },
+];
 
 function openActionSheet(call: RecentCall) {
-  actionSheetCall.value = call
-  actionSheetOpen.value = true
+  actionSheetCall.value = call;
+  actionSheetOpen.value = true;
 }
 
 function onActionSelect(actionId: string) {
-  if (!actionSheetCall.value) return
-  
-  const call = actionSheetCall.value
-  
+  if (!actionSheetCall.value) return;
+
+  const call = actionSheetCall.value;
+
   switch (actionId) {
-    case 'edit':
-      startEditing(call)
-      break
-    case 'copy':
+    case "edit":
+      startEditing(call);
+      break;
+    case "copy":
       copy(call.id).then(() => {
-        success()
-        showToast('Call ID copied!', 'success')
-      })
-      break
-    case 'delete':
-      deleteCall(call, { stopPropagation: () => {} } as Event)
-      break
+        success();
+        showToast("Call ID copied!", "success");
+      });
+      break;
+    case "delete":
+      deleteCall(call, { stopPropagation: () => {} } as Event);
+      break;
   }
-  
-  actionSheetCall.value = null
+
+  actionSheetCall.value = null;
 }
 
 // Pull to refresh for recents (visual feedback only - data is local)
 const pullRefresh = usePullToRefresh(async () => {
   // Simulate refresh
-  await new Promise(r => setTimeout(r, 500))
-  success()
-  showToast('Recents refreshed', 'success')
-})
+  await new Promise((r) => setTimeout(r, 500));
+  success();
+  showToast("Recents refreshed", "success");
+});
 
 // Helper computed for recent calls to avoid ComputedRef issues in v-for
-const recentCallsList = computed<RecentCall[]>(() => store.recentCalls.value)
+const recentCallsList = computed<RecentCall[]>(() => store.recentCalls.value);
 
 // Track if user has saved a token in this session
-const hasSavedToken = ref(false)
+const hasSavedToken = ref(false);
 
 // Initialize token input from store
 if (store.token.value) {
-  tokenInput.value = store.token.value
+  tokenInput.value = store.token.value;
 }
 
 // Computed to show success only after explicit save
-const showTokenSuccess = computed(() => hasSavedToken.value || store.token.value)
+const showTokenSuccess = computed(() => hasSavedToken.value || store.token.value);
 
 // Masked token preview (show last 4 chars)
 const maskedToken = computed(() => {
-  const token = store.token.value
-  if (!token || token.length <= 4) return token
-  return '•'.repeat(token.length - 4) + token.slice(-4)
-})
+  const token = store.token.value;
+  if (!token || token.length <= 4) return token;
+  return "•".repeat(token.length - 4) + token.slice(-4);
+});
 
-const isValidLength = computed(() => callId.value.length === 6)
+const isValidLength = computed(() => callId.value.length === 6);
 
 function formatInput(e: Event) {
-  const input = e.target as HTMLInputElement
-  let value = input.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 6)
-  callId.value = value
+  const input = e.target as HTMLInputElement;
+  let value = input.value
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toUpperCase()
+    .slice(0, 6);
+  callId.value = value;
 }
 
 function generateRandomId() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-  let randomId = ''
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let randomId = "";
   for (let i = 0; i < 6; i++) {
-    randomId += chars.charAt(Math.floor(Math.random() * chars.length))
+    randomId += chars.charAt(Math.floor(Math.random() * chars.length));
   }
-  callId.value = randomId
-  
-  copy(randomId).then(() => {
-    showToast('Call ID copied to clipboard!', 'success')
-  }).catch(() => {
-    showToast('Failed to copy', 'error')
-  })
+  callId.value = randomId;
+
+  copy(randomId)
+    .then(() => {
+      showToast("Call ID copied to clipboard!", "success");
+    })
+    .catch(() => {
+      showToast("Failed to copy", "error");
+    });
 }
 
 function saveToken() {
-  tap()
+  tap();
   if (!tokenInput.value.trim()) {
-    error()
-    showToast('Please enter a token', 'error')
-    return
+    error();
+    showToast("Please enter a token", "error");
+    return;
   }
-  store.setToken(tokenInput.value.trim())
-  hasSavedToken.value = true
-  success()
-  showToast('Token saved!', 'success')
+  store.setToken(tokenInput.value.trim());
+  hasSavedToken.value = true;
+  success();
+  showToast("Token saved!", "success");
 }
 
 function clearToken() {
-  tap()
-  store.clearToken()
-  tokenInput.value = ''
-  showToast('Token cleared', 'info')
+  tap();
+  store.clearToken();
+  tokenInput.value = "";
+  showToast("Token cleared", "info");
 }
 
 function useRecentCall(call: RecentCall) {
-  selection()
-  callId.value = call.id
-  showToast(`Call ID ${call.id} selected`, 'info')
+  selection();
+  callId.value = call.id;
+  showToast(`Call ID ${call.id} selected`, "info");
 }
 
 function isSelected(call: RecentCall): boolean {
-  return callId.value === call.id
+  return callId.value === call.id;
 }
 
 function startEditing(call: RecentCall) {
-  tap()
-  editingCall.value = call.id
-  editingName.value = call.name || ''
+  tap();
+  editingCall.value = call.id;
+  editingName.value = call.name || "";
 }
 
 function saveEditing() {
   if (editingCall.value) {
-    store.renameRecentCall(editingCall.value, editingName.value)
-    editingCall.value = null
-    editingName.value = ''
-    success()
-    showToast('Name updated!', 'success')
+    store.renameRecentCall(editingCall.value, editingName.value);
+    editingCall.value = null;
+    editingName.value = "";
+    success();
+    showToast("Name updated!", "success");
   }
 }
 
 function cancelEditing() {
-  tap()
-  editingCall.value = null
-  editingName.value = ''
+  tap();
+  editingCall.value = null;
+  editingName.value = "";
 }
 
 function deleteCall(call: RecentCall, event: Event) {
-  deleteAction()
-  event.stopPropagation()
-  store.removeRecentCall(call.id)
-  showToast('Call removed', 'info')
+  deleteAction();
+  event.stopPropagation();
+  store.removeRecentCall(call.id);
+  showToast("Call removed", "info");
 }
 
 function joinCall() {
-  tap()
+  tap();
   if (callId.value.length !== 6) {
-    error()
-    showToast('Call ID must be exactly 6 characters', 'error')
-    return
+    error();
+    showToast("Call ID must be exactly 6 characters", "error");
+    return;
   }
   if (!store.isAuthenticated.value) {
-    error()
-    showToast('Please enter and save your access token first', 'error')
-    return
+    error();
+    showToast("Please enter and save your access token first", "error");
+    return;
   }
-  
+
   // Add to recent calls (without name - can be renamed later)
-  store.addRecentCall(callId.value)
-  success()
-  
-  window.location.search = `?call=${encodeURIComponent(callId.value)}`
+  store.addRecentCall(callId.value);
+  success();
+
+  window.location.search = `?call=${encodeURIComponent(callId.value)}`;
 }
 
 function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Enter') joinCall()
+  if (e.key === "Enter") joinCall();
 }
 </script>
 
 <template>
   <div class="card" role="main" aria-label="Join a video call">
     <h2 class="card-title">Join a Video Call</h2>
-    
+
     <!-- Token Section -->
     <div class="section">
       <h3>🔐 Access Token</h3>
       <p class="section-description">
-        Enter your access token to use the system. 
-        <a href="#" @click.prevent="showToast('Contact your admin for a token', 'info')">Get a token</a>
+        Enter your access token to use the system.
+        <a href="#" @click.prevent="showToast('Contact your admin for a token', 'info')"
+          >Get a token</a
+        >
       </p>
       <div class="input-group">
-        <input 
+        <input
           v-model="tokenInput"
-          type="password" 
-          class="input" 
+          type="password"
+          class="input"
           placeholder="Enter your access token"
           autocomplete="off"
           aria-label="Access token"
-        >
-        <button 
+        />
+        <button
           class="btn btn-secondary"
           @click="saveToken"
           :disabled="!tokenInput.trim()"
           aria-label="Save access token"
         >
-          {{ store.isAuthenticated ? 'Update' : 'Save' }}
+          {{ store.isAuthenticated ? "Update" : "Save" }}
         </button>
-        <button 
+        <button
           v-if="store.isAuthenticated"
           class="btn btn-secondary"
           @click="clearToken"
@@ -374,18 +383,25 @@ function onKeydown(e: KeyboardEvent) {
     <div v-if="store.isAuthenticated" class="section">
       <div class="section-header">
         <h3>📞 Recent Calls</h3>
-        <button v-if="recentCallsList.length > 0" class="btn-text" @click="store.clearRecentCalls" aria-label="Clear all recent calls">Clear all</button>
+        <button
+          v-if="recentCallsList.length > 0"
+          class="btn-text"
+          @click="store.clearRecentCalls"
+          aria-label="Clear all recent calls"
+        >
+          Clear all
+        </button>
       </div>
       <!-- Skeleton loading -->
       <div v-if="isLoading" class="skeleton-list">
         <SkeletonRow v-for="i in 3" :key="i" />
       </div>
-      
+
       <div v-else-if="recentCallsList.length === 0" class="empty-state">
         No recent calls. Create a new call below.
       </div>
       <TransitionGroup
-        v-else 
+        v-else
         tag="div"
         name="list"
         class="recent-calls-list scrollable"
@@ -397,9 +413,17 @@ function onKeydown(e: KeyboardEvent) {
         <!-- Pull to refresh indicator -->
         <div key="pull-indicator" class="pull-indicator" :style="pullRefresh.indicatorStyle">
           <div v-if="pullRefresh.isRefreshing" class="spinner"></div>
-          <svg v-else width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M23 4v6h-6M1 20v-6h6"/>
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          <svg
+            v-else
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M23 4v6h-6M1 20v-6h6" />
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
           </svg>
         </div>
         <SwipeableCallRow
@@ -411,7 +435,11 @@ function onKeydown(e: KeyboardEvent) {
           v-model:edit-name="editingName"
           @select="useRecentCall"
           @edit="startEditing"
-          @delete="(c) => { deleteCall(c, { stopPropagation: () => {} } as Event); }"
+          @delete="
+            (c) => {
+              deleteCall(c, { stopPropagation: () => {} } as Event);
+            }
+          "
           @save-edit="saveEditing"
           @cancel-edit="cancelEditing"
           @long-press="openActionSheet"
@@ -431,68 +459,87 @@ function onKeydown(e: KeyboardEvent) {
     <div class="divider">
       <span>or</span>
     </div>
-    
+
     <template v-if="store.isAuthenticated">
-    <!-- Call ID Section - requires auth to create/join -->
-    <div class="section">
-      <h3>🆕 New Call</h3>
-      
-      <div class="input-group">
-        <div class="input-with-icon input-with-double-icon">
-          <input 
-            v-model="callId"
-            type="text" 
-            class="input" 
-            placeholder="XXXXXX"
-            autocomplete="off"
-            maxlength="6"
-            @input="formatInput"
-            @keydown="onKeydown"
-          >
-          <button 
-            v-if="callId"
-            class="input-icon-btn input-icon-btn-left" 
-            @click="copy(callId).then(() => showToast('Copied!', 'success'))"
-            title="Copy call ID"
-            type="button"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-            </svg>
-          </button>
-          <button 
-            class="input-icon-btn" 
-            @click="generateRandomId"
-            title="Generate random call ID"
-            type="button"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
-              <circle cx="8" cy="8" r="1.5" fill="currentColor"/>
-              <circle cx="16" cy="8" r="1.5" fill="currentColor"/>
-              <circle cx="8" cy="16" r="1.5" fill="currentColor"/>
-              <circle cx="16" cy="16" r="1.5" fill="currentColor"/>
-            </svg>
-          </button>
+      <!-- Call ID Section - requires auth to create/join -->
+      <div class="section">
+        <h3>🆕 New Call</h3>
+
+        <div class="input-group">
+          <div class="input-with-icon input-with-double-icon">
+            <input
+              v-model="callId"
+              type="text"
+              class="input"
+              placeholder="XXXXXX"
+              autocomplete="off"
+              maxlength="6"
+              @input="formatInput"
+              @keydown="onKeydown"
+            />
+            <button
+              v-if="callId"
+              class="input-icon-btn input-icon-btn-left"
+              @click="copy(callId).then(() => showToast('Copied!', 'success'))"
+              title="Copy call ID"
+              type="button"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+            </button>
+            <button
+              class="input-icon-btn"
+              @click="generateRandomId"
+              title="Generate random call ID"
+              type="button"
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+                <circle cx="8" cy="8" r="1.5" fill="currentColor" />
+                <circle cx="16" cy="8" r="1.5" fill="currentColor" />
+                <circle cx="8" cy="16" r="1.5" fill="currentColor" />
+                <circle cx="16" cy="16" r="1.5" fill="currentColor" />
+              </svg>
+            </button>
+          </div>
+          <div class="input-hint" :class="{ 'input-hint-valid': isValidLength }">
+            {{ callId.length }}/6 characters
+          </div>
         </div>
-        <div class="input-hint" :class="{ 'input-hint-valid': isValidLength }">
-          {{ callId.length }}/6 characters
-        </div>
+
+        <button
+          class="btn btn-primary btn-lg btn-full"
+          @click="joinCall"
+          :disabled="!isValidLength"
+        >
+          {{ isValidLength ? `Join ${callId}` : "Enter Call ID" }}
+        </button>
       </div>
-      
-      <button 
-        class="btn btn-primary btn-lg btn-full" 
-        @click="joinCall"
-        :disabled="!isValidLength"
-      >
-        {{ isValidLength ? `Join ${callId}` : 'Enter Call ID' }}
-      </button>
-    </div>
-    
-    <div class="info-box">
-      💡 <strong>Tip:</strong> Share your call ID with someone to start a 1:1 video call. Both participants need valid tokens.
-    </div>
+
+      <div class="info-box">
+        💡 <strong>Tip:</strong> Share your call ID with someone to start a 1:1 video call. Both
+        participants need valid tokens.
+      </div>
     </template>
   </div>
 </template>
@@ -655,7 +702,7 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 .call-id {
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', monospace;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", monospace;
   font-size: 0.75rem;
   color: var(--ui-text-muted);
   letter-spacing: 0.025em;
@@ -668,7 +715,7 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 .call-id-subtitle {
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', monospace;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", monospace;
   font-size: 0.75rem;
   color: var(--ui-text-muted);
   margin-top: 0.25rem;
@@ -745,7 +792,7 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 .token-preview {
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', monospace;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", monospace;
   font-size: 0.8125rem;
   background: rgba(22, 163, 74, 0.1);
   padding: 0.125rem 0.375rem;

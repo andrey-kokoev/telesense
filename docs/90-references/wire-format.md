@@ -6,14 +6,14 @@
 
 These decisions are **frozen** and will not change regardless of payload verification:
 
-| Decision | Rationale | Codex Review |
-|----------|-----------|--------------|
-| Backend-mediated HTTPS API | Cloudflare Realtime is low-level SFU; no native rooms | Confirmed |
-| Raw `RTCPeerConnection` (no SDK) | Alignment with Cloudflare's "no SDK provided at this level" | Confirmed |
-| `callId` as app-level rendezvous | Cloudflare has no native room abstraction | Confirmed |
-| In-memory `Map` state (dev-only) | Durable Objects deferred to post-verification | Confirmed |
-| Single-file Worker during discovery | Split into `realtime-api.ts` + `call-state.ts` + `routes.ts` only after protocol lock | Confirmed |
-| Poll-first signaling | WebSocket/SSE deferred until basics work | Confirmed |
+| Decision                            | Rationale                                                                             | Codex Review |
+| ----------------------------------- | ------------------------------------------------------------------------------------- | ------------ |
+| Backend-mediated HTTPS API          | Cloudflare Realtime is low-level SFU; no native rooms                                 | Confirmed    |
+| Raw `RTCPeerConnection` (no SDK)    | Alignment with Cloudflare's "no SDK provided at this level"                           | Confirmed    |
+| `callId` as app-level rendezvous    | Cloudflare has no native room abstraction                                             | Confirmed    |
+| In-memory `Map` state (dev-only)    | Durable Objects deferred to post-verification                                         | Confirmed    |
+| Single-file Worker during discovery | Split into `realtime-api.ts` + `call-state.ts` + `routes.ts` only after protocol lock | Confirmed    |
+| Poll-first signaling                | WebSocket/SSE deferred until basics work                                              | Confirmed    |
 
 **Last Consensus Update**: 2026-03-18 with Codex review.
 
@@ -21,7 +21,7 @@ These decisions are **frozen** and will not change regardless of payload verific
 
 > ⚠️ **CRITICAL CORRECTION APPLIED 2026-03-18**
 >
-> Remote subscription uses **orchestration/pull model**, not push. 
+> Remote subscription uses **orchestration/pull model**, not push.
 > Call `tracks/new` with `location: "remote"` to request an Offer from Cloudflare.
 > See Section 3 below for verified flow.
 
@@ -32,11 +32,13 @@ These decisions are **frozen** and will not change regardless of payload verific
 **Pattern**: SFU (Selective Forwarding Unit) with client-side media subscription negotiation
 
 **Participants**:
+
 1. Browser client (RTCPeerConnection)
 2. Cloudflare Realtime SFU (remote offer generation, track subscription)
 3. Worker relay (session state, SDP delivery)
 
 **Session Lifecycle**:
+
 ```
 Browser                    Worker                          Realtime SFU
   |                          |                                  |
@@ -82,6 +84,7 @@ Browser                    Worker                          Realtime SFU
 **Purpose**: Create a new Calls session
 
 **Request**:
+
 ```http
 POST https://rtc.live.cloudflare.com/v1/apps/8b4b4a5e75f322fe92872b9a1d3747b5/sessions/new
 Authorization: Bearer {APP_TOKEN}
@@ -91,6 +94,7 @@ Content-Type: application/json
 ```
 
 **Response** (200 OK):
+
 ```json
 {
   "sessionId": "c94f2751ff85e3256f3f1747747224dc7a72bc897214f91187596ddcc4709593"
@@ -98,6 +102,7 @@ Content-Type: application/json
 ```
 
 **Status**: ✅ VERIFIED
+
 - Response path: `sessionId` (not `result.id`)
 - Token is sent via `Authorization: Bearer` header (not in body)
 
@@ -108,6 +113,7 @@ Content-Type: application/json
 **Purpose**: Publish local tracks to Cloudflare
 
 **Request**:
+
 ```http
 POST https://rtc.live.cloudflare.com/v1/apps/{appId}/sessions/{localSessionId}/tracks/new
 Authorization: Bearer {APP_TOKEN}
@@ -134,6 +140,7 @@ Content-Type: application/json
 ```
 
 **Response** (200 OK):
+
 ```json
 {
   "requiresImmediateRenegotiation": false,
@@ -155,6 +162,7 @@ Content-Type: application/json
 ```
 
 **Status**: ✅ VERIFIED
+
 - Request uses `sessionDescription` wrapper with `sdp` and `type`
 - `location: "local"` indicates publishing
 - Response includes `sessionDescription.type: "answer"`
@@ -169,6 +177,7 @@ Content-Type: application/json
 **This is the answer to Q8: Remote Subscription Initiation**
 
 **Request**:
+
 ```http
 POST https://rtc.live.cloudflare.com/v1/apps/{appId}/sessions/{remoteSessionId}/tracks/new
 Authorization: Bearer {APP_TOKEN}
@@ -191,11 +200,13 @@ Content-Type: application/json
 ```
 
 **Key fields**:
+
 - `location: "remote"` — Tells Cloudflare we want to SUBSCRIBE
 - `sessionId` — The **publisher's** session ID (where tracks originate)
 - `trackName` — The track identifier from the publisher
 
 **Response** (200 OK):
+
 ```json
 {
   "requiresImmediateRenegotiation": true,
@@ -219,12 +230,14 @@ Content-Type: application/json
 ```
 
 **Status**: ✅ **VERIFIED — Q8 RESOLVED**
+
 - Same endpoint (`tracks/new`) used for both push and pull
 - `location: "remote"` triggers subscription behavior
 - Returns `sessionDescription.type: "offer"` ← **Cloudflare generates Offer for subscriber**
 - `requiresImmediateRenegotiation: true` indicates you must complete renegotiation
 
 **Flow**:
+
 1. Get remote track references (sessionId + trackName)
 2. Call `tracks/new` with `location: "remote"`
 3. Receive **Offer** from Cloudflare
@@ -239,6 +252,7 @@ Content-Type: application/json
 **Purpose**: Complete renegotiation by sending Answer
 
 **Request**:
+
 ```http
 PUT https://rtc.live.cloudflare.com/v1/apps/{appId}/sessions/{sessionId}/renegotiate
 Authorization: Bearer {APP_TOKEN}
@@ -253,11 +267,13 @@ Content-Type: application/json
 ```
 
 **Response** (200 OK):
+
 ```json
 {}
 ```
 
 **Status**: ✅ VERIFIED
+
 - Uses **PUT** (not POST)
 - Sends `sessionDescription` with `type: "answer"`
 - Empty JSON object `{}` response on success
@@ -277,6 +293,7 @@ https://rtc.live.cloudflare.com/v1/apps/{APP_ID}
 ## Authentication
 
 All requests require:
+
 ```
 Authorization: Bearer {APP_TOKEN}
 Content-Type: application/json

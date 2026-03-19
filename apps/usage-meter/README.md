@@ -12,16 +12,19 @@ Tracks Cloudflare Realtime usage and enforces budget limits.
 ## Configuration
 
 Edit `wrangler.toml`:
+
 - `CF_ACCOUNT_ID` - Your Cloudflare account ID
 - `REALTIME_APP_ID` - Your Calls app ID
 
 Set secrets:
+
 ```bash
 wrangler secret put CF_API_TOKEN
 # Token needs: Analytics:Read permission
 ```
 
 Create KV namespace:
+
 ```bash
 wrangler kv:namespace create "BUDGET_KV"
 # Copy ID to wrangler.toml
@@ -61,8 +64,8 @@ pnpm status           # Check budget status
 
 ## KV Keys
 
-| Key | Content |
-|-----|---------|
-| `usage:latest` | Current cumulative usage |
-| `usage:YYYY-MM` | Monthly usage history |
-| `budget:status` | Computed budget status |
+| Key             | Content                  |
+| --------------- | ------------------------ |
+| `usage:latest`  | Current cumulative usage |
+| `usage:YYYY-MM` | Monthly usage history    |
+| `budget:status` | Computed budget status   |

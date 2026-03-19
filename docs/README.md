@@ -49,7 +49,7 @@ POST /tracks/new
 { "location": "local", ... } → Returns Answer
 
 # Subscribing (receive)
-POST /tracks/new  
+POST /tracks/new
 { "location": "remote", ... } → Returns Offer
 ```
 
@@ -57,11 +57,11 @@ This "pull model" means browsers **ask** Cloudflare for subscription Offers.
 
 ### Three IDs to Understand
 
-| ID | What | Example |
-|----|------|---------|
-| `callId` | App-level room name | `"test-call"` |
+| ID          | What                  | Example         |
+| ----------- | --------------------- | --------------- |
+| `callId`    | App-level room name   | `"test-call"`   |
 | `sessionId` | Cloudflare connection | `"ea2a61a4..."` |
-| `trackName` | Media stream ID | `"0aad9523..."` |
+| `trackName` | Media stream ID       | `"0aad9523..."` |
 
 ## Project Status
 
@@ -73,21 +73,25 @@ This "pull model" means browsers **ask** Cloudflare for subscription Offers.
 ## Navigation by Role
 
 **New Developer?**
+
 1. [Quick Start](./00-getting-started/01-quickstart.md)
 2. [How It Works](./00-getting-started/02-how-it-works.md)
 3. Run the tests: `pnpm test`
 
 **Implementing Features?**
+
 1. [API Reference](./20-protocol/01-api-reference.md)
 2. [Call Lifecycle](./20-protocol/02-lifecycle.md)
 3. Check [Consensus Log](./90-references/consensus-log.md) for constraints
 
 **Debugging Issues?**
+
 1. [Troubleshooting](./00-getting-started/03-troubleshooting.md)
 2. [Media Flow](./10-architecture/02-media-flow.md) for packet details
 3. Enable `DEBUG=true` in `.dev.vars`
 
 **Understanding Decisions?**
+
 1. [Consensus Log](./90-references/consensus-log.md) - Why we chose this architecture
 2. [Open Questions](./90-references/open-questions.md) - What's still unknown
 3. [Wire Format](./90-references/wire-format.md) - Verified API payloads
@@ -95,6 +99,7 @@ This "pull model" means browsers **ask** Cloudflare for subscription Offers.
 ## Contributing
 
 Documentation improvements welcome! Guidelines:
+
 - Keep getting-started docs simple
 - Put technical deep-dives in architecture/
 - Update references/ when protocol changes

@@ -13,13 +13,13 @@ Create the protocol documentation foundation before writing any implementation c
 
 This file must contain:
 
-* Purpose of the experiment
-* Source-of-truth hierarchy
-* Verified endpoints
-* Observed payloads
-* Inferred payloads clearly marked as inferred
-* Minimal 1:1 happy path
-* Unresolved blockers
+- Purpose of the experiment
+- Source-of-truth hierarchy
+- Verified endpoints
+- Observed payloads
+- Inferred payloads clearly marked as inferred
+- Minimal 1:1 happy path
+- Unresolved blockers
 
 Template structure:
 
@@ -33,20 +33,23 @@ Template structure:
 **Pattern**: SFU (Selective Forwarding Unit) with client-side media subscription negotiation
 
 **Participants**:
+
 1. Browser client (RTCPeerConnection)
 2. Cloudflare Realtime SFU (remote offer generation, track subscription)
 3. Worker relay (session state, SDP delivery)
 
 **Session Lifecycle**:
 ```
-Browser                    Worker                          Realtime SFU
-  |                          |                                  |
-  +-- POST /session -------->|                                  |
-  |                          |-- POST sessions/new --+          |
-  |                          |                       v          |
-  |                          |<-- (token, sessionId) |          |
-  |<-- (token, sessionId) ---|                       |          |
-  ...
+
+Browser Worker Realtime SFU
+| | |
++-- POST /session -------->| |
+| |-- POST sessions/new --+ |
+| | v |
+| |<-- (token, sessionId) | |
+|<-- (token, sessionId) ---| | |
+...
+
 ```
 
 ## Wire Format (INFERRED — NEEDS ECHO DEMO VERIFICATION)
@@ -75,6 +78,7 @@ This file should track every unresolved protocol question, each with status:
 - `discarded` — Invalidated by new information
 
 Categories to cover:
+
 - Session Management (sessions/new format, response structure, token type)
 - Track Publishing (SDP format, track description fields, response structure)
 - Remote Track Subscription (offer delivery mechanism — CRITICAL)

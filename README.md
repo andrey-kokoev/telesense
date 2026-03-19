@@ -120,7 +120,6 @@ pnpm --filter telesense deploy
 pnpm --filter usage-meter deploy
 ```
 
-
 ## License
 
 MIT

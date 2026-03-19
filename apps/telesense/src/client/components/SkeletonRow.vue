@@ -32,7 +32,12 @@
 .skeleton-title {
   height: 1rem;
   width: 40%;
-  background: linear-gradient(90deg, var(--ui-border) 25%, var(--ui-surface-hover) 50%, var(--ui-border) 75%);
+  background: linear-gradient(
+    90deg,
+    var(--ui-border) 25%,
+    var(--ui-surface-hover) 50%,
+    var(--ui-border) 75%
+  );
   background-size: 200% 100%;
   border-radius: 0.25rem;
   animation: shimmer 1.5s infinite;
@@ -41,7 +46,12 @@
 .skeleton-subtitle {
   height: 0.75rem;
   width: 25%;
-  background: linear-gradient(90deg, var(--ui-border) 25%, var(--ui-surface-hover) 50%, var(--ui-border) 75%);
+  background: linear-gradient(
+    90deg,
+    var(--ui-border) 25%,
+    var(--ui-surface-hover) 50%,
+    var(--ui-border) 75%
+  );
   background-size: 200% 100%;
   border-radius: 0.25rem;
   animation: shimmer 1.5s infinite 0.2s;
@@ -55,7 +65,12 @@
 .skeleton-btn {
   width: 2rem;
   height: 2rem;
-  background: linear-gradient(90deg, var(--ui-border) 25%, var(--ui-surface-hover) 50%, var(--ui-border) 75%);
+  background: linear-gradient(
+    90deg,
+    var(--ui-border) 25%,
+    var(--ui-surface-hover) 50%,
+    var(--ui-border) 75%
+  );
   background-size: 200% 100%;
   border-radius: 0.375rem;
   animation: shimmer 1.5s infinite 0.1s;

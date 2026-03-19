@@ -1,50 +1,50 @@
-import { ref } from 'vue'
+import { ref } from "vue";
 
-const LONG_PRESS_DURATION = 500
-const MOVE_THRESHOLD = 10
+const LONG_PRESS_DURATION = 500;
+const MOVE_THRESHOLD = 10;
 
 export function useLongPress(onLongPress: () => void) {
-  const isPressing = ref(false)
-  let pressTimer: ReturnType<typeof setTimeout> | null = null
-  let startX = 0
-  let startY = 0
+  const isPressing = ref(false);
+  let pressTimer: ReturnType<typeof setTimeout> | null = null;
+  let startX = 0;
+  let startY = 0;
 
   function onTouchStart(e: TouchEvent) {
-    isPressing.value = true
-    startX = e.touches[0].clientX
-    startY = e.touches[0].clientY
-    
+    isPressing.value = true;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+
     pressTimer = setTimeout(() => {
       if (isPressing.value) {
-        onLongPress()
-        isPressing.value = false
+        onLongPress();
+        isPressing.value = false;
       }
-    }, LONG_PRESS_DURATION)
+    }, LONG_PRESS_DURATION);
   }
 
   function onTouchMove(e: TouchEvent) {
-    if (!isPressing.value) return
-    
-    const currentX = e.touches[0].clientX
-    const currentY = e.touches[0].clientY
-    const deltaX = Math.abs(currentX - startX)
-    const deltaY = Math.abs(currentY - startY)
-    
+    if (!isPressing.value) return;
+
+    const currentX = e.touches[0].clientX;
+    const currentY = e.touches[0].clientY;
+    const deltaX = Math.abs(currentX - startX);
+    const deltaY = Math.abs(currentY - startY);
+
     // Cancel if moved too much
     if (deltaX > MOVE_THRESHOLD || deltaY > MOVE_THRESHOLD) {
-      cancelPress()
+      cancelPress();
     }
   }
 
   function onTouchEnd() {
-    cancelPress()
+    cancelPress();
   }
 
   function cancelPress() {
-    isPressing.value = false
+    isPressing.value = false;
     if (pressTimer) {
-      clearTimeout(pressTimer)
-      pressTimer = null
+      clearTimeout(pressTimer);
+      pressTimer = null;
     }
   }
 
@@ -53,6 +53,6 @@ export function useLongPress(onLongPress: () => void) {
     onTouchStart,
     onTouchMove,
     onTouchEnd,
-    cancelPress
-  }
+    cancelPress,
+  };
 }

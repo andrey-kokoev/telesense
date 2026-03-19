@@ -32,6 +32,7 @@ Use real evidence, not speculation, to verify the Cloudflare Realtime protocol. 
 **Goal**: Verify session creation endpoint.
 
 Run Echo Demo with DevTools Network tab open:
+
 ```
 1. Open https://github.com/cloudflare/realtime-examples (Echo demo)
 2. Open Chrome DevTools → Network tab
@@ -40,6 +41,7 @@ Run Echo Demo with DevTools Network tab open:
 ```
 
 Capture and document:
+
 - [ ] Request body (empty vs required fields)
 - [ ] Response structure (`result.id` vs `sessionId`)
 - [ ] Token format (`result.token` path)
@@ -52,6 +54,7 @@ Update `docs/realtime-wire-contract.md` with verbatim JSON.
 **Goal**: Verify track publishing endpoint.
 
 In the same session:
+
 ```
 1. After session creation, look for POST to tracks/new
 2. Capture request body
@@ -59,6 +62,7 @@ In the same session:
 ```
 
 Capture and document:
+
 - [ ] Exact request body schema (sessionDescription wrapping)
 - [ ] Track description fields (name, kind, location, etc.)
 - [ ] Response structure (answer SDP path, track IDs)
@@ -68,11 +72,12 @@ Update `docs/realtime-wire-contract.md` with verbatim JSON.
 
 ### Task 3: Resolve Critical Blocker — Remote Subscription Initiation ⚠️
 
-**Goal**: Answer: *Which API call generates the Offer SDP for subscribing to remote tracks?*
+**Goal**: Answer: _Which API call generates the Offer SDP for subscribing to remote tracks?_
 
 **Critical Correction**: This is an **orchestration/pull model**, not push. Look for backend proactively calling Cloudflare to request subscription Offer.
 
 Procedure:
+
 ```
 1. Open Browser Tab A, start call (publish tracks)
 2. Open Browser Tab B, join same call
@@ -89,11 +94,13 @@ Hypotheses to test:
 **Hypothesis C**: `PUT /renegotiate` initiated by backend
 
 Document in `docs/realtime-wire-contract.md` under:
+
 ```markdown
 ## Remote subscription initiation
 ```
 
 Required outcomes:
+
 - [ ] Confirmed API endpoint with verbatim JSON, OR
 - [ ] Still unresolved with exact reason why
 
@@ -107,6 +114,7 @@ Required outcomes:
 ## Update Questions Document
 
 For each verified item:
+
 1. Move question from `open` to `verified` in `docs/realtime-open-questions.md`
 2. Add source citation (Echo Demo capture, line X)
 3. Add verbatim JSON to `docs/realtime-wire-contract.md`
@@ -123,6 +131,7 @@ For each verified item:
 ✅ **COMPLETED** — 2026-03-18
 
 **Key Findings**:
+
 - Repository: `cloudflare/realtime-examples` (not calls-demo)
 - API base: `rtc.live.cloudflare.com/v1` (not realtime.cloudflare.com)
 - Q8 resolved: `POST /tracks/new` with `location: "remote"` returns Offer

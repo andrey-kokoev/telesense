@@ -5,6 +5,7 @@ Common issues and solutions.
 ## Setup Issues
 
 ### "Command not found: pnpm"
+
 ```bash
 # Install pnpm
 npm install -g pnpm
@@ -15,6 +16,7 @@ corepack prepare pnpm@latest --activate
 ```
 
 ### "Failed to install dependencies"
+
 ```bash
 # Clean and retry
 rm -rf node_modules pnpm-lock.yaml
@@ -24,9 +26,11 @@ pnpm install
 ## Runtime Issues
 
 ### "Failed to capture: NotFoundError"
+
 **Cause**: No camera/mic detected.
 
 **Solutions**:
+
 1. Check hardware is connected
 2. Check browser permissions (click lock icon in address bar)
 3. For headless testing, use fake devices:
@@ -35,14 +39,17 @@ pnpm install
    ```
 
 ### "Session failed: 502"
+
 **Cause**: Cloudflare API rejected request.
 
 **Check**:
+
 1. `REALTIME_APP_ID` in `wrangler.toml` is correct
 2. `CF_CALLS_SECRET` in `.dev.vars` is correct
 3. Credentials are from the same Cloudflare Calls app
 
 **Debug**:
+
 ```bash
 # Enable debug logging
 echo "DEBUG=true" >> .dev.vars
@@ -50,9 +57,11 @@ pnpm dev
 ```
 
 ### "Missing authentication token" / "Invalid authentication token"
+
 **Cause**: `X-User-Token` header missing or incorrect.
 
 **Solutions**:
+
 1. **Development**: Check `DO_NOT_ENFORCE_USER_TOKEN=true` is in `.dev.vars` to disable auth
 2. **Production**: Ensure client sends correct `X-User-Token` header matching `GENERIC_USER_TOKEN`
 3. Check browser devtools Network tab for the header value
@@ -63,28 +72,33 @@ echo "DO_NOT_ENFORCE_USER_TOKEN=true" >> apps/telesense/.dev.vars
 ```
 
 ### "ICE failed" or "ICE timeout"
+
 **Cause**: Network can't establish peer connection.
 
 **Solutions**:
+
 1. Check firewall allows UDP
 2. Try different network (mobile hotspot)
 3. Check STUN connectivity:
    ```javascript
    // In browser console
-   pc = new RTCPeerConnection({iceServers: [{urls: 'stun:stun.cloudflare.com:3478'}]})
+   pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.cloudflare.com:3478" }] });
    // Check iceConnectionState
    ```
 
 ### "Published but no remote video"
+
 **Cause**: Discovery/subscription not working.
 
 **Check**:
+
 1. Both tabs use same `callId` (check URL: `?call=test`)
 2. Check browser console for errors
 3. Check network tab for `/discover-remote-tracks` calls
 4. Wait longer (discovery polls every 2 seconds)
 
 **Debug**:
+
 ```bash
 # Check health endpoint
 pnpm health
@@ -94,6 +108,7 @@ pnpm health
 ## Development Issues
 
 ### "Port 5173 already in use"
+
 ```bash
 # Kill process on port 5173
 lsof -ti:5173 | xargs kill -9
@@ -103,6 +118,7 @@ PORT=3000 pnpm dev
 ```
 
 ### "TypeScript errors"
+
 ```bash
 # Check types
 pnpm typecheck
@@ -112,7 +128,9 @@ pnpm rebuild
 ```
 
 ### "Wrangler compatibility warning"
+
 Safe to ignore. Update if desired:
+
 ```bash
 pnpm update wrangler
 ```
@@ -120,28 +138,30 @@ pnpm update wrangler
 ## E2E Test Issues
 
 ### Tests fail with "Requested device not found"
+
 Tests use fake media devices. Check `playwright.config.ts` has:
+
 ```typescript
 launchOptions: {
-  args: [
-    '--use-fake-device-for-media-stream',
-    '--use-fake-ui-for-media-stream',
-  ]
+  args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"];
 }
 ```
 
 ### Tests timeout
+
 Increase timeout in `playwright.config.ts`:
+
 ```typescript
-timeout: 60000  // 60 seconds
+timeout: 60000; // 60 seconds
 ```
 
 Or extend specific test:
+
 ```typescript
-test('slow test', async () => {
-  test.setTimeout(60000)
+test("slow test", async () => {
+  test.setTimeout(60000);
   // ...
-})
+});
 ```
 
 ## Still Stuck?
@@ -165,6 +185,7 @@ pnpm dev
 ```
 
 You'll see:
+
 - Cloudflare API requests/responses
 - Session creation details
 - Track publishing/subscription flow
@@ -172,6 +193,7 @@ You'll see:
 ## Getting Help
 
 Include in bug reports:
+
 1. Browser version
 2. `pnpm check` output
 3. Browser console errors

@@ -40,9 +40,9 @@ Keys are generated **inside the browser** using the Web Crypto API:
 ```javascript
 // Ephemeral ECDH key pair generated locally
 const keyPair = await crypto.subtle.generateKey(
-  { name: 'ECDH', namedCurve: 'P-256' },
-  true,  // extractable
-  ['deriveBits']
+  { name: "ECDH", namedCurve: "P-256" },
+  true, // extractable
+  ["deriveBits"],
 );
 // Private key NEVER leaves the browser
 ```
@@ -51,7 +51,7 @@ const keyPair = await crypto.subtle.generateKey(
 
 ```sdp
 // SDP contains fingerprint of certificate, NOT the key
-a=fingerprint:sha-256 
+a=fingerprint:sha-256
    4A:AD:B9:B1:3F:82:18:3B:54:02:12:DF:3E:5D:49:6B:19:E5:7C:AB
 
 // This allows certificate verification (pinning)
@@ -62,13 +62,13 @@ a=fingerprint:sha-256
 
 ### Who Can Decrypt?
 
-| Location | Can Decrypt? | Reason |
-|----------|--------------|--------|
-| **Browser A (sender)** | ✅ Yes | Generated keys locally |
-| **Browser B (receiver)** | ✅ Yes | Derived keys from DTLS handshake |
-| **Cloudflare SFU** | ❌ No | No access to DTLS keys |
-| **Your Worker** | ❌ No | Only passes SDP, no keys |
-| **Network sniffers** | ❌ No | Encrypted with DTLS/SRTP |
+| Location                 | Can Decrypt? | Reason                           |
+| ------------------------ | ------------ | -------------------------------- |
+| **Browser A (sender)**   | ✅ Yes       | Generated keys locally           |
+| **Browser B (receiver)** | ✅ Yes       | Derived keys from DTLS handshake |
+| **Cloudflare SFU**       | ❌ No        | No access to DTLS keys           |
+| **Your Worker**          | ❌ No        | Only passes SDP, no keys         |
+| **Network sniffers**     | ❌ No        | Encrypted with DTLS/SRTP         |
 
 ### What the SFU Sees
 
@@ -90,12 +90,12 @@ a=fingerprint:sha-256
 
 ### Legitimate Debugging
 
-| Method | How | Use Case |
-|--------|-----|----------|
-| **chrome://webrtc-internals/** | Built-in browser tool | Connection stats, no media |
-| **SSLKEYLOGFILE** | Export keys before browser launch | Wireshark decryption |
-| **Insertable Streams API** | Transform encoded frames | Custom encryption/effects |
-| **Browser dev tools** | Memory debugging | Development only |
+| Method                         | How                               | Use Case                   |
+| ------------------------------ | --------------------------------- | -------------------------- |
+| **chrome://webrtc-internals/** | Built-in browser tool             | Connection stats, no media |
+| **SSLKEYLOGFILE**              | Export keys before browser launch | Wireshark decryption       |
+| **Insertable Streams API**     | Transform encoded frames          | Custom encryption/effects  |
+| **Browser dev tools**          | Memory debugging                  | Development only           |
 
 ### Example: SSLKEYLOGFILE
 
@@ -113,17 +113,18 @@ sudo tcpdump -i any -w capture.pcap udp portrange 10000-20000
 
 ### Attack Vectors (Theoretical)
 
-| Attack | Feasibility | Mitigation |
-|--------|-------------|------------|
-| **Browser compromise** | Medium | OS sandbox, browser updates, malware detection |
-| **DTLS downgrade** | Low | Modern browsers reject weak ciphers |
-| **Certificate spoofing** | Low | Fingerprint verification in SDP |
-| **SFU compromise** | N/A | SFU has no keys by design |
-| **Key extraction** | Hard | Production browsers protect keys in memory |
+| Attack                   | Feasibility | Mitigation                                     |
+| ------------------------ | ----------- | ---------------------------------------------- |
+| **Browser compromise**   | Medium      | OS sandbox, browser updates, malware detection |
+| **DTLS downgrade**       | Low         | Modern browsers reject weak ciphers            |
+| **Certificate spoofing** | Low         | Fingerprint verification in SDP                |
+| **SFU compromise**       | N/A         | SFU has no keys by design                      |
+| **Key extraction**       | Hard        | Production browsers protect keys in memory     |
 
 ## The DTLS Handshake in Detail
 
 ### 1. ClientHello (Browser A)
+
 ```
 - Protocol version: DTLS 1.2
 - Random nonce
@@ -132,6 +133,7 @@ sudo tcpdump -i any -w capture.pcap udp portrange 10000-20000
 ```
 
 ### 2. ServerHello + Certificate (Browser B)
+
 ```
 - Selected cipher suite
 - Server certificate
@@ -140,6 +142,7 @@ sudo tcpdump -i any -w capture.pcap udp portrange 10000-20000
 ```
 
 ### 3. Key Exchange
+
 ```
 Both sides:
 - Generate ephemeral ECDH key pair
@@ -149,6 +152,7 @@ Both sides:
 ```
 
 ### 4. SRTP Key Derivation
+
 ```
 SRTP_master_key = HKDF-Expand(
   master_secret,
@@ -194,25 +198,25 @@ Client ──X-User-Token──► Worker ──► Verify against GENERIC_USER_
 
 ### Security Model
 
-| Aspect | Implementation |
-|--------|----------------|
-| Token storage | Wrangler secret (encrypted at rest) |
-| Token transmission | HTTP header (`X-User-Token`) |
-| Token validation | Constant-time comparison (Hono default) |
-| Dev bypass | Environment variable (dev only) |
+| Aspect             | Implementation                          |
+| ------------------ | --------------------------------------- |
+| Token storage      | Wrangler secret (encrypted at rest)     |
+| Token transmission | HTTP header (`X-User-Token`)            |
+| Token validation   | Constant-time comparison (Hono default) |
+| Dev bypass         | Environment variable (dev only)         |
 
 > **Note**: This is simple shared-token auth. Anyone with the token can use the app. For per-user auth, you'd need to add a user database and session management.
 
 ## Summary
 
-| Question | Answer |
-|----------|--------|
-| Where are keys generated? | **Inside the browser** (Web Crypto API) |
-| Where are keys exchanged? | **Peer-to-peer** over UDP (DTLS) |
-| Who can decrypt? | **Only the browsers** (endpoints) |
-| Can SFU decrypt? | **No** - by design |
-| Can you intercept? | **Only with browser cooperation** (SSLKEYLOGFILE) |
-| App access control? | **Token-based** (`X-User-Token` header) |
+| Question                  | Answer                                            |
+| ------------------------- | ------------------------------------------------- |
+| Where are keys generated? | **Inside the browser** (Web Crypto API)           |
+| Where are keys exchanged? | **Peer-to-peer** over UDP (DTLS)                  |
+| Who can decrypt?          | **Only the browsers** (endpoints)                 |
+| Can SFU decrypt?          | **No** - by design                                |
+| Can you intercept?        | **Only with browser cooperation** (SSLKEYLOGFILE) |
+| App access control?       | **Token-based** (`X-User-Token` header)           |
 
 ## See Also
 

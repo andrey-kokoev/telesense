@@ -79,18 +79,21 @@ Telesense is a minimalist 1:1 video calling application built on Cloudflare's Re
 ## Component Responsibilities
 
 ### Client (Browser)
+
 - Media capture (`getUserMedia`)
 - Video encoding/decoding (WebRTC)
 - ICE connectivity establishment
 - Rendering (`<video>` elements)
 
 ### Worker (Hono)
+
 - Session management
 - Signaling coordination
 - Track discovery
 - Cloudflare API proxy
 
 ### Cloudflare SFU
+
 - RTP packet routing
 - ICE/STUN/TURN handling
 - Session state
@@ -99,6 +102,7 @@ Telesense is a minimalist 1:1 video calling application built on Cloudflare's Re
 ## Data Flow
 
 ### 1. Session Creation
+
 ```
 Browser → Worker → Cloudflare
    POST /session → POST /sessions/new
@@ -106,6 +110,7 @@ Browser → Worker → Cloudflare
 ```
 
 ### 2. Track Publishing
+
 ```
 Browser → Worker → Cloudflare
    POST /publish-offer → POST /tracks/new (location: "local")
@@ -114,17 +119,19 @@ Browser → Worker → Cloudflare
 ```
 
 ### 3. Track Subscription (Q8)
+
 ```
 Browser → Worker → Cloudflare
    POST /subscribe-offer → POST /tracks/new (location: "remote")
                          ← Offer SDP (Cloudflare generates!)
    ← Offer SDP
-   
+
    POST /complete-subscribe → PUT /renegotiate
    Answer SDP
 ```
 
 ### 4. Media Flow
+
 ```
 Browser A → UDP/SRTP → Cloudflare → UDP/SRTP → Browser B
 Encoder                                 Decoder
@@ -136,11 +143,13 @@ Encoder                                 Decoder
 ### Why Single-File Worker?
 
 **Phase 1 (Discovery)**: Keep everything in `index.ts`
+
 - Easier to see patterns
 - Faster iteration
 - No premature abstraction
 
 **Phase 2 (Production)**: Split into:
+
 - `realtime-api.ts` - Cloudflare API client
 - `call-state.ts` - Session management
 - `routes.ts` - HTTP handlers
@@ -149,11 +158,13 @@ Encoder                                 Decoder
 ### Why In-Memory State?
 
 For protocol discovery:
+
 - ✅ Simple
 - ✅ Fast
 - ✅ No external dependencies
 
 For production:
+
 - ❌ Lost on worker restart
 - ❌ Not shared across instances
 - ❌ No persistence
@@ -170,20 +181,22 @@ Trade-off: 2-second latency for discovery.
 
 ## Security Model
 
-| Layer | Protection |
-|-------|------------|
-| **App Secret** | Server-only (wrangler secret / .dev.vars) |
-| **Session IDs** | Random UUIDs, not guessable |
-| **Media** | DTLS + SRTP (always encrypted) |
-| **Signaling** | HTTPS + CORS |
+| Layer           | Protection                                |
+| --------------- | ----------------------------------------- |
+| **App Secret**  | Server-only (wrangler secret / .dev.vars) |
+| **Session IDs** | Random UUIDs, not guessable               |
+| **Media**       | DTLS + SRTP (always encrypted)            |
+| **Signaling**   | HTTPS + CORS                              |
 
 ## Scalability Limits
 
 Current (in-memory):
+
 - ~1000 concurrent calls (memory limit)
 - Single region (worker runs in one DC)
 
 With Durable Objects:
+
 - 10,000+ concurrent calls
 - Global distribution
 

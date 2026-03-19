@@ -1,48 +1,48 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted } from "vue";
 
 interface Action {
-  id: string
-  label: string
-  icon?: string
-  danger?: boolean
+  id: string;
+  label: string;
+  icon?: string;
+  danger?: boolean;
 }
 
 interface Props {
-  open: boolean
-  title?: string
-  actions: Action[]
+  open: boolean;
+  title?: string;
+  actions: Action[];
 }
 
-const props = defineProps<Props>()
+const props = defineProps<Props>();
 const emit = defineEmits<{
-  select: [actionId: string]
-  close: []
-}>()
+  select: [actionId: string];
+  close: [];
+}>();
 
 function onSelect(actionId: string) {
-  emit('select', actionId)
-  emit('close')
+  emit("select", actionId);
+  emit("close");
 }
 
 function onBackdropClick() {
-  emit('close')
+  emit("close");
 }
 
 // Close on escape key
 function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && props.open) {
-    emit('close')
+  if (e.key === "Escape" && props.open) {
+    emit("close");
   }
 }
 
 onMounted(() => {
-  document.addEventListener('keydown', onKeydown)
-})
+  document.addEventListener("keydown", onKeydown);
+});
 
 onUnmounted(() => {
-  document.removeEventListener('keydown', onKeydown)
-})
+  document.removeEventListener("keydown", onKeydown);
+});
 </script>
 
 <template>

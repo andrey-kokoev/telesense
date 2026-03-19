@@ -25,11 +25,11 @@ callId: "my-meeting-123"
 
 ### Sessions vs Tracks
 
-| Concept | What | Example |
-|---------|------|---------|
-| **Session** | A connection to Cloudflare | Each browser has one |
-| **Track** | A media stream | Camera = 1 track, Mic = 1 track |
-| **Track Name** | Browser's track ID | `"a1b2c3d4-e5f6..."` (random UUID) |
+| Concept        | What                       | Example                            |
+| -------------- | -------------------------- | ---------------------------------- |
+| **Session**    | A connection to Cloudflare | Each browser has one               |
+| **Track**      | A media stream             | Camera = 1 track, Mic = 1 track    |
+| **Track Name** | Browser's track ID         | `"a1b2c3d4-e5f6..."` (random UUID) |
 
 ### How Remote Subscription Works
 
@@ -46,7 +46,7 @@ POST /tracks/new
 }
 # Response: Answer SDP
 
-# Subscribing (receiving THEIR camera)  
+# Subscribing (receiving THEIR camera)
 POST /tracks/new
 {
   "location": "remote",    // ← "I want to receive"
@@ -100,12 +100,14 @@ POST /tracks/new
 Before media flows, we need to exchange SDP (Session Description Protocol):
 
 ### Step 1: Browser A Creates Session
+
 ```http
 POST /sessions/new
 Response: { "sessionId": "abc123..." }
 ```
 
 ### Step 2: Browser A Publishes (Sends Offer)
+
 ```http
 POST /tracks/new (with location: "local")
 Request: { "sessionDescription": { "type": "offer", "sdp": "..." } }
@@ -115,17 +117,20 @@ Response: { "sessionDescription": { "type": "answer", "sdp": "..." } }
 Now A is sending to Cloudflare.
 
 ### Step 3: Browser B Joins
+
 Same as A - creates session, publishes its own tracks.
 
 ### Step 4: Discovery (App-Level)
+
 ```http
 GET /discover-remote-tracks?sessionId=...
-Response: [ 
+Response: [
   { "trackName": "...", "sessionId": "A's-session" }
 ]
 ```
 
 ### Step 5: Browser B Subscribes (The Magic)
+
 ```http
 POST /tracks/new (with location: "remote")
 Request: { "tracks": [{ "location": "remote", "sessionId": "A's-session", "trackName": "..." }] }
@@ -135,6 +140,7 @@ Response: { "sessionDescription": { "type": "offer", "sdp": "..." } }
 **This is the key insight:** Cloudflare generates an Offer for the subscription.
 
 ### Step 6: Complete Subscription
+
 ```http
 PUT /renegotiate
 Request: { "sessionDescription": { "type": "answer", "sdp": "..." } }
@@ -149,28 +155,28 @@ See [Media Flow Documentation](../10-architecture/02-media-flow.md) for packet-l
 Quick summary:
 
 ```
-Raw Video (YUV) 
-    → Encoder (VP8) 
-    → RTP Packets 
-    → SRTP Encryption 
-    → UDP/DTLS 
-    → Cloudflare 
-    → UDP/DTLS 
-    → SRTP Decrypt 
-    → RTP 
-    → Decoder 
-    → YUV 
+Raw Video (YUV)
+    → Encoder (VP8)
+    → RTP Packets
+    → SRTP Encryption
+    → UDP/DTLS
+    → Cloudflare
+    → UDP/DTLS
+    → SRTP Decrypt
+    → RTP
+    → Decoder
+    → YUV
     → Screen
 ```
 
 ## Why This Architecture?
 
-| Decision | Why |
-|----------|-----|
-| **Cloudflare SFU** | No server-side encoding, just routing |
-| **Pull model** | Browser asks for Offer, not pushed |
+| Decision            | Why                                         |
+| ------------------- | ------------------------------------------- |
+| **Cloudflare SFU**  | No server-side encoding, just routing       |
+| **Pull model**      | Browser asks for Offer, not pushed          |
 | **HTTPS signaling** | Simple, debuggable, no WebSocket complexity |
-| **In-memory state** | Protocol discovery first, durability later |
+| **In-memory state** | Protocol discovery first, durability later  |
 
 ## Limitations
 

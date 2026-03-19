@@ -23,20 +23,25 @@ Convert the defensive 503-scaffold into working implementation by integrating ve
 
 Update `docs/realtime-wire-contract.md`:
 
-```markdown
+````markdown
 ## Wire Format (VERIFIED — Echo Demo Capture)
 
 ### 1. POST /realtime/client/v4/apps/{appId}/sessions/new
+
 **Request** (VERIFIED):
+
+```json
+[paste verbatim from DevTools]
+```
+````
+
+**Response** (VERIFIED):
+
 ```json
 [paste verbatim from DevTools]
 ```
 
-**Response** (VERIFIED):
-```json
-[paste verbatim from DevTools]
-```
-```
+````
 
 - [ ] Replace all "INFERRED" markers with "VERIFIED" or keep as "INFERRED"
 - [ ] Add verbatim JSON from DevTools for each endpoint
@@ -76,9 +81,10 @@ app.post('/api/calls/:callId/session', async (c) => {
   })
   // ... full implementation
 })
-```
+````
 
 Routes to unlock:
+
 - [ ] `POST /api/calls/:callId/session` — Remove 503, implement sessions/new
 - [ ] `POST /api/calls/:callId/publish-offer` — Remove 503, implement tracks/new
 - [ ] **Remote subscription initiation** — NEW: Implement the API call that requests subscription Offer from Cloudflare (Q8)
@@ -96,17 +102,18 @@ Replace blocked message with full implementation:
 
 ```typescript
 // BEFORE (scaffold):
-log('[BLOCKED] Cannot create session: worker routes return 503')
+log("[BLOCKED] Cannot create session: worker routes return 503");
 
 // AFTER (verified):
 async function createSession() {
-  const res = await fetch(`/api/calls/${callId}/session`, { method: 'POST' })
-  const data = await res.json()
+  const res = await fetch(`/api/calls/${callId}/session`, { method: "POST" });
+  const data = await res.json();
   // ... full implementation
 }
 ```
 
 Implement full flow:
+
 - [ ] Call `POST /api/calls/:callId/session`
 - [ ] Create offer, call `POST /publish-offer`
 - [ ] Set remote description with answer
@@ -125,6 +132,7 @@ Edit `README.md`:
 ```
 
 Update sections:
+
 - [ ] Current State — Mark implementation as working
 - [ ] Known Blockers — Remove resolved blockers
 - [ ] Next Step — Update to next milestone
@@ -142,12 +150,13 @@ pnpm dev
 
 ## Status Determination
 
-| Status | Criteria |
-|--------|----------|
+| Status                | Criteria                                                 |
+| --------------------- | -------------------------------------------------------- |
 | `local publish works` | Tab A can publish tracks to Cloudflare, sees local video |
-| `full 1:1 call works` | Tab A and Tab B can see/hear each other |
+| `full 1:1 call works` | Tab A and Tab B can see/hear each other                  |
 
 If Q8 (remote offer delivery) remains unresolved:
+
 - Status stays `scaffold only` or moves to `local publish works`
 - Document blocker honestly in README and wire-contract
 
@@ -185,6 +194,7 @@ If Q8 (remote offer delivery) remains unresolved:
 ## Next Steps
 
 Future tasks:
+
 - Production hardening (Durable Objects, auth, error recovery)
 - Feature additions (screen share, chat, mute/unmute)
 - Performance optimization

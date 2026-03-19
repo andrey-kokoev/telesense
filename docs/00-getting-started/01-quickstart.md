@@ -25,6 +25,7 @@ pnpm install
 ```
 
 This interactive script will:
+
 - Check prerequisites (wrangler, pnpm)
 - Guide you through creating a Cloudflare Calls app
 - Generate secure tokens automatically
@@ -68,6 +69,7 @@ pnpm dev
 ```
 
 This starts:
+
 - Worker on http://localhost:8787 (API)
 - Vite on http://localhost:5173 (Client)
 
@@ -94,16 +96,20 @@ pnpm test:ui
 ## Common Issues
 
 ### "Failed to capture: NotFoundError"
+
 No camera/mic detected. For headless testing:
+
 ```bash
 # Tests use fake devices automatically
 pnpm test
 ```
 
 ### "Session failed: 502"
+
 Check credentials in `.dev.vars` and `wrangler.toml`.
 
 ### "ICE failed"
+
 Network/firewall blocking UDP. Try different network or check STUN connectivity.
 
 ## Next Steps

@@ -37,6 +37,7 @@ e2e/
 ## Test Artifacts
 
 On failure, Playwright saves:
+
 - Screenshots in `test-results/`
 - Videos in `test-results/`
 - Trace files for debugging
@@ -51,6 +52,7 @@ On failure, Playwright saves:
 ## CI/CD
 
 Tests can run in CI with:
+
 ```bash
 CI=true pnpm test
 ```

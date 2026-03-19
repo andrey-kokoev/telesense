@@ -40,6 +40,7 @@ Required dependencies only:
 ```
 
 Preferred stack:
+
 - `hono` — Worker framework
 - `wrangler` — Cloudflare dev/deploy
 - `vite` — Client bundler
@@ -62,6 +63,7 @@ REALTIME_APP_ID = "your-app-id-here"
 ```
 
 Instructions for user:
+
 ```bash
 # Set the secret
 wrangler secret put REALTIME_APP_SECRET
@@ -70,29 +72,29 @@ wrangler secret put REALTIME_APP_SECRET
 ### File: `vite.config.ts`
 
 ```typescript
-import { defineConfig } from 'vite'
+import { defineConfig } from "vite";
 
 export default defineConfig({
-  root: '.',
-  publicDir: 'public',
+  root: ".",
+  publicDir: "public",
   server: {
     port: 5173,
     proxy: {
-      '/api': 'http://localhost:8787'
-    }
+      "/api": "http://localhost:8787",
+    },
   },
   build: {
-    outDir: 'dist',
-    emptyOutDir: true
-  }
-})
+    outDir: "dist",
+    emptyOutDir: true,
+  },
+});
 ```
 
 ### File: `README.md`
 
 Must include:
 
-```markdown
+````markdown
 # Telesense
 
 **Status: [scaffold only | local publish works | full 1:1 call works]**
@@ -109,6 +111,7 @@ Raw Cloudflare Realtime SFU spike. 1:1 video call path [blocked/verified].
 ## Known Blockers
 
 **Critical**: [Remote-subscribe offer delivery mechanism unverified | resolved]
+
 - [Description of blocker]
 
 See `docs/realtime-open-questions.md` for full list.
@@ -125,6 +128,7 @@ wrangler secret put REALTIME_APP_SECRET
 # Run local dev (worker + vite)
 npm run dev
 ```
+````
 
 ## Next Step
 
@@ -146,16 +150,19 @@ npm run dev
 ## Warning
 
 This is raw-SFU experimental scaffolding, not production-ready.
+
 ```
 
 ### File: `.gitignore`
 
 ```
+
 node_modules/
 dist/
 .env
 .wrangler/
 .dev.vars
+
 ```
 
 ## Acceptance Criteria
@@ -186,3 +193,4 @@ dist/
 ## Next Step
 
 ~~After verification: **20250318-001f-unlock-implementation.md**~~ → Completed
+```
