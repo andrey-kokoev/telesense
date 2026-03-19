@@ -88,10 +88,30 @@ interface DiscoverRemoteTracksResponse {
     sessionId: string
     mid: string
   }>
+  remoteParticipantCount: number
+  remoteParticipants: Array<{
+    sessionId: string
+    audioEnabled: boolean
+    videoEnabled: boolean
+  }>
 }
 
 interface LeaveRequest {
   sessionId: string
+}
+
+interface HeartbeatRequest {
+  sessionId: string
+}
+
+interface MediaStateRequest {
+  sessionId: string
+  audioEnabled?: boolean
+  videoEnabled?: boolean
+}
+
+interface TerminateRoomResponse {
+  ok: true
 }
 
 // Normalize roomId to uppercase for case-insensitive matching
@@ -114,6 +134,19 @@ interface ErrorResponse {
 
 interface OkResponse {
   ok: true
+}
+
+function isAuthDisabled(env: Env): boolean {
+  return env.DO_NOT_ENFORCE_USER_TOKEN === "true"
+}
+
+function hasValidUserToken(request: Request, env: Env): boolean {
+  if (isAuthDisabled(env)) {
+    return true
+  }
+
+  const token = request.headers.get("X-User-Token")
+  return !!token && token === env.GENERIC_USER_TOKEN
 }
 
 // Helper functions
@@ -183,44 +216,17 @@ const app = new Hono<{ Bindings: Env }>()
 // Request logging in development
 app.use("*", logger())
 
-// Auth: Require GENERIC_USER_TOKEN for all API routes (unless disabled in dev)
-app.use("/api/*", async (c, next) => {
-  const env = c.env
-
-  // Skip auth in dev if DO_NOT_ENFORCE_USER_TOKEN is set
-  if (env.DO_NOT_ENFORCE_USER_TOKEN === "true") {
-    return next()
-  }
-
-  const token = c.req.header("X-User-Token")
-
-  if (!token) {
-    return c.json(
-      {
-        error: "Missing authentication token",
-        code: "AUTH_MISSING",
-      },
-      401,
-    )
-  }
-
-  if (token !== env.GENERIC_USER_TOKEN) {
-    console.warn(
-      `[auth] Invalid token attempt from ${c.req.header("CF-Connecting-IP") || "unknown"}`,
-    )
+app.get("/api/auth/verify", (c) => {
+  if (!hasValidUserToken(c.req.raw, c.env)) {
     return c.json(
       {
         error: "Invalid authentication token",
-        code: "AUTH_INVALID",
+        code: c.req.header("X-User-Token") ? "AUTH_INVALID" : "AUTH_MISSING",
       },
-      403,
+      c.req.header("X-User-Token") ? 403 : 401,
     )
   }
 
-  return next()
-})
-
-app.get("/api/auth/verify", (c) => {
   return c.json({ ok: true } as OkResponse)
 })
 
@@ -306,6 +312,25 @@ app.post("/api/rooms/:roomId/session", async (c) => {
     console.log(`[sessions/new] Creating session for room: ${roomId}`)
   }
 
+  const callRoom = getCallRoom(env, roomId)
+  const roomExistsRes = await callRoom.fetch(new Request("http://do.internal/?action=roomExists"))
+  const roomExistsData = (await roomExistsRes.json()) as {
+    roomCreated?: boolean
+    sessionCount?: number
+  }
+
+  if (!roomExistsData.roomCreated) {
+    if (!hasValidUserToken(c.req.raw, env)) {
+      return c.json(
+        {
+          error: "Room not found",
+          code: c.req.header("X-User-Token") ? "ROOM_NOT_FOUND" : "AUTH_REQUIRED",
+        } as ErrorResponse,
+        c.req.header("X-User-Token") ? 404 : 401,
+      )
+    }
+  }
+
   // VERIFIED: Empty body, response is { sessionId: "..." }
   const res = await fetch(`${REALTIME_API}/${env.REALTIME_APP_ID}/sessions/new`, {
     method: "POST",
@@ -342,7 +367,6 @@ app.post("/api/rooms/:roomId/session", async (c) => {
   const internalId = crypto.randomUUID()
 
   // Register with Durable Object for cross-device coordination
-  const callRoom = getCallRoom(env, roomId)
   await callRoom.fetch(
     new Request("http://do.internal/?action=createSession", {
       method: "POST",
@@ -710,21 +734,140 @@ app.get("/api/rooms/:roomId/discover-remote-tracks", async (c) => {
   )
 
   if (!tracksRes.ok) {
-    return c.json({ tracks: [] } as DiscoverRemoteTracksResponse)
+    return c.json({
+      tracks: [],
+      remoteParticipantCount: 0,
+      remoteParticipants: [],
+    } as DiscoverRemoteTracksResponse)
   }
 
-  const tracksData = (await tracksRes.json()) as { tracks: DiscoverRemoteTracksResponse["tracks"] }
+  const tracksData = (await tracksRes.json()) as DiscoverRemoteTracksResponse
 
   if (debug) {
     console.log(
-      `[discover] roomId: ${roomId}, selfId: ${selfId?.slice(0, 8)}, remote tracks: ${tracksData.tracks.length}`,
+      `[discover] roomId: ${roomId}, selfId: ${selfId?.slice(0, 8)}, remote tracks: ${tracksData.tracks.length}, remote participants: ${tracksData.remoteParticipantCount}`,
     )
   }
 
-  return c.json({ tracks: tracksData.tracks })
+  return c.json(tracksData)
 })
 
-// 6. LEAVE
+// 6. HEARTBEAT
+app.post("/api/rooms/:roomId/heartbeat", async (c) => {
+  const env = c.env
+  const roomId = normalizeRoomId(c.req.param("roomId"))
+
+  try {
+    requireNonEmptyString(roomId, "roomId")
+  } catch (e) {
+    return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
+  }
+
+  let body: HeartbeatRequest
+  try {
+    body = await c.req.json()
+    requireNonEmptyString(body.sessionId, "sessionId")
+  } catch (e) {
+    return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
+  }
+
+  const callRoom = getCallRoom(env, roomId)
+  const heartbeatRes = await callRoom.fetch(
+    new Request("http://do.internal/?action=heartbeat", {
+      method: "POST",
+      body: JSON.stringify({ internalId: body.sessionId }),
+    }),
+  )
+
+  if (!heartbeatRes.ok) {
+    if (heartbeatRes.status === 404) {
+      return c.json({ error: "Session not found", code: "SESSION_NOT_FOUND" } as ErrorResponse, 404)
+    }
+    return c.json(
+      { error: "Failed to update presence", code: "INTERNAL_ERROR" } as ErrorResponse,
+      500,
+    )
+  }
+
+  return c.json({ ok: true } as OkResponse)
+})
+
+// 7. MEDIA STATE
+app.post("/api/rooms/:roomId/media-state", async (c) => {
+  const env = c.env
+  const roomId = normalizeRoomId(c.req.param("roomId"))
+
+  try {
+    requireNonEmptyString(roomId, "roomId")
+  } catch (e) {
+    return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
+  }
+
+  let body: MediaStateRequest
+  try {
+    body = await c.req.json()
+    requireNonEmptyString(body.sessionId, "sessionId")
+  } catch (e) {
+    return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
+  }
+
+  const callRoom = getCallRoom(env, roomId)
+  const stateRes = await callRoom.fetch(
+    new Request("http://do.internal/?action=updateMediaState", {
+      method: "POST",
+      body: JSON.stringify({
+        internalId: body.sessionId,
+        audioEnabled: body.audioEnabled,
+        videoEnabled: body.videoEnabled,
+      }),
+    }),
+  )
+
+  if (!stateRes.ok) {
+    if (stateRes.status === 404) {
+      return c.json({ error: "Session not found", code: "SESSION_NOT_FOUND" } as ErrorResponse, 404)
+    }
+    return c.json(
+      { error: "Failed to update media state", code: "INTERNAL_ERROR" } as ErrorResponse,
+      500,
+    )
+  }
+
+  return c.json({ ok: true } as OkResponse)
+})
+
+// 8. TERMINATE ROOM
+app.post("/api/rooms/:roomId/terminate", async (c) => {
+  const env = c.env
+  const roomId = normalizeRoomId(c.req.param("roomId"))
+
+  try {
+    requireNonEmptyString(roomId, "roomId")
+  } catch (e) {
+    return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
+  }
+
+  if (!hasValidUserToken(c.req.raw, env)) {
+    return c.json(
+      {
+        error: "Invalid authentication token",
+        code: c.req.header("X-User-Token") ? "AUTH_INVALID" : "AUTH_MISSING",
+      } as ErrorResponse,
+      c.req.header("X-User-Token") ? 403 : 401,
+    )
+  }
+
+  const callRoom = getCallRoom(env, roomId)
+  await callRoom.fetch(
+    new Request("http://do.internal/?action=terminateRoom", {
+      method: "POST",
+    }),
+  )
+
+  return c.json({ ok: true } as TerminateRoomResponse)
+})
+
+// 9. LEAVE
 app.post("/api/rooms/:roomId/leave", async (c) => {
   const env = c.env
   const roomId = normalizeRoomId(c.req.param("roomId"))

@@ -39,6 +39,7 @@ const iconName = computed(() => {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-full);
   cursor: pointer;
+  margin-bottom: var(--space-4);
   transition:
     background-color 0.15s ease,
     border-color 0.15s ease,

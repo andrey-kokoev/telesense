@@ -310,8 +310,8 @@ const editingRoomId = ref<string | null>(null)
 const editingRoomLabel = ref("")
 const roomIdInput = computed(() => roomCodeDigits.value.join(""))
 
-function setRoomCodeInputRef(el: Element | null, index: number) {
-  roomCodeInputs.value[index] = el as HTMLInputElement | null
+function setRoomCodeInputRef(el: unknown, index: number) {
+  roomCodeInputs.value[index] = el instanceof HTMLInputElement ? el : null
 }
 
 function focusRoomCodeInput(index: number) {
@@ -374,7 +374,7 @@ function generateCallId(): string {
   return result
 }
 
-function createNewRoom() {
+async function createNewRoom() {
   const roomId = generateCallId()
   if (!recentCalls.value.some((room) => room.id === roomId)) {
     addRecentCall(roomId)
@@ -483,6 +483,7 @@ function clearToken() {
   opacity: 0.8;
   margin: 0;
   letter-spacing: 0.1ch;
+  margin-top: var(--space-2);
 }
 
 .landing__title-rest {

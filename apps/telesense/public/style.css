@@ -158,7 +158,6 @@ body {
 .container {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 2rem;
 }
 
 /* Header */
@@ -319,14 +318,14 @@ body {
 }
 
 .btn-secondary {
-  background: white;
+  background: var(--ui-bg-elevated);
   color: var(--ui-text);
   border: 1px solid var(--ui-border);
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: var(--color-tan-50);
-  border-color: var(--color-tan-300);
+  background: var(--ui-surface);
+  border-color: var(--ui-border-hover);
 }
 
 .btn-success {
@@ -390,8 +389,9 @@ body {
 }
 
 .status-info {
-  background: #eff6ff;
-  border-left: 4px solid #3b82f6;
+  background: var(--ui-bg-elevated);
+  color: var(--ui-text);
+  border-left: 4px solid var(--ui-primary);
 }
 
 .status-success {
@@ -585,7 +585,7 @@ body {
   padding: 0.625rem 1.25rem;
   border-radius: var(--radius);
   border: 1px solid var(--ui-border);
-  background: white;
+  background: var(--ui-bg-elevated);
   color: var(--ui-text);
   font-size: 0.875rem;
   font-weight: 500;
@@ -634,12 +634,6 @@ body {
 @supports (padding: max(0px)) {
   .header {
     padding-top: max(1rem, env(safe-area-inset-top));
-  }
-
-  .container {
-    padding-left: max(1rem, env(safe-area-inset-left));
-    padding-right: max(1rem, env(safe-area-inset-right));
-    padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }
 
   .toast-container {
@@ -768,10 +762,6 @@ body {
 
 /* Responsive */
 @media (max-width: 768px) {
-  .container {
-    padding: 1rem;
-  }
-
   .header h1 {
     font-size: 1.75rem;
   }

@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, onMounted } from "vue"
-import { useToast } from "../composables/useToast"
+import { computed, onBeforeUnmount, onMounted, ref } from "vue"
+import CallDesktopLayout from "../components/CallDesktopLayout.vue"
+import CallMobileLayout from "../components/CallMobileLayout.vue"
 import { useAppStore } from "../composables/useAppStore"
-import BottomSheet from "../components/BottomSheet.vue"
-import { useSwipeBack } from "../composables/useSwipeBack"
 import { usePinchZoom } from "../composables/usePinchZoom"
+import { useSwipeBack } from "../composables/useSwipeBack"
+import { useToast } from "../composables/useToast"
 
 interface SessionResponse {
   sessionId: string
@@ -24,72 +25,97 @@ interface SubscribeResponse {
 
 interface DiscoverResponse {
   tracks: Array<{ trackName: string; sessionId: string; mid: string }>
+  remoteParticipantCount: number
+  remoteParticipants: Array<{
+    sessionId: string
+    audioEnabled: boolean
+    videoEnabled: boolean
+  }>
+}
+
+interface LogEntry {
+  timestamp: string
+  message: string
 }
 
 const props = defineProps<{ roomId: string }>()
 const { show: showToast } = useToast()
 const store = useAppStore()
 
-// Swipe back to leave
 const swipeBack = useSwipeBack(() => {
   leave()
 })
-
-// Pinch zoom for remote video
 const remoteZoom = usePinchZoom()
 
-// Swap video positions
+const isMobile = ref(false)
 const isSwapped = ref(false)
+const localVid = ref<HTMLVideoElement>()
+const remoteVid = ref<HTMLVideoElement>()
+const remoteStream = ref<MediaStream | null>(null)
+const showLogs = ref(false)
+const logs = ref<LogEntry[]>([])
+const localStream = ref<MediaStream | null>(null)
+const isAudioMuted = ref(false)
+const isVideoOff = ref(false)
+const isRemoteAudioMuted = ref(false)
+const isRemoteVideoOff = ref(false)
+const isConnecting = ref(true)
+const hadRemoteParticipant = ref(false)
+const isRemoteDisconnected = ref(false)
+const currentSessionId = ref<string | null>(null)
+const pollTimeoutId = ref<number | null>(null)
+const heartbeatIntervalId = ref<number | null>(null)
+const visibilityListener = ref<(() => void) | null>(null)
+const beforeUnloadListener = ref<(() => void) | null>(null)
+const mediaQueryListener = ref<((event: MediaQueryListEvent) => void) | null>(null)
+let viewportQuery: MediaQueryList | null = null
+
+const videoLayout = computed(() => (isConnecting.value ? "solo" : "duo"))
+const isAuthenticated = store.isAuthenticated
+
+function setLocalVideoEl(el: Element | null) {
+  localVid.value = el instanceof HTMLVideoElement ? el : undefined
+  if (localVid.value && localStream.value) {
+    localVid.value.srcObject = localStream.value
+  }
+}
+
+function setRemoteVideoEl(el: Element | null) {
+  remoteVid.value = el instanceof HTMLVideoElement ? el : undefined
+  if (remoteVid.value && remoteStream.value) {
+    remoteVid.value.srcObject = remoteStream.value
+  }
+}
+
 function swapVideos() {
   isSwapped.value = !isSwapped.value
 }
 
-const statusEl = ref<HTMLDivElement>()
-const localVid = ref<HTMLVideoElement>()
-const remoteVid = ref<HTMLVideoElement>()
-const showLogs = ref(false)
-const logs = ref<string[]>(["Initializing..."])
-
-// Media controls
-const localStream = ref<MediaStream | null>(null)
-const isAudioMuted = ref(false)
-const isVideoOff = ref(false)
-const isConnecting = ref(true)
-const sheetState = ref<"collapsed" | "half" | "full">("half")
-const isFullscreen = ref(false)
-const fullscreenVideo = ref<"local" | "remote" | null>(null)
-
-// Smart layout: when connecting, local video is larger
-// When connected, both videos are equal
-const videoLayout = computed(() => {
-  if (isConnecting.value) {
-    return "solo" // Local large, remote small/placeholder
-  }
-  return "duo" // Both equal
-})
-
 function log(msg: string) {
   console.log(msg)
-  logs.value.push(msg)
+  logs.value.push({
+    timestamp: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+    message: msg,
+  })
 }
 
 function toggleAudio() {
   if (!localStream.value) return
-  const audioTracks = localStream.value.getAudioTracks()
-  audioTracks.forEach((track) => {
+  for (const track of localStream.value.getAudioTracks()) {
     track.enabled = !track.enabled
-  })
+  }
   isAudioMuted.value = !isAudioMuted.value
+  syncMediaState()
   log(isAudioMuted.value ? "🎤 Microphone muted" : "🎤 Microphone unmuted")
 }
 
 function toggleVideo() {
   if (!localStream.value) return
-  const videoTracks = localStream.value.getVideoTracks()
-  videoTracks.forEach((track) => {
+  for (const track of localStream.value.getVideoTracks()) {
     track.enabled = !track.enabled
-  })
+  }
   isVideoOff.value = !isVideoOff.value
+  syncMediaState()
   log(isVideoOff.value ? "📹 Camera off" : "📹 Camera on")
 }
 
@@ -105,72 +131,190 @@ async function apiCall(url: string, options: RequestInit = {}) {
 }
 
 function leave() {
+  void cleanupCallPresence()
   window.location.search = ""
 }
 
-// Fullscreen handling
+function clearRemoteVideo() {
+  const stream = remoteStream.value ?? (remoteVid.value?.srcObject as MediaStream | null)
+  if (stream) {
+    stream.getTracks().forEach((track) => track.stop())
+  }
+  remoteStream.value = null
+  if (remoteVid.value) {
+    remoteVid.value.srcObject = null
+  }
+}
+
+function stopLocalMedia() {
+  const stream = localStream.value
+  if (stream) {
+    stream.getTracks().forEach((track) => track.stop())
+  }
+  localStream.value = null
+  if (localVid.value) {
+    localVid.value.srcObject = null
+  }
+}
+
+function handleRemoteDisconnect(reason: string) {
+  if (!hadRemoteParticipant.value || isRemoteDisconnected.value) return
+  log(`🔌 Remote participant disconnected (${reason})`)
+  clearRemoteVideo()
+  isRemoteDisconnected.value = true
+  isConnecting.value = false
+  showToast("Remote participant disconnected", "error")
+}
+
+function stopPolling() {
+  if (pollTimeoutId.value !== null) {
+    window.clearTimeout(pollTimeoutId.value)
+    pollTimeoutId.value = null
+  }
+}
+
+function stopHeartbeat() {
+  if (heartbeatIntervalId.value !== null) {
+    window.clearInterval(heartbeatIntervalId.value)
+    heartbeatIntervalId.value = null
+  }
+}
+
+async function sendHeartbeat(sessionId: string) {
+  const res = await apiCall(`/api/rooms/${props.roomId}/heartbeat`, {
+    method: "POST",
+    body: JSON.stringify({ sessionId }),
+  })
+  if (!res.ok) {
+    const error = new Error(`Heartbeat failed: ${res.status}`)
+    ;(error as Error & { status?: number }).status = res.status
+    throw error
+  }
+}
+
+function startHeartbeat(sessionId: string) {
+  stopHeartbeat()
+  const beat = async () => {
+    try {
+      await sendHeartbeat(sessionId)
+    } catch (e) {
+      if ((e as Error & { status?: number }).status === 404) {
+        log("🛑 Room ended")
+        showToast("Room ended", "error")
+        leave()
+        return
+      }
+      log(`⚠️ Presence heartbeat failed: ${e}`)
+    }
+  }
+  void beat()
+  heartbeatIntervalId.value = window.setInterval(() => {
+    void beat()
+  }, 5000)
+}
+
+async function cleanupCallPresence() {
+  stopPolling()
+  stopHeartbeat()
+  const sessionId = currentSessionId.value
+  if (!sessionId) return
+  currentSessionId.value = null
+  try {
+    await apiCall(`/api/rooms/${props.roomId}/leave`, {
+      method: "POST",
+      body: JSON.stringify({ sessionId }),
+      keepalive: true,
+    })
+  } catch {
+    // best-effort cleanup
+  }
+}
+
+async function syncMediaState() {
+  const sessionId = currentSessionId.value
+  if (!sessionId) return
+
+  try {
+    await apiCall(`/api/rooms/${props.roomId}/media-state`, {
+      method: "POST",
+      body: JSON.stringify({
+        sessionId,
+        audioEnabled: !isAudioMuted.value,
+        videoEnabled: !isVideoOff.value,
+      }),
+    })
+  } catch {
+    // best-effort sync
+  }
+}
+
 async function toggleFullscreen(videoType: "local" | "remote") {
   const videoEl = videoType === "local" ? localVid.value : remoteVid.value
   if (!videoEl) return
-
   try {
     if (document.fullscreenElement) {
       await document.exitFullscreen()
-      isFullscreen.value = false
-      fullscreenVideo.value = null
     } else {
       await videoEl.requestFullscreen()
-      isFullscreen.value = true
-      fullscreenVideo.value = videoType
     }
   } catch (err) {
     log(`Fullscreen error: ${err}`)
   }
 }
 
-// Double-tap detection
 let lastTap = 0
 function onVideoTap(videoType: "local" | "remote") {
   const now = Date.now()
-  const delta = now - lastTap
-  if (delta < 300) {
-    // Double tap detected
-    toggleFullscreen(videoType)
+  if (now - lastTap < 300) {
+    void toggleFullscreen(videoType)
   }
   lastTap = now
 }
 
 async function pollAndSubscribe(pc: RTCPeerConnection, sessionId: string) {
   const checkedTracks = new Set<string>()
-
   const poll = async () => {
+    if (currentSessionId.value !== sessionId) return
     try {
       const res = await apiCall(
         `/api/rooms/${props.roomId}/discover-remote-tracks?sessionId=${sessionId}`,
       )
       if (!res.ok) return
       const data = (await res.json()) as DiscoverResponse
+      const discoveredTrackNames = new Set(data.tracks.map((track) => track.trackName))
+      isRemoteAudioMuted.value =
+        data.remoteParticipants.length > 0 && data.remoteParticipants.every((p) => !p.audioEnabled)
+      isRemoteVideoOff.value =
+        data.remoteParticipants.length > 0 && data.remoteParticipants.every((p) => !p.videoEnabled)
 
-      const newTracks = data.tracks.filter((t) => !checkedTracks.has(t.trackName))
+      if (hadRemoteParticipant.value && data.remoteParticipantCount === 0) {
+        checkedTracks.clear()
+        handleRemoteDisconnect("remote participant left room")
+      } else if (hadRemoteParticipant.value && discoveredTrackNames.size === 0) {
+        checkedTracks.clear()
+        handleRemoteDisconnect("remote tracks disappeared")
+      }
 
+      const newTracks = data.tracks.filter((track) => !checkedTracks.has(track.trackName))
       if (newTracks.length > 0) {
         log(`🔔 Remote participant joined!`)
-        log(`   Tracks: ${newTracks.map((t) => t.trackName.slice(0, 8)).join(", ")}`)
-
+        log(`   Tracks: ${newTracks.map((track) => track.trackName.slice(0, 8)).join(", ")}`)
         for (const track of newTracks) {
           checkedTracks.add(track.trackName)
         }
-
         await subscribeToTracks(pc, sessionId, newTracks)
       }
     } catch (e) {
       console.error("Poll error:", e)
     }
 
-    setTimeout(poll, 2000)
+    if (currentSessionId.value !== sessionId) return
+    pollTimeoutId.value = window.setTimeout(() => {
+      void poll()
+    }, 2000)
   }
 
-  poll()
+  await poll()
 }
 
 async function subscribeToTracks(
@@ -181,21 +325,26 @@ async function subscribeToTracks(
   try {
     log(`📤 Subscribing to ${remoteTracks.length} remote tracks...`)
     log(`   Local session: ${sessionId.slice(0, 8)}`)
-    log(`   Remote sessions: ${remoteTracks.map((t) => t.sessionId.slice(0, 8)).join(", ")}`)
+    log(
+      `   Remote sessions: ${remoteTracks.map((track) => track.sessionId.slice(0, 8)).join(", ")}`,
+    )
 
     const subscribeRes = await apiCall(`/api/rooms/${props.roomId}/subscribe-offer`, {
       method: "POST",
       body: JSON.stringify({
         sessionId,
-        remoteTracks: remoteTracks.map((t) => ({
-          trackName: t.trackName,
-          sessionId: t.sessionId,
+        remoteTracks: remoteTracks.map((track) => ({
+          trackName: track.trackName,
+          sessionId: track.sessionId,
         })),
       }),
     })
 
     if (!subscribeRes.ok) {
-      const errorData = await subscribeRes.json().catch(() => ({}))
+      const errorData = (await subscribeRes.json().catch(() => ({}))) as {
+        error?: string
+        code?: string
+      }
       log(`❌ Subscribe failed: ${subscribeRes.status}`)
       log(`   Error: ${errorData.error || "Unknown"}`)
       log(`   Code: ${errorData.code || "N/A"}`)
@@ -206,11 +355,10 @@ async function subscribeToTracks(
     log(`✅ Got subscribe offer, ${subscribeData.tracks?.length || 0} tracks`)
 
     await pc.setRemoteDescription(subscribeData.sessionDescription)
-
     const answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
 
-    log(`📤 Completing subscription...`)
+    log("📤 Completing subscription...")
     const completeRes = await apiCall(`/api/rooms/${props.roomId}/complete-subscribe`, {
       method: "POST",
       body: JSON.stringify({
@@ -220,7 +368,7 @@ async function subscribeToTracks(
     })
 
     if (!completeRes.ok) {
-      const errorData = await completeRes.json().catch(() => ({}))
+      const errorData = (await completeRes.json().catch(() => ({}))) as { error?: string }
       log(`❌ Complete subscribe failed: ${completeRes.status}`)
       log(`   Error: ${errorData.error || "Unknown"}`)
       throw new Error(`Complete subscribe failed: ${completeRes.status}`)
@@ -233,11 +381,9 @@ async function subscribeToTracks(
   }
 }
 
-// Picture-in-Picture handling
 async function togglePiP(enable: boolean) {
   const videoEl = remoteVid.value
   if (!videoEl || !document.pictureInPictureEnabled) return
-
   try {
     if (enable && document.pictureInPictureElement !== videoEl) {
       await videoEl.requestPictureInPicture()
@@ -246,17 +392,35 @@ async function togglePiP(enable: boolean) {
       await document.exitPictureInPicture()
       log("📺 Picture-in-Picture disabled")
     }
-  } catch (err) {
-    // Silently fail - PiP might not be supported
+  } catch {
+    // ignore unsupported PiP
   }
 }
 
+async function endRoom() {
+  const res = await apiCall(`/api/rooms/${props.roomId}/terminate`, {
+    method: "POST",
+  })
+  if (!res.ok) {
+    showToast("Could not end room", "error")
+    return
+  }
+  showToast("Room ended for everyone", "success")
+  leave()
+}
+
 onMounted(async () => {
+  viewportQuery = window.matchMedia("(max-width: 768px)")
+  isMobile.value = viewportQuery.matches
+  mediaQueryListener.value = (event: MediaQueryListEvent) => {
+    isMobile.value = event.matches
+  }
+  viewportQuery.addEventListener("change", mediaQueryListener.value)
+
   log("🚀 Starting room...")
   log(`🚪 Room ID: ${props.roomId}`)
-
-  // 1. Capture local media
   log("📹 Requesting camera access...")
+
   try {
     localStream.value = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     if (localVid.value) {
@@ -269,48 +433,74 @@ onMounted(async () => {
     return
   }
 
-  // 2. Create PeerConnection
   const pc = new RTCPeerConnection({
     iceServers: [{ urls: "stun:stun.cloudflare.com:3478" }],
     bundlePolicy: "max-bundle",
   })
 
-  pc.ontrack = (e) => {
+  pc.ontrack = (event) => {
     log("📡 Remote video received!")
+    hadRemoteParticipant.value = true
+    isRemoteDisconnected.value = false
     isConnecting.value = false
+
     let stream = remoteVid.value?.srcObject as MediaStream | null
     if (!stream) {
       stream = new MediaStream()
+      remoteStream.value = stream
       if (remoteVid.value) {
         remoteVid.value.srcObject = stream
       }
     }
-    stream.addTrack(e.track)
+    remoteStream.value = stream
+    stream.addTrack(event.track)
+
+    event.track.addEventListener("ended", () => {
+      const currentStream = remoteVid.value?.srcObject as MediaStream | null
+      const hasLiveTracks = currentStream?.getTracks().some((track) => track.readyState === "live")
+      if (!hasLiveTracks) {
+        handleRemoteDisconnect("track ended")
+      }
+    })
   }
 
   pc.oniceconnectionstatechange = () => {
     log(`🧊 Connection: ${pc.iceConnectionState}`)
+    if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
+      handleRemoteDisconnect(pc.iceConnectionState)
+    }
+  }
+
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
+      handleRemoteDisconnect(pc.connectionState)
+    }
   }
 
   try {
-    // 3. Create session
     log("🔑 Creating session...")
     const sessionRes = await apiCall(`/api/rooms/${props.roomId}/session`, { method: "POST" })
-    if (!sessionRes.ok) throw new Error(`Session failed: ${sessionRes.status}`)
+    if (!sessionRes.ok) {
+      if (sessionRes.status === 404) {
+        throw new Error("Room not found")
+      }
+      throw new Error(`Session failed: ${sessionRes.status}`)
+    }
+
     const sessionData = (await sessionRes.json()) as SessionResponse
     const sessionId = sessionData.sessionId
-    log(`✅ Session ready`)
+    currentSessionId.value = sessionId
+    log("✅ Session ready")
+    startHeartbeat(sessionId)
+    await syncMediaState()
 
-    // 4. Add local tracks
     const transceivers = localStream
       .value!.getTracks()
       .map((track) => pc.addTransceiver(track, { direction: "sendonly" }))
 
-    // 5. Create offer
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
 
-    // 6. Publish tracks
     log("📤 Publishing...")
     const publishRes = await apiCall(`/api/rooms/${props.roomId}/publish-offer`, {
       method: "POST",
@@ -323,343 +513,146 @@ onMounted(async () => {
         })),
       }),
     })
-    if (!publishRes.ok) throw new Error(`Publish failed: ${publishRes.status}`)
-    const publishData = (await publishRes.json()) as PublishResponse
+    if (!publishRes.ok) {
+      throw new Error(`Publish failed: ${publishRes.status}`)
+    }
 
+    const publishData = (await publishRes.json()) as PublishResponse
     await pc.setRemoteDescription(publishData.sessionDescription)
     log("✅ Connected to Cloudflare")
 
-    // Wait for ICE
-    await new Promise<void>((res, rej) => {
-      const timeout = setTimeout(() => rej(new Error("Connection timeout")), 15000)
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("Connection timeout")), 15000)
       const check = () => {
         if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
           clearTimeout(timeout)
-          res()
+          resolve()
         } else if (pc.iceConnectionState === "failed") {
           clearTimeout(timeout)
-          rej(new Error("Connection failed"))
+          reject(new Error("Connection failed"))
         }
       }
       pc.addEventListener("iceconnectionstatechange", check)
       check()
     })
+
     log("🟢 Ready for calls!")
     showToast("Ready for calls!", "success")
     isConnecting.value = false
-
-    // 7. Start polling for remote tracks
     log("👀 Waiting for remote participant...")
-    pollAndSubscribe(pc, sessionId)
+    void pollAndSubscribe(pc, sessionId)
 
-    // Auto PiP on tab blur
-    document.addEventListener("visibilitychange", () => {
+    visibilityListener.value = () => {
       if (document.visibilityState === "hidden") {
-        togglePiP(true)
+        void togglePiP(true)
       } else {
-        togglePiP(false)
+        void togglePiP(false)
       }
-    })
+    }
+    document.addEventListener("visibilitychange", visibilityListener.value)
+
+    beforeUnloadListener.value = () => {
+      void cleanupCallPresence()
+    }
+    window.addEventListener("beforeunload", beforeUnloadListener.value)
   } catch (e) {
+    pc.close()
+    await cleanupCallPresence()
+    clearRemoteVideo()
+    stopLocalMedia()
     log(`❌ Error: ${e}`)
-    showToast("Connection failed", "error")
+    showToast(e instanceof Error ? e.message : "Connection failed", "error")
   }
+})
+
+onBeforeUnmount(() => {
+  if (viewportQuery && mediaQueryListener.value) {
+    viewportQuery.removeEventListener("change", mediaQueryListener.value)
+  }
+  viewportQuery = null
+  mediaQueryListener.value = null
+
+  if (visibilityListener.value) {
+    document.removeEventListener("visibilitychange", visibilityListener.value)
+    visibilityListener.value = null
+  }
+
+  if (beforeUnloadListener.value) {
+    window.removeEventListener("beforeunload", beforeUnloadListener.value)
+    beforeUnloadListener.value = null
+  }
+
+  void cleanupCallPresence()
+  clearRemoteVideo()
+  stopLocalMedia()
 })
 </script>
 
 <template>
-  <div
-    class="card"
-    style="max-width: 900px"
-    :style="swipeBack.pageStyle"
-    role="main"
-    aria-label="Video call"
-  >
-    <!-- Swipe back backdrop -->
-    <div class="swipe-backdrop" :style="swipeBack.backdropStyle"></div>
-    <div
-      style="
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1rem;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-      "
-    >
-      <h2 class="card-title" style="margin: 0; text-align: left">
-        Room: <code>{{ roomId }}</code>
-      </h2>
-      <button
-        class="btn btn-secondary btn-sm"
-        @click="showLogs = !showLogs"
-        aria-label="Toggle logs"
-      >
-        {{ showLogs ? "📋 Hide Logs" : "📋 Show Logs" }}
-      </button>
-    </div>
-
-    <!-- Mobile Sheet Handle -->
-    <div
-      class="mobile-sheet-handle"
-      @click="sheetState = sheetState === 'collapsed' ? 'half' : 'collapsed'"
-    >
-      <div class="handle-bar"></div>
-      <span>{{ sheetState === "collapsed" ? "Show Controls" : "Hide Controls" }}</span>
-    </div>
-
-    <!-- Bottom Sheet for Controls & Logs (mobile) / Panel (desktop) -->
-    <BottomSheet v-model="sheetState">
-      <!-- Media Controls -->
-      <div class="media-controls">
-        <button
-          class="media-btn"
-          :class="{ 'media-btn-muted': isAudioMuted }"
-          @click="toggleAudio"
-          :disabled="!localStream"
-          :aria-pressed="isAudioMuted"
-          :aria-label="isAudioMuted ? 'Unmute microphone' : 'Mute microphone'"
-        >
-          <svg
-            v-if="!isAudioMuted"
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-            <line x1="12" y1="19" x2="12" y2="23" />
-            <line x1="8" y1="23" x2="16" y2="23" />
-          </svg>
-          <svg
-            v-else
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <line x1="1" y1="1" x2="23" y2="23" />
-            <path d="M9 9v6a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
-            <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
-            <line x1="12" y1="19" x2="12" y2="23" />
-            <line x1="8" y1="23" x2="16" y2="23" />
-          </svg>
-          {{ isAudioMuted ? "Unmute" : "Mute" }}
-        </button>
-        <button
-          class="media-btn"
-          :class="{ 'media-btn-muted': isVideoOff }"
-          @click="toggleVideo"
-          :disabled="!localStream"
-          :aria-pressed="isVideoOff"
-          :aria-label="isVideoOff ? 'Turn camera on' : 'Turn camera off'"
-        >
-          <svg
-            v-if="!isVideoOff"
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <polygon points="23 7 16 12 23 17 23 7" />
-            <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-          </svg>
-          <svg
-            v-else
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path
-              d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"
-            />
-            <line x1="1" y1="1" x2="23" y2="23" />
-          </svg>
-          {{ isVideoOff ? "Camera On" : "Camera Off" }}
-        </button>
-        <button class="media-btn media-btn-leave" @click="leave" aria-label="Leave call">
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            <polyline points="16 17 21 12 16 7" />
-            <line x1="21" y1="12" x2="9" y2="12" />
-          </svg>
-          Leave
-        </button>
-      </div>
-
-      <!-- Logs Toggle -->
-      <div class="logs-section">
-        <button class="btn btn-secondary btn-sm btn-full" @click="showLogs = !showLogs">
-          {{ showLogs ? "📋 Hide Logs" : "📋 Show Logs" }}
-        </button>
-        <div v-if="showLogs" ref="statusEl" class="status status-info">{{ logs.join("\n") }}</div>
-      </div>
-    </BottomSheet>
-
-    <!-- Desktop: Media Controls (shown inline) -->
-    <div class="media-controls desktop-controls">
-      <button
-        class="media-btn"
-        :class="{ 'media-btn-muted': isAudioMuted }"
-        @click="toggleAudio"
-        :disabled="!localStream"
-      >
-        <svg
-          v-if="!isAudioMuted"
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-          <line x1="12" y1="19" x2="12" y2="23" />
-          <line x1="8" y1="23" x2="16" y2="23" />
-        </svg>
-        <svg
-          v-else
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <line x1="1" y1="1" x2="23" y2="23" />
-          <path d="M9 9v6a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
-          <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
-          <line x1="12" y1="19" x2="12" y2="23" />
-          <line x1="8" y1="23" x2="16" y2="23" />
-        </svg>
-        {{ isAudioMuted ? "Unmute" : "Mute" }}
-      </button>
-      <button
-        class="media-btn"
-        :class="{ 'media-btn-muted': isVideoOff }"
-        @click="toggleVideo"
-        :disabled="!localStream"
-      >
-        <svg
-          v-if="!isVideoOff"
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <polygon points="23 7 16 12 23 17 23 7" />
-          <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-        </svg>
-        <svg
-          v-else
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <path
-            d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"
-          />
-          <line x1="1" y1="1" x2="23" y2="23" />
-        </svg>
-        {{ isVideoOff ? "Camera On" : "Camera Off" }}
-      </button>
-      <button class="media-btn media-btn-leave" @click="leave">
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-          <polyline points="16 17 21 12 16 7" />
-          <line x1="21" y1="12" x2="9" y2="12" />
-        </svg>
-        Leave
-      </button>
-    </div>
-
-    <div
-      class="video-grid"
-      :class="[videoLayout, { 'fullscreen-mode': isFullscreen, swapped: isSwapped }]"
-      role="region"
-      aria-label="Video feeds"
-    >
-      <div
-        class="video-container local-video"
-        :class="{ 'fullscreen-target': fullscreenVideo === 'local' }"
-        @click="onVideoTap('local')"
-        role="img"
-        aria-label="Your video"
-      >
-        <video ref="localVid" autoplay muted playsinline aria-label="Your video feed"></video>
-        <span class="video-label" @click.stop="swapVideos">You</span>
-        <div class="fullscreen-hint">Double-tap for fullscreen</div>
-        <div v-if="isVideoOff" class="video-off-overlay">
-          <svg
-            width="32"
-            height="32"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path
-              d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"
-            />
-            <line x1="1" y1="1" x2="23" y2="23" />
-          </svg>
-        </div>
-      </div>
-      <div
-        class="video-container remote-video"
-        :class="{ 'fullscreen-target': fullscreenVideo === 'remote' }"
-        @click="onVideoTap('remote')"
-        @touchstart.passive="remoteZoom.onTouchStart"
-        @touchmove="remoteZoom.onTouchMove"
-        @touchend="remoteZoom.onTouchEnd"
-        @dblclick="remoteZoom.onDoubleTap"
-        role="img"
-        aria-label="Remote participant video"
-      >
-        <video
-          ref="remoteVid"
-          autoplay
-          playsinline
-          aria-label="Remote participant video feed"
-          :style="remoteZoom.transformStyle"
-        ></video>
-        <span class="video-label" @click.stop="swapVideos">Remote</span>
-        <div class="fullscreen-hint">Double-tap for fullscreen</div>
-        <div v-if="isConnecting" class="connecting-overlay">
-          <div class="spinner"></div>
-          <span>Waiting for participant...</span>
-        </div>
-      </div>
-    </div>
-  </div>
+  <CallMobileLayout
+    v-if="isMobile"
+    :room-id="roomId"
+    :swipe-page-style="swipeBack.pageStyle.value"
+    :swipe-backdrop-style="swipeBack.backdropStyle.value"
+    :show-logs="showLogs"
+    :logs="logs"
+    :is-swapped="isSwapped"
+    :can-end-room="isAuthenticated"
+    :is-audio-muted="isAudioMuted"
+    :is-video-off="isVideoOff"
+    :is-remote-audio-muted="isRemoteAudioMuted"
+    :is-remote-video-off="isRemoteVideoOff"
+    :has-local-stream="!!localStream"
+    :is-connecting="isConnecting"
+    :is-remote-disconnected="isRemoteDisconnected"
+    :remote-zoom-style="remoteZoom.transformStyle.value"
+    :video-layout="videoLayout"
+    :set-local-video-el="setLocalVideoEl"
+    :set-remote-video-el="setRemoteVideoEl"
+    @update:show-logs="showLogs = $event"
+    @toggle-audio="toggleAudio"
+    @toggle-video="toggleVideo"
+    @leave="leave"
+    @end-room="endRoom"
+    @swap-videos="swapVideos"
+    @local-video-tap="onVideoTap('local')"
+    @remote-video-tap="onVideoTap('remote')"
+    @remote-touch-start="remoteZoom.onTouchStart"
+    @remote-touch-move="remoteZoom.onTouchMove"
+    @remote-touch-end="remoteZoom.onTouchEnd"
+    @remote-double-tap="remoteZoom.onDoubleTap"
+  />
+  <CallDesktopLayout
+    v-else
+    :room-id="roomId"
+    :swipe-page-style="swipeBack.pageStyle.value"
+    :swipe-backdrop-style="swipeBack.backdropStyle.value"
+    :show-logs="showLogs"
+    :logs="logs"
+    :is-swapped="isSwapped"
+    :can-end-room="isAuthenticated"
+    :is-audio-muted="isAudioMuted"
+    :is-video-off="isVideoOff"
+    :is-remote-audio-muted="isRemoteAudioMuted"
+    :is-remote-video-off="isRemoteVideoOff"
+    :has-local-stream="!!localStream"
+    :is-connecting="isConnecting"
+    :is-remote-disconnected="isRemoteDisconnected"
+    :remote-zoom-style="remoteZoom.transformStyle.value"
+    :video-layout="videoLayout"
+    :set-local-video-el="setLocalVideoEl"
+    :set-remote-video-el="setRemoteVideoEl"
+    @update:show-logs="showLogs = $event"
+    @toggle-audio="toggleAudio"
+    @toggle-video="toggleVideo"
+    @leave="leave"
+    @end-room="endRoom"
+    @swap-videos="swapVideos"
+    @local-video-tap="onVideoTap('local')"
+    @remote-video-tap="onVideoTap('remote')"
+    @remote-touch-start="remoteZoom.onTouchStart"
+    @remote-touch-move="remoteZoom.onTouchMove"
+    @remote-touch-end="remoteZoom.onTouchEnd"
+    @remote-double-tap="remoteZoom.onDoubleTap"
+  />
 </template>
