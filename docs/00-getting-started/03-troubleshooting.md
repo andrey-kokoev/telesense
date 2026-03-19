@@ -4,15 +4,14 @@ Common issues and solutions.
 
 ## Setup Issues
 
-### "Command not found: pnpm"
+### "Command not found: vp"
 
 ```bash
-# Install pnpm
-npm install -g pnpm
+# Install Vite+ (global CLI)
+npm install -g vite-plus
 
-# Or use corepack
-corepack enable
-corepack prepare pnpm@latest --activate
+# Or use npx
+npx vp <command>
 ```
 
 ### "Failed to install dependencies"
@@ -20,7 +19,7 @@ corepack prepare pnpm@latest --activate
 ```bash
 # Clean and retry
 rm -rf node_modules pnpm-lock.yaml
-pnpm install
+vp install
 ```
 
 ## Runtime Issues
@@ -53,7 +52,7 @@ pnpm install
 ```bash
 # Enable debug logging
 echo "DEBUG=true" >> .dev.vars
-pnpm dev
+vp dev
 ```
 
 ### "Missing authentication token" / "Invalid authentication token"
@@ -101,7 +100,7 @@ echo "DO_NOT_ENFORCE_USER_TOKEN=true" >> apps/telesense/.dev.vars
 
 ```bash
 # Check health endpoint
-pnpm health
+vp run health
 # Should show: callsActive, sessionsActive
 ```
 
@@ -114,17 +113,17 @@ pnpm health
 lsof -ti:5173 | xargs kill -9
 
 # Or use different port
-PORT=3000 pnpm dev
+PORT=3000 vp dev
 ```
 
 ### "TypeScript errors"
 
 ```bash
-# Check types
-pnpm typecheck
+# Check types and more
+vp check
 
 # Rebuild
-pnpm rebuild
+vp install
 ```
 
 ### "Wrangler compatibility warning"
@@ -132,7 +131,7 @@ pnpm rebuild
 Safe to ignore. Update if desired:
 
 ```bash
-pnpm update wrangler
+vp update wrangler
 ```
 
 ## E2E Test Issues
@@ -177,11 +176,11 @@ Enable verbose logging:
 
 ```bash
 # Method 1: Environment variable
-DEBUG=true pnpm dev
+DEBUG=true vp dev
 
 # Method 2: .dev.vars file
 echo "DEBUG=true" >> .dev.vars
-pnpm dev
+vp dev
 ```
 
 You'll see:
@@ -195,7 +194,7 @@ You'll see:
 Include in bug reports:
 
 1. Browser version
-2. `pnpm check` output
+2. `vp check` output
 3. Browser console errors
 4. Network tab screenshots
 5. `DEBUG=true` logs (sanitized)

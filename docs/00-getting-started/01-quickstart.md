@@ -13,7 +13,7 @@ Get a 1:1 video call running in 5 minutes.
 ```bash
 git clone https://github.com/andrey-kokoev/telesense.git
 cd telesense
-pnpm install
+vp install
 ```
 
 ## 2. Configure Credentials
@@ -65,7 +65,7 @@ echo "your-user-token" | wrangler secret put GENERIC_USER_TOKEN --config apps/te
 ## 3. Run Development Server
 
 ```bash
-pnpm dev
+vp dev
 ```
 
 This starts:
@@ -87,10 +87,10 @@ This starts:
 
 ```bash
 # Run E2E tests (headless with fake media)
-pnpm test
+vp run test
 
 # Or with UI for debugging
-pnpm test:ui
+vp run test:ui
 ```
 
 ## Common Issues
@@ -101,7 +101,7 @@ No camera/mic detected. For headless testing:
 
 ```bash
 # Tests use fake devices automatically
-pnpm test
+vp run test
 ```
 
 ### "Session failed: 502"

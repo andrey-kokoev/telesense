@@ -8,7 +8,7 @@ Cloudflare Realtime SFU implementation with verified protocol. Now organized as 
 
 ```bash
 # Install dependencies
-pnpm install
+vp install
 
 # Run automated setup (creates tokens, sets secrets)
 ./scripts/setup.sh
@@ -17,7 +17,7 @@ pnpm install
 #                   edit with your Cloudflare credentials
 
 # Run dev server
-pnpm dev
+vp dev
 ```
 
 ## Monorepo Structure
@@ -56,27 +56,27 @@ tesense/
 ### Root Level
 
 ```bash
-pnpm dev              # Run telesense app
-pnpm dev:meter        # Run usage meter
-pnpm build            # Build all apps
-pnpm test             # Run E2E tests
-pnpm deploy           # Deploy all apps
-pnpm typecheck        # Type check all apps
+vp dev                # Run telesense app
+vp run dev:meter      # Run usage meter
+vp build              # Build all apps
+vp run test           # Run E2E tests (Playwright)
+vp run deploy         # Deploy all apps
+vp check              # Format, lint, and type check
 ```
 
 ### App Level
 
 ```bash
 # In apps/telesense/
-pnpm dev              # Start dev server
-pnpm test             # Run E2E tests
-pnpm deploy           # Deploy to Cloudflare
+vp dev                # Start dev server
+vp run test           # Run E2E tests
+vp run deploy         # Deploy to Cloudflare
 
 # In apps/usage-meter/
-pnpm dev              # Start dev server
-pnpm logs             # View logs
-pnpm trigger          # Manual trigger
-pnpm status           # Check budget status
+vp dev                # Start dev server
+vp run logs           # View logs
+vp run trigger        # Manual trigger
+vp run status         # Check budget status
 ```
 
 ## Applications
@@ -113,11 +113,11 @@ Optional usage tracking and budget enforcement.
 
 ```bash
 # Deploy everything
-pnpm deploy
+vp run deploy
 
 # Or individually
-pnpm --filter telesense deploy
-pnpm --filter usage-meter deploy
+vp run --filter telesense deploy
+vp run --filter usage-meter deploy
 ```
 
 ## License

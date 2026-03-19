@@ -33,11 +33,11 @@ wrangler kv:namespace create "BUDGET_KV"
 ## Scripts
 
 ```bash
-pnpm dev              # Start dev server
-pnpm deploy           # Deploy to Cloudflare
-pnpm logs             # View logs
-pnpm trigger          # Manual trigger (if running)
-pnpm status           # Check budget status
+vp dev                # Start dev server
+vp run deploy         # Deploy to Cloudflare
+vp run logs           # View logs
+vp run trigger        # Manual trigger (if running)
+vp run status         # Check budget status
 ```
 
 ## Endpoints

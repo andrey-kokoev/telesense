@@ -20,13 +20,13 @@ public/
 ## Scripts
 
 ```bash
-pnpm dev              # Start dev servers (Worker + Vite)
-pnpm dev:debug        # With debug logging
-pnpm build            # Build for production
-pnpm deploy           # Deploy to Cloudflare
-pnpm test             # Run E2E tests
-pnpm test:ui          # Interactive test mode
-pnpm health           # Check health endpoint
+vp dev                # Start dev servers (Worker + Vite)
+vp run dev:debug      # With debug logging
+vp build              # Build for production
+vp run deploy         # Deploy to Cloudflare
+vp run test           # Run E2E tests (Playwright)
+vp run test:ui        # Interactive test mode
+vp run health         # Check health endpoint
 ```
 
 ## Configuration
