@@ -127,7 +127,13 @@ if [ -z "$APP_ID" ]; then
     read -r APP_ID
 
     echo -e "${YELLOW}Enter your Calls App Secret:${NC}"
+    echo "  (input hidden for security - paste and press Enter)"
     read -rs APP_SECRET
+    if [ -n "$APP_SECRET" ]; then
+        echo -e "  ${GREEN}✓ Secret received ($(echo "$APP_SECRET" | wc -c) chars)${NC}"
+    else
+        echo -e "  ${YELLOW}⚠ No input received${NC}"
+    fi
     echo ""
 fi
 
@@ -286,7 +292,13 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo "5. Copy the token"
         echo ""
         echo -e "${YELLOW}Enter your API Token (or press Enter to skip):${NC}"
+        echo "  (input hidden for security - paste and press Enter)"
         read -rs API_TOKEN
+        if [ -n "$API_TOKEN" ]; then
+            echo -e "  ${GREEN}✓ Token received ($(echo "$API_TOKEN" | wc -c) chars)${NC}"
+        else
+            echo -e "  ${BLUE}ℹ Skipped${NC}"
+        fi
         echo ""
 
         if [ -n "$API_TOKEN" ]; then
