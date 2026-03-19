@@ -151,11 +151,9 @@
 
 <script setup lang="ts">
 import { ref } from "vue";
-import { useRouter } from "vue-router";
 import { useAppStore } from "../composables/useAppStore";
 import { useToast } from "../composables/useToast";
 
-const router = useRouter();
 const { isAuthenticated, token, setToken, recentCalls, addRecentCall } = useAppStore();
 const { success } = useToast();
 
@@ -188,7 +186,7 @@ function joinExistingChat() {
 }
 
 function goToCall(callId: string) {
-  router.push(`/call/${callId}`);
+  window.location.href = `/?call=${callId}`;
 }
 
 function saveToken() {
