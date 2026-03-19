@@ -243,57 +243,63 @@ echo "$GENERIC_TOKEN" | wrangler secret put GENERIC_USER_TOKEN --config apps/tel
 echo -e "${GREEN}✓ GENERIC_USER_TOKEN set for telesense${NC}"
 echo ""
 
-# Step 4: Usage Meter Setup
+# Step 4: Usage Meter Setup (Optional)
 echo "═══════════════════════════════════════════════════════════"
-echo "  STEP 4: Usage Meter Configuration"
+echo "  STEP 4: Usage Meter Configuration (Optional)"
 echo "═══════════════════════════════════════════════════════════"
 echo ""
 
-# Check if CF_API_TOKEN already set
-API_TOKEN_SET=false
-if [ "$FORCE" = false ]; then
-    # Try to check if secret exists by running a dummy command
-    if wrangler secret list --config apps/usage-meter/wrangler.toml 2>/dev/null | grep -q "CF_API_TOKEN"; then
-        echo -e "${BLUE}CF_API_TOKEN already set for usage-meter${NC}"
-        read -p "Update CF_API_TOKEN? [y/N] " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            API_TOKEN_SET=false
-        else
-            API_TOKEN_SET=true
+read -p "Set up usage-meter for analytics? [y/N] " -n 1 -r
+echo
+
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    # Check if CF_API_TOKEN already set
+    API_TOKEN_SET=false
+    if [ "$FORCE" = false ]; then
+        if wrangler secret list --config apps/usage-meter/wrangler.toml 2>/dev/null | grep -q "CF_API_TOKEN"; then
+            echo -e "${BLUE}CF_API_TOKEN already set for usage-meter${NC}"
+            read -p "Update CF_API_TOKEN? [y/N] " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                API_TOKEN_SET=true
+            fi
         fi
     fi
-fi
 
-if [ "$API_TOKEN_SET" = false ]; then
-    echo -e "${YELLOW}Create an API Token for Usage Meter:${NC}"
-    echo ""
-    echo "1. Go to: https://dash.cloudflare.com/profile/api-tokens"
-    echo "2. Click 'Create Token'"
-    echo "3. Use 'Create Custom Token'"
-    echo "4. Permissions needed:"
-    echo "   - Zone:Read (or Account:Read)"
-    echo "   - Analytics:Read"
-    echo "5. Copy the token"
-    echo ""
-    echo -e "${YELLOW}Enter your API Token:${NC}"
-    read -rs API_TOKEN
-    echo ""
+    if [ "$API_TOKEN_SET" = false ]; then
+        echo -e "${YELLOW}Create an API Token for Usage Meter:${NC}"
+        echo ""
+        echo "1. Go to: https://dash.cloudflare.com/profile/api-tokens"
+        echo "2. Click 'Create Token'"
+        echo "3. Use 'Create Custom Token'"
+        echo "4. Permissions needed:"
+        echo "   - Zone:Read (or Account:Read)"
+        echo "   - Analytics:Read"
+        echo "5. Copy the token"
+        echo ""
+        echo -e "${YELLOW}Enter your API Token (or press Enter to skip):${NC}"
+        read -rs API_TOKEN
+        echo ""
 
-    echo "Setting CF_API_TOKEN for usage-meter..."
-    echo "$API_TOKEN" | wrangler secret put CF_API_TOKEN --config apps/usage-meter/wrangler.toml
-    echo -e "${GREEN}✓ Secret set for usage-meter${NC}"
+        if [ -n "$API_TOKEN" ]; then
+            echo "Setting CF_API_TOKEN for usage-meter..."
+            echo "$API_TOKEN" | wrangler secret put CF_API_TOKEN --config apps/usage-meter/wrangler.toml
+            echo -e "${GREEN}✓ Secret set for usage-meter${NC}"
+        else
+            echo -e "${YELLOW}Skipped CF_API_TOKEN setup${NC}"
+        fi
+    else
+        echo -e "${GREEN}✓ Skipping CF_API_TOKEN (already set)${NC}"
+    fi
+
+    # Update usage-meter vars regardless
+    sed -i.bak "s/CF_ACCOUNT_ID = \"[^\"]*/CF_ACCOUNT_ID = \"$ACCOUNT_ID/" apps/usage-meter/wrangler.toml
+    sed -i.bak "s/REALTIME_APP_ID = \"[^\"]*/REALTIME_APP_ID = \"$APP_ID/" apps/usage-meter/wrangler.toml
+    rm -f apps/usage-meter/wrangler.toml.bak
+    echo -e "${GREEN}✓ Updated apps/usage-meter/wrangler.toml${NC}"
 else
-    echo -e "${GREEN}✓ Skipping CF_API_TOKEN (already set)${NC}"
+    echo -e "${BLUE}Skipped usage-meter setup (optional)${NC}"
 fi
-echo ""
-
-# Update usage-meter vars
-sed -i.bak "s/CF_ACCOUNT_ID = \"[^\"]*/CF_ACCOUNT_ID = \"$ACCOUNT_ID/" apps/usage-meter/wrangler.toml
-sed -i.bak "s/REALTIME_APP_ID = \"[^\"]*/REALTIME_APP_ID = \"$APP_ID/" apps/usage-meter/wrangler.toml
-rm -f apps/usage-meter/wrangler.toml.bak
-
-echo -e "${GREEN}✓ Updated apps/usage-meter/wrangler.toml${NC}"
 echo ""
 
 # Step 5: Test Build
