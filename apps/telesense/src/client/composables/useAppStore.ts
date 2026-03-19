@@ -4,9 +4,14 @@ import { useStorage } from '@vueuse/core'
 // Single namespaced key for all app state
 const STORAGE_KEY = 'telesense:state'
 
+export interface RecentCall {
+  id: string
+  name?: string
+}
+
 interface AppState {
   token: string
-  recentCalls: string[]
+  recentCalls: RecentCall[]
   preferences: {
     showLogs: boolean
     audioEnabled: boolean
@@ -48,13 +53,28 @@ export function useAppStore() {
   // Recent calls
   const recentCalls = computed(() => state.value.recentCalls)
   
-  function addRecentCall(callId: string) {
-    const normalized = callId.toUpperCase()
+  function addRecentCall(callId: string, name?: string) {
+    const normalizedId = callId.toUpperCase()
+    const normalizedName = name?.trim() || undefined
+    
     // Remove if exists, add to front, keep max 10
     state.value.recentCalls = [
-      normalized,
-      ...state.value.recentCalls.filter(c => c !== normalized)
+      { id: normalizedId, name: normalizedName },
+      ...state.value.recentCalls.filter(c => c.id !== normalizedId)
     ].slice(0, 10)
+  }
+
+  function renameRecentCall(callId: string, name: string) {
+    const normalizedId = callId.toUpperCase()
+    const call = state.value.recentCalls.find(c => c.id === normalizedId)
+    if (call) {
+      call.name = name.trim() || undefined
+    }
+  }
+  
+  function removeRecentCall(callId: string) {
+    const normalizedId = callId.toUpperCase()
+    state.value.recentCalls = state.value.recentCalls.filter(c => c.id !== normalizedId)
   }
   
   function clearRecentCalls() {
@@ -88,6 +108,8 @@ export function useAppStore() {
     clearToken,
     getAuthHeaders,
     addRecentCall,
+    renameRecentCall,
+    removeRecentCall,
     clearRecentCalls,
     setPreference,
     resetState
