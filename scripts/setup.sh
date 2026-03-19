@@ -184,12 +184,12 @@ cd apps/usage-meter
 # Check for existing BUDGET_KV namespace
 KV_ID=""
 if [ "$FORCE" = false ]; then
-    KV_LIST=$(wrangler kv namespace list --json 2>/dev/null || true)
+    KV_LIST=$(wrangler kv namespace list 2>/dev/null || true)
     if command -v jq &> /dev/null; then
-        KV_ID=$(echo "$KV_LIST" | jq -r '.[] | select(.title == "telesense-usage-meter-BUDGET_KV") | .id' 2>/dev/null || true)
+        KV_ID=$(echo "$KV_LIST" | jq -r '.[] | select(.title == "BUDGET_KV") | .id' 2>/dev/null || true)
     else
         # Fallback: extract id from entry matching our title
-        KV_ID=$(echo "$KV_LIST" | grep -B1 'telesense-usage-meter-BUDGET_KV' | grep '"id"' | grep -oP '"id": "\K[^"]+' | head -1 || true)
+        KV_ID=$(echo "$KV_LIST" | grep -B1 '"title": "BUDGET_KV"' | grep '"id"' | grep -oP '"id": "\K[^"]+' | head -1 || true)
     fi
     if [ -n "$KV_ID" ]; then
         echo -e "${BLUE}Found existing BUDGET_KV namespace: $KV_ID${NC}"
@@ -203,11 +203,11 @@ if [ -z "$KV_ID" ]; then
     
     if [ -z "$KV_ID" ]; then
         echo -e "${YELLOW}KV namespace may already exist. Checking by listing...${NC}"
-        KV_LIST=$(wrangler kv namespace list --json 2>/dev/null || true)
+        KV_LIST=$(wrangler kv namespace list 2>/dev/null || true)
         if command -v jq &> /dev/null; then
-            KV_ID=$(echo "$KV_LIST" | jq -r '.[] | select(.title == "telesense-usage-meter-BUDGET_KV") | .id' 2>/dev/null || true)
+            KV_ID=$(echo "$KV_LIST" | jq -r '.[] | select(.title == "BUDGET_KV") | .id' 2>/dev/null || true)
         else
-            KV_ID=$(echo "$KV_LIST" | grep -B1 'telesense-usage-meter-BUDGET_KV' | grep '"id"' | grep -oP '"id": "\K[^"]+' | head -1 || true)
+            KV_ID=$(echo "$KV_LIST" | grep -B1 '"title": "BUDGET_KV"' | grep '"id"' | grep -oP '"id": "\K[^"]+' | head -1 || true)
         fi
     fi
 fi
