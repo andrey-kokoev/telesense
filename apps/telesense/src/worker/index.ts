@@ -435,20 +435,31 @@ app.post('/api/calls/:callId/subscribe-offer', async (c) => {
   }
 
   // VERIFIED: tracks/new with location: "remote" returns OFFER
+  const tracksToSubscribe = body.remoteTracks.map(t => ({
+    location: 'remote' as const,
+    trackName: t.trackName,
+    sessionId: t.sessionId
+  }))
+  
+  if (debug) {
+    console.log(`[tracks/new/pull] Subscribing ${body.remoteTracks.length} tracks`)
+    console.log(`[tracks/new/pull] Local session cfId: ${session.cfSessionId.slice(0, 8)}`)
+    console.log(`[tracks/new/pull] Request body:`, JSON.stringify({ tracks: tracksToSubscribe }, null, 2))
+  }
+  
   const res = await fetch(
     `${REALTIME_API}/${env.REALTIME_APP_ID}/sessions/${session.cfSessionId}/tracks/new`,
     {
       method: 'POST',
       headers: apiHeaders(env),
-      body: JSON.stringify({
-        tracks: body.remoteTracks.map(t => ({
-          location: 'remote',
-          trackName: t.trackName,
-          sessionId: t.sessionId
-        }))
-      })
+      body: JSON.stringify({ tracks: tracksToSubscribe })
     }
   )
+  
+  if (!res.ok) {
+    const errorText = await res.text()
+    console.error(`[tracks/new/pull] Cloudflare error ${res.status}:`, errorText.slice(0, 500))
+  }
 
   let cfResponse: {
     sessionDescription?: { type: string; sdp: string }
