@@ -200,6 +200,28 @@ app.use('/api/*', async (c, next) => {
   return next()
 })
 
+// Rate limiting for call ID discovery (prevents brute force scanning)
+const DISCOVERY_RATE_LIMIT_WINDOW = 60 * 1000 // 1 minute
+const DISCOVERY_RATE_LIMIT_MAX = 60 // 60 discovery requests per minute per IP
+const discoveryRateLimitStore = new Map<string, { count: number; resetAt: number }>()
+
+function checkDiscoveryRateLimit(ip: string): { allowed: boolean; remaining: number; resetAt: number } {
+  const now = Date.now()
+  const record = discoveryRateLimitStore.get(ip)
+  
+  if (!record || now > record.resetAt) {
+    discoveryRateLimitStore.set(ip, { count: 1, resetAt: now + DISCOVERY_RATE_LIMIT_WINDOW })
+    return { allowed: true, remaining: DISCOVERY_RATE_LIMIT_MAX - 1, resetAt: now + DISCOVERY_RATE_LIMIT_WINDOW }
+  }
+  
+  if (record.count >= DISCOVERY_RATE_LIMIT_MAX) {
+    return { allowed: false, remaining: 0, resetAt: record.resetAt }
+  }
+  
+  record.count++
+  return { allowed: true, remaining: DISCOVERY_RATE_LIMIT_MAX - record.count, resetAt: record.resetAt }
+}
+
 // Error handling
 app.notFound((c) => c.json({ error: 'Not found', code: 'NOT_FOUND' } as ErrorResponse, 404))
 
@@ -521,6 +543,21 @@ app.get('/api/calls/:callId/discover-remote-tracks', (c) => {
     requireNonEmptyString(callId, 'callId')
   } catch (e) {
     return c.json({ error: (e as Error).message, code: 'BAD_REQUEST' } as ErrorResponse, 400)
+  }
+
+  // Rate limit discovery requests (prevents brute force scanning of call IDs)
+  const ip = c.req.header('CF-Connecting-IP') || 'unknown'
+  const rateLimit = checkDiscoveryRateLimit(ip)
+  
+  c.header('X-RateLimit-Limit', String(DISCOVERY_RATE_LIMIT_MAX))
+  c.header('X-RateLimit-Remaining', String(rateLimit.remaining))
+  
+  if (!rateLimit.allowed) {
+    return c.json({
+      error: 'Rate limit exceeded',
+      code: 'RATE_LIMITED',
+      message: 'Too many discovery requests. Please wait before retrying.'
+    }, 429)
   }
 
   const selfId = c.req.query('sessionId')
