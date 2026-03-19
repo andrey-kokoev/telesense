@@ -132,19 +132,27 @@ if [ -z "$APP_ID" ]; then
 fi
 
 # Check for existing GENERIC_USER_TOKEN or generate new
+TOKEN_IS_NEW=false
 GENERIC_TOKEN=""
+
 if [ -f "apps/telesense/.dev.vars" ] && [ "$FORCE" = false ]; then
     GENERIC_TOKEN=$(grep "GENERIC_USER_TOKEN=" apps/telesense/.dev.vars | cut -d'=' -f2 || true)
     if [ -n "$GENERIC_TOKEN" ]; then
-        echo -e "${BLUE}Reusing existing GENERIC_USER_TOKEN${NC}"
+        echo -e "${BLUE}Existing GENERIC_USER_TOKEN found${NC}"
+        read -p "Generate new token? [y/N] " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            GENERIC_TOKEN=""  # Will generate new below
+        fi
     fi
 fi
 
 if [ -z "$GENERIC_TOKEN" ]; then
     GENERIC_TOKEN=$(openssl rand -hex 32)
+    TOKEN_IS_NEW=true
     echo -e "${GREEN}✓ Generated new Generic User Token${NC}"
 else
-    echo -e "${GREEN}✓ Using existing Generic User Token${NC}"
+    echo -e "${GREEN}✓ Keeping existing Generic User Token${NC}"
 fi
 echo ""
 
@@ -324,7 +332,7 @@ echo "  App ID: $APP_ID"
 echo "  KV Namespace: ${KV_ID:-'Not created (create manually)'}"
 echo ""
 echo -e "${GREEN}Token Management:${NC}"
-if [ "$FORCE" = true ] || [ ! -f "apps/telesense/.dev.vars.bak" ]; then
+if [ "$TOKEN_IS_NEW" = true ]; then
     echo "  GENERIC_USER_TOKEN: ${GENERIC_TOKEN:0:16}... (new)"
 else
     echo "  GENERIC_USER_TOKEN: ${GENERIC_TOKEN:0:16}... (existing preserved)"
