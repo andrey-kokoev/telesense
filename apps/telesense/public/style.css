@@ -24,12 +24,12 @@
   --color-orange-600: #ff7800;
 
   /* Neutral Tan */
-  --color-tan-50: #f9f7f3;
-  --color-tan-100: #f1ede3;
-  --color-tan-200: #e7dfcf;
-  --color-tan-300: #d0bfa1;
-  --color-tan-400: #bca17b;
-  --color-tan-500: #ae8b61;
+  --color-tan-50: #fff1df;
+  --color-tan-100: #f6ead9;
+  --color-tan-200: #edd8bb;
+  --color-tan-300: #d8bb92;
+  --color-tan-400: #be986b;
+  --color-tan-500: #a9794c;
 
   /* Semantic */
   --ui-primary: var(--color-yellow-600);
@@ -50,7 +50,7 @@
 
   /* New Design System Variables */
   --color-bg-primary: var(--color-tan-50);
-  --color-bg-secondary: white;
+  --color-bg-secondary: #fef9f2;
   --color-bg-tertiary: var(--color-tan-100);
   --color-bg-hover: var(--color-tan-200);
   --color-text-primary: #1a1a1a;
@@ -60,6 +60,7 @@
   --color-border-hover: var(--color-tan-300);
   --color-accent: var(--color-yellow-600);
   --color-accent-hover: #c45f02;
+  --color-accent-foreground: #fff;
   --color-accent-alpha: rgb(221 112 2 / 0.1);
   --color-success-alpha: rgb(22 163 74 / 0.1);
 
@@ -91,11 +92,11 @@
 /* Dark Mode Variables */
 :root.dark {
   /* Inverted neutral tan for dark */
-  --color-tan-50: #1a1814;
-  --color-tan-100: #2a2620;
-  --color-tan-200: #3a3530;
-  --color-tan-300: #5a5045;
-  --color-tan-400: #8a7a6b;
+  --color-tan-50: #1c1611;
+  --color-tan-100: #2c221b;
+  --color-tan-200: #3d2f25;
+  --color-tan-300: #5d4837;
+  --color-tan-400: #8d6f57;
 
   /* Adjusted yellows for dark */
   --color-yellow-500: #ffb020;
@@ -113,6 +114,7 @@
   --color-border-hover: #5a5045;
   --color-accent: var(--color-yellow-500);
   --color-accent-hover: var(--color-yellow-600);
+  --color-accent-foreground: #120d06;
   --color-accent-alpha: rgb(255 176 32 / 0.2);
 
   /* Legacy semantic - dark */
