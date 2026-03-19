@@ -18,6 +18,7 @@ type Env = {
   DO_NOT_ENFORCE_USER_TOKEN?: string  // Dev-only: set 'true' to disable auth
   DEBUG?: string
   BUDGET_KV?: KVNamespace  // Optional: for usage limiting
+  ASSETS?: Fetcher  // Workers Sites static assets
 }
 
 // VERIFIED: rtc.live.cloudflare.com/v1 (not realtime.cloudflare.com/client/v4)
@@ -169,6 +170,17 @@ const app = new Hono<{ Bindings: Env }>()
 
 // Request logging in development
 app.use('*', logger())
+
+// Serve index.html for root path
+app.get('/', async (c) => {
+  const html = await c.env.ASSETS?.fetch(new Request('https://example.com/index.html'))
+  if (html) {
+    return new Response(html.body, {
+      headers: { 'Content-Type': 'text/html' }
+    })
+  }
+  return c.json({ error: 'Index not found' }, 500)
+})
 
 // Auth: Require GENERIC_USER_TOKEN for all API routes (unless disabled in dev)
 app.use('/api/*', async (c, next) => {
