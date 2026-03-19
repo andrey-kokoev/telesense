@@ -14,7 +14,12 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-# Deploy telesense (always)
+# Build and deploy telesense
+echo "Building telesense client..."
+pnpm --filter telesense build
+echo -e "${GREEN}✓ Client built${NC}"
+echo ""
+
 echo "Deploying telesense..."
 pnpm --filter telesense ship
 echo -e "${GREEN}✓ Telesense deployed${NC}"

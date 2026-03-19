@@ -171,15 +171,13 @@ const app = new Hono<{ Bindings: Env }>()
 // Request logging in development
 app.use('*', logger())
 
-// Serve index.html for root path
+// Serve static assets (Workers Sites)
 app.get('/', async (c) => {
-  const html = await c.env.ASSETS?.fetch(new Request('https://example.com/index.html'))
-  if (html) {
-    return new Response(html.body, {
-      headers: { 'Content-Type': 'text/html' }
-    })
+  const asset = await c.env.ASSETS?.fetch(new Request(c.req.url))
+  if (asset && asset.status === 200) {
+    return asset
   }
-  return c.json({ error: 'Index not found' }, 500)
+  return c.json({ error: 'Not found', code: 'NOT_FOUND' }, 404)
 })
 
 // Auth: Require GENERIC_USER_TOKEN for all API routes (unless disabled in dev)
