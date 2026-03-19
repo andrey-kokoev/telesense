@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useToast } from '../composables/useToast'
+import { useAuth } from '../composables/useAuth'
 
 interface SessionResponse {
   sessionId: string
@@ -24,8 +25,7 @@ interface DiscoverResponse {
 
 const props = defineProps<{ callId: string }>()
 const { show: showToast } = useToast()
-
-const USER_TOKEN = import.meta.env.VITE_USER_TOKEN || 'dev-token'
+const { getAuthHeaders } = useAuth()
 
 const statusEl = ref<HTMLDivElement>()
 const localVid = ref<HTMLVideoElement>()
@@ -43,7 +43,7 @@ async function apiCall(url: string, options: RequestInit = {}) {
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      'X-User-Token': USER_TOKEN,
+      ...getAuthHeaders(),
       ...options.headers,
     },
   })
