@@ -46,10 +46,52 @@ function log(msg: string) {
   statusEl.textContent += msg + '\n'
 }
 
+function showLandingPage() {
+  statusEl.innerHTML = `
+    <div style="text-align: center; padding: 40px 20px;">
+      <h2>Start a Video Call</h2>
+      <p>Enter a call ID or generate a random one</p>
+      <div style="margin: 20px 0;">
+        <input type="text" id="callIdInput" placeholder="Enter call ID (e.g., meeting-123)" 
+               style="padding: 10px; font-size: 16px; width: 250px; border: 1px solid #ccc; border-radius: 4px;">
+        <button id="joinBtn" style="padding: 10px 20px; font-size: 16px; margin-left: 10px; cursor: pointer; background: #0066cc; color: white; border: none; border-radius: 4px;">Join Call</button>
+      </div>
+      <p style="color: #666;">— or —</p>
+      <button id="randomBtn" style="padding: 10px 20px; font-size: 16px; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 4px;">🎲 Generate Random Call ID</button>
+      <p style="margin-top: 30px; font-size: 14px; color: #666;">
+        Share the call ID with someone to start a 1:1 video call
+      </p>
+    </div>
+  `
+  
+  const callIdInput = document.getElementById('callIdInput') as HTMLInputElement
+  const joinBtn = document.getElementById('joinBtn') as HTMLButtonElement
+  const randomBtn = document.getElementById('randomBtn') as HTMLButtonElement
+  
+  const startCall = (callId: string) => {
+    if (!callId.trim()) return
+    window.location.search = `?call=${encodeURIComponent(callId.trim())}`
+  }
+  
+  joinBtn.onclick = () => startCall(callIdInput.value)
+  callIdInput.onkeypress = (e) => { if (e.key === 'Enter') startCall(callIdInput.value) }
+  randomBtn.onclick = () => {
+    const randomId = Math.random().toString(36).substring(2, 10)
+    startCall(randomId)
+  }
+}
+
 async function init() {
   log('🚀 Initializing Telesense...')
 
-  const callId = new URLSearchParams(location.search).get('call') || 'test'
+  const callId = new URLSearchParams(location.search).get('call')
+  
+  // Show landing page if no call ID provided
+  if (!callId) {
+    showLandingPage()
+    return
+  }
+  
   log(`📞 Call ID: ${callId}`)
 
   // 1. Capture local media
