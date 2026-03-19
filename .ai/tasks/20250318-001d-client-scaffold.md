@@ -66,14 +66,14 @@ Minimal HTML with only:
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Telesense — Protocol Verification Spike</title>
+    <title>telesence — Protocol Verification Spike</title>
     <style>
       /* Minimal styles: local video, remote video, status area */
     </style>
   </head>
   <body>
     <h1>
-      Telesense <span style="font-weight:normal;color:#666">(Protocol Verification Spike)</span>
+      telesence <span style="font-weight:normal;color:#666">(Protocol Verification Spike)</span>
     </h1>
 
     <!-- Status display -->

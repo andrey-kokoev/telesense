@@ -1,5 +1,5 @@
 #!/bin/bash
-# Telesense Setup Script
+# telesence Setup Script
 # Idempotent - safe to run multiple times
 
 set -e
@@ -21,7 +21,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 echo "═══════════════════════════════════════════════════════════"
-echo "  Telesense Setup - Cloudflare Realtime Video Calls"
+echo "  telesence Setup - Cloudflare Realtime Video Calls"
 echo "═══════════════════════════════════════════════════════════"
 echo ""
 

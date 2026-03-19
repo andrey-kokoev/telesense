@@ -57,7 +57,7 @@ vp run status         # Check budget status
        │ Write
        ▼
 ┌─────────────┐     Read       ┌─────────────┐
-│   KV Store  │ ─────────────► │  Telesense  │
+│   KV Store  │ ─────────────► │  telesence  │
 │  budget:xxx │                │   Worker    │
 └─────────────┘                └─────────────┘
 ```

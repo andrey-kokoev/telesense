@@ -126,7 +126,7 @@ Implement full flow:
 Edit `README.md`:
 
 ```markdown
-# Telesense
+# telesence
 
 **Status: `full 1:1 call works`**
 ```

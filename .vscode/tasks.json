@@ -14,7 +14,7 @@
       }
     },
     {
-      "label": "Dev: Telesense",
+      "label": "Dev: telesence",
       "type": "shell",
       "command": "pnpm dev",
       "group": "build",
@@ -86,7 +86,7 @@
       }
     },
     {
-      "label": "Deploy: Telesense Only",
+      "label": "Deploy: telesence Only",
       "type": "shell",
       "command": "pnpm deploy:telesense",
       "group": "deploy",

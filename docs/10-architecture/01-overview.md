@@ -1,6 +1,6 @@
 # System Architecture
 
-Telesense is a minimalist 1:1 video calling application built on Cloudflare's Realtime (Calls) API.
+telesence is a minimalist 1:1 video calling application built on Cloudflare's Realtime (Calls) API.
 
 ## Design Principles
 

@@ -4,7 +4,7 @@
 set -e
 
 echo "═══════════════════════════════════════════════════════════"
-echo "  Deploying Telesense"
+echo "  Deploying telesence"
 echo "═══════════════════════════════════════════════════════════"
 echo ""
 
@@ -22,7 +22,7 @@ echo ""
 
 echo "Deploying telesense..."
 vp run --filter telesense ship
-echo -e "${GREEN}✓ Telesense deployed${NC}"
+echo -e "${GREEN}✓ telesence deployed${NC}"
 echo ""
 
 # Check if usage-meter is configured

@@ -220,6 +220,10 @@ app.use("/api/*", async (c, next) => {
   return next()
 })
 
+app.get("/api/auth/verify", (c) => {
+  return c.json({ ok: true } as OkResponse)
+})
+
 // Rate limiting for call ID discovery (prevents brute force scanning)
 const DISCOVERY_RATE_LIMIT_WINDOW = 60 * 1000 // 1 minute
 const DISCOVERY_RATE_LIMIT_MAX = 60 // 60 discovery requests per minute per IP

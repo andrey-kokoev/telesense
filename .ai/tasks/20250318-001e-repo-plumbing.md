@@ -95,7 +95,7 @@ export default defineConfig({
 Must include:
 
 ````markdown
-# Telesense
+# telesence
 
 **Status: [scaffold only | local publish works | full 1:1 call works]**
 

@@ -11,6 +11,7 @@ export interface RecentCall {
 
 interface AppState {
   token: string
+  tokenVerified: boolean
   recentCalls: RecentCall[]
   preferences: {
     showLogs: boolean
@@ -21,6 +22,7 @@ interface AppState {
 
 const defaultState: AppState = {
   token: "",
+  tokenVerified: false,
   recentCalls: [],
   preferences: {
     showLogs: false,
@@ -34,14 +36,16 @@ const state = useStorage<AppState>(STORAGE_KEY, defaultState, localStorage)
 
 export function useAppStore() {
   // Auth
-  const isAuthenticated = computed(() => !!state.value.token)
+  const isAuthenticated = computed(() => !!state.value.token && state.value.tokenVerified)
 
-  function setToken(token: string) {
+  function setToken(token: string, verified = false) {
     state.value.token = token.trim()
+    state.value.tokenVerified = !!state.value.token && verified
   }
 
   function clearToken() {
     state.value.token = ""
+    state.value.tokenVerified = false
   }
 
   function getAuthHeaders(): Record<string, string> {
@@ -99,6 +103,7 @@ export function useAppStore() {
   return {
     // State (readonly)
     token: computed(() => state.value.token),
+    tokenVerified: computed(() => state.value.tokenVerified),
     recentCalls,
     preferences,
     isAuthenticated,

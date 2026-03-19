@@ -1,7 +1,7 @@
 name = "telesense"
 main = "src/worker/index.ts"
 
-# This is the main Telesense video call worker
+# This is the main telesence video call worker
 compatibility_date = "2026-03-18"
 
 # Cloudflare Realtime App credentials

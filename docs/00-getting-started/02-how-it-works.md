@@ -1,4 +1,4 @@
-# How Telesense Works
+# How telesence Works
 
 A high-level guide to understanding the 1:1 video call architecture.
 

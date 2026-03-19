@@ -1,4 +1,4 @@
-# Telesense
+# telesence
 
 **Status: `full 1:1 call works` (protocol verified via Echo Demo 2026-03-18)**
 
@@ -81,7 +81,7 @@ vp run status         # Check budget status
 
 ## Applications
 
-### 1. Telesense (`apps/telesense`)
+### 1. telesence (`apps/telesense`)
 
 The main video calling application.
 

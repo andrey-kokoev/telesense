@@ -167,7 +167,13 @@ import ThemeToggle from "../components/ThemeToggle.vue"
 import { useAppStore } from "../composables/useAppStore"
 import { useToast } from "../composables/useToast"
 
-const { isAuthenticated, token, setToken, recentCalls, addRecentCall } = useAppStore()
+const {
+  isAuthenticated,
+  setToken,
+  recentCalls,
+  addRecentCall,
+  clearToken: clearStoredToken,
+} = useAppStore()
 const { show } = useToast()
 
 const roomIdInput = ref("")
@@ -202,22 +208,38 @@ function goToRoom(roomId: string) {
   window.location.href = `/?room=${roomId}`
 }
 
-function saveToken() {
+async function verifyToken(candidateToken: string) {
+  const res = await fetch("/api/auth/verify", {
+    headers: {
+      "X-User-Token": candidateToken,
+    },
+  })
+
+  return res.ok
+}
+
+async function saveToken() {
   const t = tokenInput.value.trim()
   if (!t) return
 
-  setToken(t)
+  const isValid = await verifyToken(t)
+  if (!isValid) {
+    show("Invalid token", "error")
+    return
+  }
+
+  setToken(t, true)
   tokenInput.value = ""
   show("Token saved", "success")
 }
 
-function updateToken() {
-  saveToken()
+async function updateToken() {
+  await saveToken()
   showTokenModal.value = false
 }
 
 function clearToken() {
-  setToken("")
+  clearStoredToken()
   tokenInput.value = ""
 }
 </script>
@@ -268,12 +290,13 @@ function clearToken() {
 
 .landing__title__glyph--s {
   padding-left: 0.02em;
-  margin-right: 0.02ch;
+  margin-right: 0.05ch;
+  margin-left: 0.05ch;
 }
 
 .landing__title__glyph--t {
   padding-left: 0.035em;
-  margin-right: 0.02ch;
+  margin-right: 0.1ch;
 }
 
 .landing__subtitle {

@@ -1,4 +1,4 @@
-# Telesense — Cloudflare Realtime 1:1 Video Calls
+# telesence — Cloudflare Realtime 1:1 Video Calls
 # Quick reference for common tasks
 
 .PHONY: dev build deploy clean check setup help
@@ -28,7 +28,7 @@ check: ## Run type checks
 	pnpm check
 
 setup: ## Setup instructions for new developers
-	@echo "=== Telesense Setup ==="
+	@echo "=== telesence Setup ==="
 	@echo ""
 	@echo "1. Copy .dev.vars.example to .dev.vars:"
 	@echo "   cp .dev.vars.example .dev.vars"
