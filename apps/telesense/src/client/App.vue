@@ -12,11 +12,6 @@ const callId = computed(() => {
 
 <template>
   <div class="container">
-    <header class="header">
-      <h1>Telesense</h1>
-      <p class="subtitle">Cloudflare Realtime 1:1 Video Call</p>
-    </header>
-
     <main>
       <Transition name="page" mode="out-in">
         <LandingView v-if="!callId" key="landing" />
