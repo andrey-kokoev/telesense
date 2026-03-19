@@ -1,4 +1,4 @@
-// Cloudflare Realtime Worker — UNLOCKED with verified payloads (Echo Demo 2026-03-18)
+// Cloudflare Realtime Worker — Durable Objects for cross-device coordination
 //
 // VERIFIED ENDPOINTS:
 // - POST /v1/apps/{appId}/sessions/new → { sessionId }
@@ -10,6 +10,7 @@
 
 import { Hono } from 'hono'
 import { logger } from 'hono/logger'
+import { CallRoom } from './call-room'
 
 type Env = {
   REALTIME_APP_ID: string
@@ -19,17 +20,21 @@ type Env = {
   DEBUG?: string
   BUDGET_KV?: KVNamespace  // Optional: for usage limiting
   ASSETS?: Fetcher  // Workers Sites static assets
+  CALL_ROOMS: DurableObjectNamespace
 }
 
 // VERIFIED: rtc.live.cloudflare.com/v1 (not realtime.cloudflare.com/client/v4)
 const REALTIME_API = 'https://rtc.live.cloudflare.com/v1/apps'
 
-// Dev-only ephemeral rendezvous state; invalid across isolates/restarts/deploys.
-// Production requires Durable Objects or external shared state.
-const calls = new Map<string, Map<string, {
-  cfSessionId: string
-  publishedTracks: Array<{ trackName: string; mid: string }>
-}>>()
+// Helper to get CallRoom DO instance
+function getCallRoom(env: Env, callId: string): DurableObjectStub {
+  const id = env.CALL_ROOMS.idFromName(callId)
+  return env.CALL_ROOMS.get(id)
+}
+
+// Legacy in-memory store (deprecated, kept for compatibility during transition)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _deprecatedCalls = new Map()
 
 // Type definitions
 interface CreateSessionResponse {
@@ -241,16 +246,12 @@ app.onError((err, c) => {
 
 // Health check endpoint
 app.get('/health', (c) => {
-  let sessionsActive = 0
-  for (const call of calls.values()) {
-    sessionsActive += call.size
-  }
-  
   return c.json({
     status: 'healthy',
-    version: '0.0.1',
-    callsActive: calls.size,
-    sessionsActive
+    version: '1.0.0',
+    // Note: Call counts not available with Durable Objects architecture
+    callsActive: -1,
+    sessionsActive: -1
   } as HealthResponse)
 })
 
@@ -301,15 +302,13 @@ app.post('/api/calls/:callId/session', async (c) => {
   }
 
   const internalId = crypto.randomUUID()
-  if (!calls.has(callId)) calls.set(callId, new Map())
-  calls.get(callId)!.set(internalId, { 
-    cfSessionId, 
-    publishedTracks: [] 
-  })
-
-  if (calls.size > 1000) {
-    console.warn('[calls] excessive in-memory call count; dev-only store may be leaking')
-  }
+  
+  // Register with Durable Object for cross-device coordination
+  const callRoom = getCallRoom(env, callId)
+  await callRoom.fetch(new Request('http://do.internal/createSession', {
+    method: 'POST',
+    body: JSON.stringify({ internalId, cfSessionId })
+  }))
 
   if (debug) {
     console.log(`[sessions/new] Created: internal=${internalId.slice(0, 8)}, cf=${cfSessionId.slice(0, 8)}`)
@@ -343,10 +342,19 @@ app.post('/api/calls/:callId/publish-offer', async (c) => {
     return c.json({ error: (e as Error).message, code: 'BAD_REQUEST' } as ErrorResponse, 400)
   }
 
-  const session = calls.get(callId)?.get(body.sessionId)
-  if (!session) {
-    return c.json({ error: 'Session not found', code: 'SESSION_NOT_FOUND' } as ErrorResponse, 404)
+  // Look up session in Durable Object to get cfSessionId
+  const callRoom = getCallRoom(env, callId)
+  const sessionRes = await callRoom.fetch(new Request(`http://do.internal/getSession?internalId=${body.sessionId}`))
+  
+  if (!sessionRes.ok) {
+    if (sessionRes.status === 404) {
+      return c.json({ error: 'Session not found', code: 'SESSION_NOT_FOUND' } as ErrorResponse, 404)
+    }
+    return c.json({ error: 'Failed to look up session', code: 'INTERNAL_ERROR' } as ErrorResponse, 500)
   }
+  
+  const sessionData = await sessionRes.json() as { cfSessionId: string }
+  const cfSessionId = sessionData.cfSessionId
 
   if (debug) {
     console.log(`[tracks/new/push] Publishing ${body.tracks.length} tracks for session: ${body.sessionId.slice(0, 8)}`)
@@ -354,7 +362,7 @@ app.post('/api/calls/:callId/publish-offer', async (c) => {
 
   // VERIFIED: tracks/new with location: "local" returns Answer
   const res = await fetch(
-    `${REALTIME_API}/${env.REALTIME_APP_ID}/sessions/${session.cfSessionId}/tracks/new`,
+    `${REALTIME_API}/${env.REALTIME_APP_ID}/sessions/${cfSessionId}/tracks/new`,
     {
       method: 'POST',
       headers: apiHeaders(env),
@@ -390,8 +398,14 @@ app.post('/api/calls/:callId/publish-offer', async (c) => {
     } as ErrorResponse, 502)
   }
 
-  // Store published tracks for remote discovery
-  session.publishedTracks = body.tracks
+  // Store published tracks in Durable Object for remote discovery
+  await callRoom.fetch(new Request('http://do.internal/publishTracks', {
+    method: 'POST',
+    body: JSON.stringify({ 
+      internalId: body.sessionId,
+      tracks: body.tracks 
+    })
+  }))
 
   if (debug) {
     console.log(`[tracks/new/push] Success: got answer, ${cfResponse.tracks?.length || 0} tracks confirmed`)
@@ -425,13 +439,23 @@ app.post('/api/calls/:callId/subscribe-offer', async (c) => {
     return c.json({ error: (e as Error).message, code: 'BAD_REQUEST' } as ErrorResponse, 400)
   }
 
-  const session = calls.get(callId)?.get(body.sessionId)
-  if (!session) {
-    return c.json({ error: 'Session not found', code: 'SESSION_NOT_FOUND' } as ErrorResponse, 404)
+  // Look up session in Durable Object to get cfSessionId
+  const callRoom = getCallRoom(env, callId)
+  const sessionRes = await callRoom.fetch(new Request(`http://do.internal/getSession?internalId=${body.sessionId}`))
+  
+  if (!sessionRes.ok) {
+    if (sessionRes.status === 404) {
+      return c.json({ error: 'Session not found', code: 'SESSION_NOT_FOUND' } as ErrorResponse, 404)
+    }
+    return c.json({ error: 'Failed to look up session', code: 'INTERNAL_ERROR' } as ErrorResponse, 500)
   }
+  
+  const sessionData = await sessionRes.json() as { cfSessionId: string }
+  const cfSessionId = sessionData.cfSessionId
 
   if (debug) {
     console.log(`[tracks/new/pull] Subscribing to ${body.remoteTracks.length} remote tracks`)
+    console.log(`[tracks/new/pull] Local session cfId: ${cfSessionId.slice(0, 8)}`)
   }
 
   // VERIFIED: tracks/new with location: "remote" returns OFFER
@@ -443,12 +467,12 @@ app.post('/api/calls/:callId/subscribe-offer', async (c) => {
   
   if (debug) {
     console.log(`[tracks/new/pull] Subscribing ${body.remoteTracks.length} tracks`)
-    console.log(`[tracks/new/pull] Local session cfId: ${session.cfSessionId.slice(0, 8)}`)
+    console.log(`[tracks/new/pull] Local session cfId: ${cfSessionId.slice(0, 8)}`)
     console.log(`[tracks/new/pull] Request body:`, JSON.stringify({ tracks: tracksToSubscribe }, null, 2))
   }
   
   const res = await fetch(
-    `${REALTIME_API}/${env.REALTIME_APP_ID}/sessions/${session.cfSessionId}/tracks/new`,
+    `${REALTIME_API}/${env.REALTIME_APP_ID}/sessions/${cfSessionId}/tracks/new`,
     {
       method: 'POST',
       headers: apiHeaders(env),
@@ -513,10 +537,19 @@ app.post('/api/calls/:callId/complete-subscribe', async (c) => {
     return c.json({ error: (e as Error).message, code: 'BAD_REQUEST' } as ErrorResponse, 400)
   }
 
-  const session = calls.get(callId)?.get(body.sessionId)
-  if (!session) {
-    return c.json({ error: 'Session not found', code: 'SESSION_NOT_FOUND' } as ErrorResponse, 404)
+  // Look up session in Durable Object to get cfSessionId
+  const callRoom = getCallRoom(env, callId)
+  const sessionRes = await callRoom.fetch(new Request(`http://do.internal/getSession?internalId=${body.sessionId}`))
+  
+  if (!sessionRes.ok) {
+    if (sessionRes.status === 404) {
+      return c.json({ error: 'Session not found', code: 'SESSION_NOT_FOUND' } as ErrorResponse, 404)
+    }
+    return c.json({ error: 'Failed to look up session', code: 'INTERNAL_ERROR' } as ErrorResponse, 500)
   }
+  
+  const sessionData = await sessionRes.json() as { cfSessionId: string }
+  const cfSessionId = sessionData.cfSessionId
 
   if (debug) {
     console.log(`[renegotiate] Sending answer for session: ${body.sessionId.slice(0, 8)}`)
@@ -524,7 +557,7 @@ app.post('/api/calls/:callId/complete-subscribe', async (c) => {
 
   // VERIFIED: PUT /renegotiate with sessionDescription (Answer)
   const res = await fetch(
-    `${REALTIME_API}/${env.REALTIME_APP_ID}/sessions/${session.cfSessionId}/renegotiate`,
+    `${REALTIME_API}/${env.REALTIME_APP_ID}/sessions/${cfSessionId}/renegotiate`,
     {
       method: 'PUT',  // VERIFIED: PUT not POST
       headers: apiHeaders(env),
@@ -552,7 +585,7 @@ app.post('/api/calls/:callId/complete-subscribe', async (c) => {
 
 // 5. DISCOVER-REMOTE-TRACKS
 // App-level discovery — returns other participants' track refs
-app.get('/api/calls/:callId/discover-remote-tracks', (c) => {
+app.get('/api/calls/:callId/discover-remote-tracks', async (c) => {
   const env = c.env
   const callId = normalizeCallId(c.req.param('callId'))
   const debug = isDebugEnabled(env)
@@ -579,44 +612,27 @@ app.get('/api/calls/:callId/discover-remote-tracks', (c) => {
   }
 
   const selfId = c.req.query('sessionId')
-  const call = calls.get(callId)
   
-  if (debug) {
-    console.log(`[discover] callId: ${callId}, selfId: ${selfId?.slice(0, 8)}, sessions: ${call?.size || 0}`)
-  }
+  // Get remote tracks from Durable Object
+  const callRoom = getCallRoom(env, callId)
+  const tracksRes = await callRoom.fetch(new Request(`http://do.internal/getRemoteTracks?selfId=${selfId || ''}`))
   
-  if (!call) {
+  if (!tracksRes.ok) {
     return c.json({ tracks: [] } as DiscoverRemoteTracksResponse)
   }
-
-  // Collect all tracks from other sessions
-  const remoteTracks: DiscoverRemoteTracksResponse['tracks'] = []
-  for (const [sessionId, session] of call.entries()) {
-    if (debug) {
-      console.log(`[discover] checking session: ${sessionId.slice(0, 8)}, tracks: ${session.publishedTracks.length}`)
-    }
-    if (sessionId === selfId) {
-      if (debug) console.log(`[discover] skipping self`)
-      continue
-    }
-    for (const track of session.publishedTracks) {
-      remoteTracks.push({
-        trackName: track.trackName,
-        sessionId: session.cfSessionId,  // Cloudflare session ID
-        mid: track.mid
-      })
-    }
-  }
+  
+  const tracksData = await tracksRes.json() as { tracks: DiscoverRemoteTracksResponse['tracks'] }
   
   if (debug) {
-    console.log(`[discover] returning ${remoteTracks.length} remote tracks`)
+    console.log(`[discover] callId: ${callId}, selfId: ${selfId?.slice(0, 8)}, remote tracks: ${tracksData.tracks.length}`)
   }
 
-  return c.json({ tracks: remoteTracks })
+  return c.json({ tracks: tracksData.tracks })
 })
 
 // 6. LEAVE
 app.post('/api/calls/:callId/leave', async (c) => {
+  const env = c.env
   const callId = normalizeCallId(c.req.param('callId'))
 
   try {
@@ -633,12 +649,12 @@ app.post('/api/calls/:callId/leave', async (c) => {
     return c.json({ error: (e as Error).message, code: 'BAD_REQUEST' } as ErrorResponse, 400)
   }
 
-  const session = calls.get(callId)?.get(body.sessionId)
-  if (!session) return c.json({ ok: true } as OkResponse)
-
-  // TODO: Call tracks/close if needed (not verified in Echo Demo)
-  calls.get(callId)?.delete(body.sessionId)
-  if (calls.get(callId)?.size === 0) calls.delete(callId)
+  // Remove from Durable Object
+  const callRoom = getCallRoom(env, callId)
+  await callRoom.fetch(new Request('http://do.internal/leave', {
+    method: 'POST',
+    body: JSON.stringify({ internalId: body.sessionId })
+  }))
 
   return c.json({ ok: true } as OkResponse)
 })
@@ -681,3 +697,6 @@ app.get('*', async (c) => {
 })
 
 export default app
+
+// Export Durable Object class
+export { CallRoom }

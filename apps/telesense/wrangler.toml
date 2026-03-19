@@ -14,5 +14,15 @@ REALTIME_APP_ID = "fb81ae5790a5960bdaacfc844c27366f"
 binding = "ASSETS"
 directory = "./dist"
 
+# Durable Objects for cross-device session coordination
+[[durable_objects.bindings]]
+name = "CALL_ROOMS"
+class_name = "CallRoom"
+
+# Durable Object migration (required for new DO classes)
+[[migrations]]
+tag = "v1"
+new_classes = ["CallRoom"]
+
 # Protocol debugging: enable only during development
 # DEBUG_PROTOCOL = "true"
