@@ -343,18 +343,27 @@ app.post('/api/calls/:callId/publish-offer', async (c) => {
   }
 
   // Look up session in Durable Object to get cfSessionId
+  let cfSessionId: string
   const callRoom = getCallRoom(env, callId)
-  const sessionRes = await callRoom.fetch(new Request(`http://do.internal/getSession?internalId=${body.sessionId}`))
   
-  if (!sessionRes.ok) {
-    if (sessionRes.status === 404) {
-      return c.json({ error: 'Session not found', code: 'SESSION_NOT_FOUND' } as ErrorResponse, 404)
+  try {
+    const sessionRes = await callRoom.fetch(new Request(`http://do.internal/getSession?internalId=${body.sessionId}`))
+    
+    if (!sessionRes.ok) {
+      const errorText = await sessionRes.text()
+      console.error(`[publish] DO lookup failed: ${sessionRes.status}`, errorText)
+      if (sessionRes.status === 404) {
+        return c.json({ error: 'Session not found', code: 'SESSION_NOT_FOUND' } as ErrorResponse, 404)
+      }
+      return c.json({ error: 'Failed to look up session', code: 'INTERNAL_ERROR' } as ErrorResponse, 500)
     }
-    return c.json({ error: 'Failed to look up session', code: 'INTERNAL_ERROR' } as ErrorResponse, 500)
+    
+    const sessionData = await sessionRes.json() as { cfSessionId: string }
+    cfSessionId = sessionData.cfSessionId
+  } catch (e) {
+    console.error('[publish] DO lookup exception:', e)
+    return c.json({ error: `DO lookup failed: ${e}`, code: 'INTERNAL_ERROR' } as ErrorResponse, 500)
   }
-  
-  const sessionData = await sessionRes.json() as { cfSessionId: string }
-  const cfSessionId = sessionData.cfSessionId
 
   if (debug) {
     console.log(`[tracks/new/push] Publishing ${body.tracks.length} tracks for session: ${body.sessionId.slice(0, 8)}`)
