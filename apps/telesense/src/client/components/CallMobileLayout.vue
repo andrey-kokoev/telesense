@@ -2,10 +2,13 @@
 import type { CSSProperties } from "vue"
 import { onBeforeUnmount, onMounted, ref } from "vue"
 import { Icon } from "@iconify/vue"
+import LanguageToggle from "./LanguageToggle.vue"
 import ThemeToggle from "./ThemeToggle.vue"
 import TvNoiseSurface from "./TvNoiseSurface.vue"
+import { useI18n } from "../composables/useI18n"
+import { useToast } from "../composables/useToast"
 
-defineProps<{
+const props = defineProps<{
   roomId: string
   swipePageStyle: CSSProperties
   swipeBackdropStyle: CSSProperties
@@ -25,6 +28,9 @@ defineProps<{
   setLocalVideoEl: (el: Element | null) => void
   setRemoteVideoEl: (el: Element | null) => void
 }>()
+
+const { show } = useToast()
+const { t } = useI18n()
 
 const emit = defineEmits<{
   "update:showLogs": [value: boolean]
@@ -128,24 +134,40 @@ function onLocalPreviewTouchEnd(event: TouchEvent) {
           : localVideoCorner.value
   }
 }
+
+async function copyRoomCode() {
+  try {
+    await navigator.clipboard.writeText(props.roomId)
+    show(t("call_room_code_copied"), "success")
+  } catch {
+    show(t("call_room_code_copy_failed"), "error")
+  }
+}
 </script>
 
 <template>
-  <div class="call-mobile" :style="swipePageStyle" role="main" aria-label="Video call">
+  <div class="call-mobile" :style="swipePageStyle" role="main" :aria-label="t('call_video_call')">
     <div class="swipe-backdrop" :style="swipeBackdropStyle"></div>
 
     <header class="call-mobile__header">
       <div class="call-mobile__header-copy">
-        <span class="call-mobile__eyebrow">room</span>
-        <code class="call-mobile__room-code">{{ roomId }}</code>
+        <span class="call-mobile__eyebrow">{{ t("call_room") }}</span>
+        <button
+          type="button"
+          class="call-mobile__room-code-button"
+          :aria-label="t('call_copy_room_code')"
+          @click="copyRoomCode"
+        >
+          <code class="call-mobile__room-code">{{ roomId }}</code>
+        </button>
       </div>
       <div class="call-mobile__header-actions">
         <div class="call-mobile__layout-selector" role="group" aria-label="Mobile layout">
           <button
             class="call-mobile__layout-option"
             :class="{ 'call-mobile__layout-option--active': mobileLayout === 'picture-in-picture' }"
-            title="Picture in picture"
-            aria-label="Picture in picture"
+            :title="t('call_mobile_picture_in_picture')"
+            :aria-label="t('call_mobile_picture_in_picture')"
             @click="emit('setMobileLayout', 'picture-in-picture')"
           >
             <Icon icon="mdi:picture-in-picture-top-right" aria-hidden="true" />
@@ -153,18 +175,19 @@ function onLocalPreviewTouchEnd(event: TouchEvent) {
           <button
             class="call-mobile__layout-option"
             :class="{ 'call-mobile__layout-option--active': mobileLayout === 'remote-only' }"
-            title="Remote only"
-            aria-label="Remote only"
+            :title="t('call_mobile_remote_only')"
+            :aria-label="t('call_mobile_remote_only')"
             @click="emit('setMobileLayout', 'remote-only')"
           >
             <Icon icon="mdi:fit-to-screen-outline" aria-hidden="true" />
           </button>
         </div>
+        <LanguageToggle />
         <ThemeToggle />
       </div>
     </header>
 
-    <div class="call-mobile__videos" role="region" aria-label="Video feeds">
+    <div class="call-mobile__videos" role="region" :aria-label="t('call_video_feeds')">
       <div
         class="call-mobile__video-card call-mobile__video-card--remote"
         @click="emit('remoteVideoTap')"
@@ -185,19 +208,21 @@ function onLocalPreviewTouchEnd(event: TouchEvent) {
             'call-mobile__video--hidden': isConnecting || isRemoteVideoOff || isRemoteDisconnected,
           }"
         ></video>
-        <span class="video-label">Remote</span>
-        <span v-if="isRemoteAudioMuted" class="video-status-badge">Muted</span>
+        <span class="video-label">{{ t("call_remote") }}</span>
+        <span v-if="isRemoteAudioMuted" class="video-status-badge">{{
+          t("call_muted_badge")
+        }}</span>
         <TvNoiseSurface v-if="isConnecting || isRemoteDisconnected">
           <div v-if="isConnecting" class="connecting-overlay">
             <div class="spinner call-spinner"></div>
-            <span>Waiting for participant...</span>
+            <span>{{ t("call_waiting_for_participant") }}</span>
           </div>
           <div v-else class="connecting-overlay">
-            <span>Participant disconnected</span>
+            <span>{{ t("call_participant_disconnected") }}</span>
           </div>
         </TvNoiseSurface>
         <div v-else-if="isRemoteVideoOff" class="video-off-overlay video-off-overlay--visible">
-          <span>Participant camera off</span>
+          <span>{{ t("call_participant_camera_off") }}</span>
         </div>
 
         <div
@@ -217,7 +242,7 @@ function onLocalPreviewTouchEnd(event: TouchEvent) {
             playsinline
             aria-label="Your video feed"
           ></video>
-          <span class="video-label">You</span>
+          <span class="video-label">{{ t("call_you") }}</span>
           <div class="video-off-overlay" :class="{ 'video-off-overlay--visible': isVideoOff }">
             <svg
               width="32"
@@ -237,7 +262,7 @@ function onLocalPreviewTouchEnd(event: TouchEvent) {
       </div>
     </div>
 
-    <nav ref="menuWrap" class="call-mobile__bottom-bar" aria-label="Call controls">
+    <nav ref="menuWrap" class="call-mobile__bottom-bar" :aria-label="t('call_controls')">
       <button
         type="button"
         class="call-mobile__nav-button"
@@ -259,7 +284,7 @@ function onLocalPreviewTouchEnd(event: TouchEvent) {
           <path d="M19 10v2a7 7 0 1 1-14 0v-2" />
           <path d="M12 19v4" />
         </svg>
-        <span>{{ isAudioMuted ? "Unmute" : "Mute" }}</span>
+        <span>{{ isAudioMuted ? t("call_unmute") : t("call_mute") }}</span>
       </button>
       <button
         type="button"
@@ -281,7 +306,7 @@ function onLocalPreviewTouchEnd(event: TouchEvent) {
           <path d="m22 8-6 4 6 4V8Z" />
           <rect x="2" y="6" width="14" height="12" rx="2" ry="2" />
         </svg>
-        <span>{{ isVideoOff ? "Camera On" : "Camera Off" }}</span>
+        <span>{{ isVideoOff ? t("call_camera_on") : t("call_camera_off") }}</span>
       </button>
       <button
         type="button"
@@ -302,13 +327,13 @@ function onLocalPreviewTouchEnd(event: TouchEvent) {
           <path d="m16 17 5-5-5-5" />
           <path d="M21 12H9" />
         </svg>
-        <span>Leave</span>
+        <span>{{ t("call_leave") }}</span>
       </button>
       <button
         type="button"
         class="call-mobile__nav-button"
         :class="{ 'call-mobile__nav-button--active': showMenu }"
-        aria-label="More actions"
+        :aria-label="t('call_more_actions')"
         @click="showMenu = !showMenu"
         @pointerup="blurTappedButton"
       >
@@ -317,7 +342,7 @@ function onLocalPreviewTouchEnd(event: TouchEvent) {
           <circle cx="12" cy="12" r="2" />
           <circle cx="12" cy="19" r="2" />
         </svg>
-        <span>More</span>
+        <span>{{ t("call_more_actions") }}</span>
       </button>
 
       <div v-if="showMenu" class="call-mobile__menu">
@@ -332,7 +357,7 @@ function onLocalPreviewTouchEnd(event: TouchEvent) {
           "
           @pointerup="blurTappedButton"
         >
-          Logs
+          {{ t("call_logs") }}
         </button>
         <button
           type="button"
@@ -346,7 +371,7 @@ function onLocalPreviewTouchEnd(event: TouchEvent) {
           "
           @pointerup="blurTappedButton"
         >
-          {{ isScreenSharing ? "Stop Sharing" : "Share Screen" }}
+          {{ isScreenSharing ? t("call_stop_sharing") : t("call_share_screen") }}
         </button>
         <button
           type="button"
@@ -360,7 +385,7 @@ function onLocalPreviewTouchEnd(event: TouchEvent) {
           "
           @pointerup="blurTappedButton"
         >
-          End Room
+          {{ t("call_end_room") }}
         </button>
       </div>
     </nav>
@@ -458,6 +483,18 @@ function onLocalPreviewTouchEnd(event: TouchEvent) {
   color: var(--color-text-primary);
   font-size: 0.92rem;
   font-family: "Geist Mono", var(--font-mono);
+}
+
+.call-mobile__room-code-button {
+  border: none;
+  padding: 0;
+  background: transparent;
+  cursor: copy;
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: color-mix(in srgb, var(--color-text-secondary) 70%, transparent);
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.16em;
 }
 
 .call-mobile__videos {

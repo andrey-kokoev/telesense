@@ -1,5 +1,6 @@
 import { computed } from "vue"
 import { useStorage } from "@vueuse/core"
+import { detectLocale, type Locale } from "../i18n/messages"
 
 // Single namespaced key for all app state
 const STORAGE_KEY = "telesense:state"
@@ -19,6 +20,7 @@ interface AppState {
     videoEnabled: boolean
     desktopCallLayout: "side-by-side" | "focus-remote"
     mobileCallLayout: "picture-in-picture" | "remote-only"
+    locale: Locale
   }
 }
 
@@ -32,6 +34,7 @@ const defaultState: AppState = {
     videoEnabled: true,
     desktopCallLayout: "side-by-side",
     mobileCallLayout: "picture-in-picture",
+    locale: detectLocale(),
   },
 }
 

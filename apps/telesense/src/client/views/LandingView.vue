@@ -7,27 +7,62 @@
           >ele<span class="landing__title__glyph landing__title__glyph--s">s</span>ense</span
         >
       </h1>
-      <p class="landing__subtitle">Secure video calls</p>
+      <p class="landing__subtitle">{{ t("landing_secure_video_calls") }}</p>
     </header>
 
     <main class="landing__main">
       <!-- Authenticated User View -->
       <template v-if="isAuthenticated">
         <div class="landing__section">
-          <h2 class="landing__section-title">Start a Room</h2>
+          <h2 class="landing__section-title">{{ t("landing_start_room") }}</h2>
 
-          <button class="landing__btn landing__btn--primary" @click="createNewRoom">
-            <span class="landing__btn-icon">+</span>
-            <span>Create New Room</span>
-          </button>
+          <form class="landing__form" @submit.prevent="submitCreateRoom">
+            <div
+              v-if="isCreateRoomDraftActive"
+              class="landing__code-inputs"
+              @paste="onCreateRoomCodePaste"
+            >
+              <input
+                v-for="(_, index) in createRoomCodeDigits"
+                :key="index"
+                :ref="(el) => setCreateRoomCodeInputRef(el, index)"
+                :value="createRoomCodeDigits[index]"
+                type="text"
+                inputmode="text"
+                autocapitalize="characters"
+                autocomplete="off"
+                autocorrect="off"
+                spellcheck="false"
+                name="create-room-code"
+                data-form-type="other"
+                maxlength="1"
+                class="landing__code-input"
+                :disabled="isCreateRoomCodeInputDisabled(index)"
+                @input="onCreateRoomCodeInput(index, $event)"
+                @keydown="onCreateRoomCodeKeydown(index, $event)"
+              />
+            </div>
+            <button
+              type="submit"
+              class="landing__btn landing__btn--primary"
+              :disabled="isCreateRoomDraftActive && createRoomIdInput.length !== 6"
+            >
+              <span class="landing__btn-icon">{{ isCreateRoomDraftActive ? "✓" : "+" }}</span>
+              <span>{{
+                isCreateRoomDraftActive
+                  ? t("landing_create_room_with_id", { roomId: createRoomIdInput })
+                  : t("landing_create_new_room")
+              }}</span>
+            </button>
+          </form>
         </div>
 
         <div class="landing__divider">
-          <span>or</span>
+          <span>{{ t("landing_or") }}</span>
         </div>
 
         <div class="landing__section">
-          <h2 class="landing__section-title">Join a Room</h2>
+          <h2 class="landing__section-title">{{ t("landing_join_room") }}</h2>
 
           <form class="landing__form" @submit.prevent="joinExistingRoom">
             <div class="landing__code-inputs" @paste="onRoomCodePaste">
@@ -56,7 +91,7 @@
               class="landing__btn landing__btn--secondary"
               :disabled="roomIdInput.length !== 6"
             >
-              Join
+              {{ t("landing_join") }}
             </button>
           </form>
         </div>
@@ -65,7 +100,7 @@
       <!-- Unauthenticated User View -->
       <template v-else>
         <div class="landing__section">
-          <h2 class="landing__section-title">Join a Room</h2>
+          <h2 class="landing__section-title">{{ t("landing_join_room") }}</h2>
 
           <form class="landing__form" @submit.prevent="joinExistingRoom">
             <div class="landing__code-inputs" @paste="onRoomCodePaste">
@@ -94,25 +129,25 @@
               class="landing__btn landing__btn--secondary"
               :disabled="roomIdInput.length !== 6"
             >
-              Join
+              {{ t("landing_join") }}
             </button>
           </form>
         </div>
 
         <div class="landing__divider">
-          <span>or</span>
+          <span>{{ t("landing_or") }}</span>
         </div>
 
         <div class="landing__section">
-          <h2 class="landing__section-title">Create Rooms</h2>
-          <p class="landing__hint">Enter your token to create new rooms</p>
+          <h2 class="landing__section-title">{{ t("landing_create_rooms") }}</h2>
+          <p class="landing__hint">{{ t("landing_enter_token_hint") }}</p>
 
           <form class="landing__form" @submit.prevent="saveToken">
             <input
               v-model="tokenInput"
               type="password"
               class="landing__input"
-              placeholder="Enter your token"
+              :placeholder="t('landing_enter_token_placeholder')"
               autocomplete="off"
             />
             <button
@@ -120,7 +155,7 @@
               class="landing__btn landing__btn--primary"
               :disabled="!tokenInput.trim()"
             >
-              Save Token
+              {{ t("landing_save_token") }}
             </button>
           </form>
         </div>
@@ -128,7 +163,7 @@
 
       <!-- Recent Calls -->
       <div v-if="recentCalls.length > 0" class="landing__recent">
-        <h3 class="landing__recent-title">Recent</h3>
+        <h3 class="landing__recent-title">{{ t("landing_recent") }}</h3>
         <div class="landing__recent-scroll">
           <ul class="landing__recent-list">
             <li
@@ -155,7 +190,7 @@
                     type="submit"
                     class="landing__recent-icon"
                     @click.stop
-                    aria-label="Save label"
+                    :aria-label="t('landing_save_label')"
                   >
                     <svg
                       width="16"
@@ -183,8 +218,8 @@
                 <button
                   class="landing__recent-icon"
                   @click.stop="startRoomEdit(room.id, room.name)"
-                  aria-label="Edit label"
-                  title="Edit label"
+                  :aria-label="t('landing_edit_label')"
+                  :title="t('landing_edit_label')"
                   tabindex="-1"
                 >
                   <svg
@@ -202,8 +237,8 @@
                 <button
                   class="landing__recent-icon"
                   @click.stop="deleteRoom(room.id)"
-                  aria-label="Delete room"
-                  title="Delete room"
+                  :aria-label="t('landing_delete_room')"
+                  :title="t('landing_delete_room')"
                   tabindex="-1"
                 >
                   <svg
@@ -228,13 +263,13 @@
     <!-- Token Change Modal (for authenticated users) -->
     <div v-if="showTokenModal" class="landing__modal" @click.self="showTokenModal = false">
       <div class="landing__modal-content">
-        <h3 class="landing__modal-title">Change Token</h3>
+        <h3 class="landing__modal-title">{{ t("landing_change_token") }}</h3>
         <form class="landing__form" @submit.prevent="updateToken">
           <input
             v-model="tokenInput"
             type="password"
             class="landing__input"
-            placeholder="Enter new token"
+            :placeholder="t('landing_enter_new_token_placeholder')"
             autocomplete="off"
           />
           <div class="landing__modal-actions">
@@ -243,14 +278,14 @@
               class="landing__btn landing__btn--ghost"
               @click="showTokenModal = false"
             >
-              Cancel
+              {{ t("landing_cancel") }}
             </button>
             <button
               type="submit"
               class="landing__btn landing__btn--primary"
               :disabled="!tokenInput.trim()"
             >
-              Save
+              {{ t("landing_save") }}
             </button>
           </div>
         </form>
@@ -258,7 +293,7 @@
     </div>
 
     <div v-if="isAuthenticated" class="landing__token-status">
-      <span class="landing__token-badge">✓ Token set</span>
+      <span class="landing__token-badge">✓ {{ t("landing_token_set") }}</span>
       <button class="landing__token-action" @click="showTokenModal = true">
         <svg
           width="14"
@@ -271,7 +306,7 @@
           <path d="M12 20h9" />
           <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z" />
         </svg>
-        <span>Change token</span>
+        <span>{{ t("landing_change_token_action") }}</span>
       </button>
       <button class="landing__token-action" @click="clearToken">
         <svg
@@ -285,20 +320,25 @@
           <line x1="18" y1="6" x2="6" y2="18" />
           <line x1="6" y1="6" x2="18" y2="18" />
         </svg>
-        <span>Clear token</span>
+        <span>{{ t("landing_clear_token") }}</span>
       </button>
     </div>
 
     <div class="landing__footer">
-      <ThemeToggle />
+      <div class="landing__footer-actions">
+        <LanguageToggle />
+        <ThemeToggle />
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from "vue"
+import LanguageToggle from "../components/LanguageToggle.vue"
 import ThemeToggle from "../components/ThemeToggle.vue"
 import { useAppStore } from "../composables/useAppStore"
+import { useI18n } from "../composables/useI18n"
 import { useToast } from "../composables/useToast"
 
 const {
@@ -311,23 +351,38 @@ const {
   removeRecentCall,
 } = useAppStore()
 const { show } = useToast()
+const { t } = useI18n()
 
 const roomCodeDigits = ref<string[]>(Array.from({ length: 6 }, () => ""))
 const roomCodeInputs = ref<Array<HTMLInputElement | null>>([])
+const createRoomCodeDigits = ref<string[]>(Array.from({ length: 6 }, () => ""))
+const createRoomCodeInputs = ref<Array<HTMLInputElement | null>>([])
 const tokenInput = ref("")
 const showTokenModal = ref(false)
 const editingRoomId = ref<string | null>(null)
 const editingRoomLabel = ref("")
 const roomIdInput = computed(() => roomCodeDigits.value.join(""))
+const createRoomIdInput = computed(() => createRoomCodeDigits.value.join(""))
+const isCreateRoomDraftActive = computed(() => createRoomIdInput.value.length > 0)
 
 function setRoomCodeInputRef(el: unknown, index: number) {
   roomCodeInputs.value[index] = el instanceof HTMLInputElement ? el : null
 }
 
+function setCreateRoomCodeInputRef(el: unknown, index: number) {
+  createRoomCodeInputs.value[index] = el instanceof HTMLInputElement ? el : null
+}
+
 function focusRoomCodeInput(index: number) {
   const input = roomCodeInputs.value[index]
   input?.focus()
-  input?.select()
+  input?.setSelectionRange(0, 0)
+}
+
+function focusCreateRoomCodeInput(index: number) {
+  const input = createRoomCodeInputs.value[index]
+  input?.focus()
+  input?.setSelectionRange(0, 0)
 }
 
 function normalizeRoomCode(value: string) {
@@ -338,10 +393,24 @@ function isRoomCodeInputDisabled(index: number) {
   return index > 0 && !roomCodeDigits.value[index - 1]
 }
 
+function isCreateRoomCodeInputDisabled(index: number) {
+  return index > 0 && !createRoomCodeDigits.value[index - 1]
+}
+
 function clearRoomCodeDigitsFrom(index: number) {
   for (let i = index; i < roomCodeDigits.value.length; i++) {
     roomCodeDigits.value[i] = ""
     const input = roomCodeInputs.value[i]
+    if (input) {
+      input.value = ""
+    }
+  }
+}
+
+function clearCreateRoomCodeDigitsFrom(index: number) {
+  for (let i = index; i < createRoomCodeDigits.value.length; i++) {
+    createRoomCodeDigits.value[i] = ""
+    const input = createRoomCodeInputs.value[i]
     if (input) {
       input.value = ""
     }
@@ -367,7 +436,41 @@ async function onRoomCodeInput(index: number, event: Event) {
   }
 }
 
+async function onCreateRoomCodeInput(index: number, event: Event) {
+  const input = event.target as HTMLInputElement
+  const normalized = normalizeRoomCode(input.value)
+  const nextChar = normalized.slice(-1)
+
+  createRoomCodeDigits.value[index] = nextChar
+  input.value = nextChar
+
+  if (!nextChar) {
+    clearCreateRoomCodeDigitsFrom(index + 1)
+    return
+  }
+
+  if (nextChar && index < createRoomCodeDigits.value.length - 1) {
+    await nextTick()
+    focusCreateRoomCodeInput(index + 1)
+  }
+}
+
 function onRoomCodeKeydown(index: number, event: KeyboardEvent) {
+  const replacement = normalizeRoomCode(event.key)
+  if (replacement.length === 1 && roomCodeDigits.value[index]) {
+    event.preventDefault()
+    roomCodeDigits.value[index] = replacement
+    const input = event.currentTarget as HTMLInputElement | null
+    if (input) {
+      input.value = replacement
+      input.setSelectionRange(0, 0)
+    }
+    if (index < roomCodeDigits.value.length - 1) {
+      void nextTick(() => focusRoomCodeInput(index + 1))
+    }
+    return
+  }
+
   if (event.key === "Backspace" && !roomCodeDigits.value[index] && index > 0) {
     roomCodeDigits.value[index - 1] = ""
     focusRoomCodeInput(index - 1)
@@ -384,11 +487,56 @@ function onRoomCodeKeydown(index: number, event: KeyboardEvent) {
   }
 }
 
+function onCreateRoomCodeKeydown(index: number, event: KeyboardEvent) {
+  const replacement = normalizeRoomCode(event.key)
+  if (replacement.length === 1 && createRoomCodeDigits.value[index]) {
+    event.preventDefault()
+    createRoomCodeDigits.value[index] = replacement
+    const input = event.currentTarget as HTMLInputElement | null
+    if (input) {
+      input.value = replacement
+      input.setSelectionRange(0, 0)
+    }
+    if (index < createRoomCodeDigits.value.length - 1) {
+      void nextTick(() => focusCreateRoomCodeInput(index + 1))
+    }
+    return
+  }
+
+  if (event.key === "Enter") {
+    event.preventDefault()
+    submitCreateRoom()
+    return
+  }
+
+  if (event.key === "Backspace" && !createRoomCodeDigits.value[index] && index > 0) {
+    createRoomCodeDigits.value[index - 1] = ""
+    focusCreateRoomCodeInput(index - 1)
+  }
+
+  if (event.key === "ArrowLeft" && index > 0) {
+    event.preventDefault()
+    focusCreateRoomCodeInput(index - 1)
+  }
+
+  if (event.key === "ArrowRight" && index < createRoomCodeDigits.value.length - 1) {
+    event.preventDefault()
+    focusCreateRoomCodeInput(index + 1)
+  }
+}
+
 function onRoomCodePaste(event: ClipboardEvent) {
   event.preventDefault()
   const pasted = normalizeRoomCode(event.clipboardData?.getData("text") || "").slice(0, 6)
   roomCodeDigits.value = roomCodeDigits.value.map((_, index) => pasted[index] || "")
   focusRoomCodeInput(Math.min(pasted.length, roomCodeDigits.value.length - 1))
+}
+
+function onCreateRoomCodePaste(event: ClipboardEvent) {
+  event.preventDefault()
+  const pasted = normalizeRoomCode(event.clipboardData?.getData("text") || "").slice(0, 6)
+  createRoomCodeDigits.value = createRoomCodeDigits.value.map((_, index) => pasted[index] || "")
+  focusCreateRoomCodeInput(Math.min(pasted.length, createRoomCodeDigits.value.length - 1))
 }
 
 onMounted(() => {
@@ -405,12 +553,26 @@ function generateCallId(): string {
 }
 
 async function createNewRoom() {
-  const roomId = generateCallId()
+  const roomId = createRoomIdInput.value || generateCallId()
   if (!recentCalls.value.some((room) => room.id === roomId)) {
     addRecentCall(roomId)
   }
-  show(`Created room: ${roomId}`, "success")
+  show(t("landing_created_room", { roomId }), "success")
+  createRoomCodeDigits.value = Array.from({ length: 6 }, () => "")
   goToRoom(roomId)
+}
+
+async function submitCreateRoom() {
+  if (!isCreateRoomDraftActive.value) {
+    const roomId = generateCallId()
+    createRoomCodeDigits.value = roomId.split("")
+    await nextTick()
+    focusCreateRoomCodeInput(0)
+    return
+  }
+
+  if (createRoomIdInput.value.length !== 6) return
+  await createNewRoom()
 }
 
 function joinExistingRoom() {
@@ -461,18 +623,18 @@ async function verifyToken(candidateToken: string) {
 }
 
 async function saveToken() {
-  const t = tokenInput.value.trim()
-  if (!t) return
+  const token = tokenInput.value.trim()
+  if (!token) return
 
-  const isValid = await verifyToken(t)
+  const isValid = await verifyToken(token)
   if (!isValid) {
-    show("Invalid token", "error")
+    show(t("landing_invalid_token"), "error")
     return
   }
 
-  setToken(t, true)
+  setToken(token, true)
   tokenInput.value = ""
-  show("Token saved", "success")
+  show(t("landing_token_saved"), "success")
 }
 
 async function updateToken() {
@@ -560,8 +722,19 @@ function clearToken() {
   max-width: 360px;
   margin-top: auto;
   padding-top: var(--space-8);
+  padding-bottom: var(--space-6);
   display: flex;
   justify-content: center;
+}
+
+.landing__footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.landing__footer-actions :deep(.theme-toggle) {
+  margin-bottom: 0;
 }
 
 .landing__section {

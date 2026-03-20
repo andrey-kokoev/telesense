@@ -2,10 +2,13 @@
 import type { CSSProperties } from "vue"
 import { onBeforeUnmount, onMounted, ref } from "vue"
 import { Icon } from "@iconify/vue"
+import LanguageToggle from "./LanguageToggle.vue"
 import ThemeToggle from "./ThemeToggle.vue"
 import TvNoiseSurface from "./TvNoiseSurface.vue"
+import { useI18n } from "../composables/useI18n"
+import { useToast } from "../composables/useToast"
 
-defineProps<{
+const props = defineProps<{
   roomId: string
   swipePageStyle: CSSProperties
   swipeBackdropStyle: CSSProperties
@@ -25,6 +28,9 @@ defineProps<{
   setLocalVideoEl: (el: Element | null) => void
   setRemoteVideoEl: (el: Element | null) => void
 }>()
+
+const { show } = useToast()
+const { t } = useI18n()
 
 const emit = defineEmits<{
   "update:showLogs": [value: boolean]
@@ -58,24 +64,41 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener("pointerdown", handleDocumentPointerDown)
 })
+
+async function copyRoomCode() {
+  try {
+    await navigator.clipboard.writeText(props.roomId)
+    show(t("call_room_code_copied"), "success")
+  } catch {
+    show(t("call_room_code_copy_failed"), "error")
+  }
+}
 </script>
 
 <template>
-  <div class="call-desktop" :style="swipePageStyle" role="main" aria-label="Video call">
+  <div class="call-desktop" :style="swipePageStyle" role="main" :aria-label="t('call_video_call')">
     <div class="swipe-backdrop" :style="swipeBackdropStyle"></div>
 
     <header class="call-desktop__header">
       <div>
-        <div class="call-desktop__eyebrow">room</div>
-        <code class="call-desktop__room-code">{{ roomId }}</code>
+        <div class="call-desktop__eyebrow">{{ t("call_room") }}</div>
+        <button
+          type="button"
+          class="call-desktop__room-code-button"
+          :title="t('call_click_to_copy')"
+          :aria-label="t('call_copy_room_code')"
+          @click="copyRoomCode"
+        >
+          <code class="call-desktop__room-code">{{ roomId }}</code>
+        </button>
       </div>
       <div class="call-desktop__header-actions">
         <div class="call-desktop__layout-selector" role="group" aria-label="Desktop layout">
           <button
             class="call-desktop__layout-option"
             :class="{ 'call-desktop__layout-option--active': desktopLayout === 'side-by-side' }"
-            title="Side by side"
-            aria-label="Side by side"
+            :title="t('call_desktop_side_by_side')"
+            :aria-label="t('call_desktop_side_by_side')"
             @click="emit('setDesktopLayout', 'side-by-side')"
           >
             <Icon icon="sidekickicons:view-split-16-solid" aria-hidden="true" />
@@ -83,13 +106,14 @@ onBeforeUnmount(() => {
           <button
             class="call-desktop__layout-option"
             :class="{ 'call-desktop__layout-option--active': desktopLayout === 'focus-remote' }"
-            title="Focus remote"
-            aria-label="Focus remote"
+            :title="t('call_desktop_focus_remote')"
+            :aria-label="t('call_desktop_focus_remote')"
             @click="emit('setDesktopLayout', 'focus-remote')"
           >
             <Icon icon="mdi:picture-in-picture-top-right" aria-hidden="true" />
           </button>
         </div>
+        <LanguageToggle />
         <ThemeToggle />
       </div>
     </header>
@@ -99,7 +123,7 @@ onBeforeUnmount(() => {
         class="call-desktop__videos"
         :class="`call-desktop__videos--${desktopLayout}`"
         role="region"
-        aria-label="Video feeds"
+        :aria-label="t('call_video_feeds')"
       >
         <div
           class="call-desktop__video-card call-desktop__video-card--local"
@@ -114,7 +138,7 @@ onBeforeUnmount(() => {
             playsinline
             aria-label="Your video feed"
           ></video>
-          <span class="video-label">You</span>
+          <span class="video-label">{{ t("call_you") }}</span>
           <div class="video-off-overlay" :class="{ 'video-off-overlay--visible': isVideoOff }">
             <svg
               width="32"
@@ -153,19 +177,21 @@ onBeforeUnmount(() => {
                 isConnecting || isRemoteVideoOff || isRemoteDisconnected,
             }"
           ></video>
-          <span class="video-label">Remote</span>
-          <span v-if="isRemoteAudioMuted" class="video-status-badge">Muted</span>
+          <span class="video-label">{{ t("call_remote") }}</span>
+          <span v-if="isRemoteAudioMuted" class="video-status-badge">{{
+            t("call_muted_badge")
+          }}</span>
           <TvNoiseSurface v-if="isConnecting || isRemoteDisconnected">
             <div v-if="isConnecting" class="connecting-overlay">
               <div class="spinner call-spinner"></div>
-              <span>Waiting for participant...</span>
+              <span>{{ t("call_waiting_for_participant") }}</span>
             </div>
             <div v-else class="connecting-overlay">
-              <span>Participant disconnected</span>
+              <span>{{ t("call_participant_disconnected") }}</span>
             </div>
           </TvNoiseSurface>
           <div v-else-if="isRemoteVideoOff" class="video-off-overlay video-off-overlay--visible">
-            <span>Participant camera off</span>
+            <span>{{ t("call_participant_camera_off") }}</span>
           </div>
         </div>
       </div>
@@ -180,7 +206,7 @@ onBeforeUnmount(() => {
             @click="emit('toggleAudio')"
             :disabled="!hasLocalStream"
           >
-            {{ isAudioMuted ? "Unmute" : "Mute" }}
+            {{ isAudioMuted ? t("call_unmute") : t("call_mute") }}
           </button>
           <button
             class="call-desktop__control"
@@ -188,17 +214,17 @@ onBeforeUnmount(() => {
             @click="emit('toggleVideo')"
             :disabled="!hasLocalStream"
           >
-            {{ isVideoOff ? "Camera On" : "Camera Off" }}
+            {{ isVideoOff ? t("call_camera_on") : t("call_camera_off") }}
           </button>
           <button class="call-desktop__control call-desktop__control--leave" @click="emit('leave')">
-            Leave
+            {{ t("call_leave") }}
           </button>
         </div>
 
         <div ref="menuWrap" class="call-desktop__menu-wrap">
           <button
             class="call-desktop__menu-button"
-            aria-label="More actions"
+            :aria-label="t('call_more_actions')"
             @click="showMenu = !showMenu"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -218,7 +244,7 @@ onBeforeUnmount(() => {
                 }
               "
             >
-              Logs
+              {{ t("call_logs") }}
             </button>
             <button
               class="call-desktop__menu-item"
@@ -230,7 +256,7 @@ onBeforeUnmount(() => {
                 }
               "
             >
-              {{ isScreenSharing ? "Stop Sharing" : "Share Screen" }}
+              {{ isScreenSharing ? t("call_stop_sharing") : t("call_share_screen") }}
             </button>
             <button
               v-if="canEndRoom"
@@ -242,7 +268,7 @@ onBeforeUnmount(() => {
                 }
               "
             >
-              End Room
+              {{ t("call_end_room") }}
             </button>
           </div>
         </div>
@@ -250,7 +276,7 @@ onBeforeUnmount(() => {
 
       <div v-if="showLogs" class="call-desktop__sidebar">
         <button class="call-desktop__sidebar-close" @click="emit('update:showLogs', false)">
-          Close Logs
+          {{ t("call_close_logs") }}
         </button>
         <div
           v-for="(entry, index) in logs"
@@ -359,6 +385,18 @@ onBeforeUnmount(() => {
   color: var(--color-text-primary);
   font-size: 0.95rem;
   font-family: "Geist Mono", var(--font-mono);
+}
+
+.call-desktop__room-code-button {
+  border: none;
+  padding: 0;
+  background: transparent;
+  cursor: copy;
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: color-mix(in srgb, var(--color-text-secondary) 70%, transparent);
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.16em;
 }
 
 .call-desktop__control,
