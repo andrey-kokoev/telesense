@@ -11,7 +11,6 @@ defineProps<{
   swipeBackdropStyle: CSSProperties
   showLogs: boolean
   logs: Array<{ timestamp: string; message: string }>
-  isSwapped: boolean
   canEndRoom: boolean
   isAudioMuted: boolean
   isVideoOff: boolean
@@ -23,7 +22,6 @@ defineProps<{
   isRemoteDisconnected: boolean
   desktopLayout: "side-by-side" | "focus-remote"
   remoteZoomStyle: CSSProperties
-  videoLayout: string
   setLocalVideoEl: (el: Element | null) => void
   setRemoteVideoEl: (el: Element | null) => void
 }>()
@@ -36,7 +34,6 @@ const emit = defineEmits<{
   toggleScreenShare: []
   leave: []
   endRoom: []
-  swapVideos: []
   localVideoTap: []
   remoteVideoTap: []
   remoteTouchStart: [event: TouchEvent]
@@ -100,11 +97,7 @@ onBeforeUnmount(() => {
     <div class="call-desktop__body">
       <div
         class="call-desktop__videos"
-        :class="[
-          videoLayout,
-          `call-desktop__videos--${desktopLayout}`,
-          { 'call-desktop__videos--swapped': isSwapped },
-        ]"
+        :class="`call-desktop__videos--${desktopLayout}`"
         role="region"
         aria-label="Video feeds"
       >
@@ -121,13 +114,7 @@ onBeforeUnmount(() => {
             playsinline
             aria-label="Your video feed"
           ></video>
-          <span
-            class="video-label"
-            :class="{ 'video-label--clickable': desktopLayout === 'side-by-side' }"
-            @click.stop="desktopLayout === 'side-by-side' && emit('swapVideos')"
-          >
-            You
-          </span>
+          <span class="video-label">You</span>
           <div class="video-off-overlay" :class="{ 'video-off-overlay--visible': isVideoOff }">
             <svg
               width="32"
@@ -166,13 +153,7 @@ onBeforeUnmount(() => {
                 isConnecting || isRemoteVideoOff || isRemoteDisconnected,
             }"
           ></video>
-          <span
-            class="video-label"
-            :class="{ 'video-label--clickable': desktopLayout === 'side-by-side' }"
-            @click.stop="desktopLayout === 'side-by-side' && emit('swapVideos')"
-          >
-            Remote
-          </span>
+          <span class="video-label">Remote</span>
           <span v-if="isRemoteAudioMuted" class="video-status-badge">Muted</span>
           <TvNoiseSurface v-if="isConnecting || isRemoteDisconnected">
             <div v-if="isConnecting" class="connecting-overlay">
@@ -449,10 +430,6 @@ onBeforeUnmount(() => {
   gap: 1rem;
 }
 
-.call-desktop__videos.solo {
-  grid-template-columns: minmax(0, 1fr);
-}
-
 .call-desktop__videos.call-desktop__videos--side-by-side {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -460,14 +437,6 @@ onBeforeUnmount(() => {
 .call-desktop__videos--focus-remote {
   position: relative;
   grid-template-columns: minmax(0, 1fr);
-}
-
-.call-desktop__videos--swapped .call-desktop__video-card--local {
-  order: 2;
-}
-
-.call-desktop__videos--swapped .call-desktop__video-card--remote {
-  order: 1;
 }
 
 .call-desktop__video-card {
@@ -521,10 +490,6 @@ onBeforeUnmount(() => {
   width: fit-content;
   height: auto;
   line-height: 1;
-}
-
-.video-label--clickable {
-  cursor: pointer;
 }
 
 .video-status-badge {

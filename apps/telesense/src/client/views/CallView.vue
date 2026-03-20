@@ -48,7 +48,6 @@ const swipeBack = useSwipeBack(() => {
 const remoteZoom = usePinchZoom()
 
 const isMobile = ref(false)
-const isSwapped = ref(false)
 const localVid = ref<HTMLVideoElement>()
 const remoteVid = ref<HTMLVideoElement>()
 const remoteStream = ref<MediaStream | null>(null)
@@ -75,7 +74,6 @@ const beforeUnloadListener = ref<(() => void) | null>(null)
 const mediaQueryListener = ref<((event: MediaQueryListEvent) => void) | null>(null)
 let viewportQuery: MediaQueryList | null = null
 
-const videoLayout = computed(() => (isConnecting.value ? "solo" : "duo"))
 const isAuthenticated = store.isAuthenticated
 const useMobileLayout = computed(() => isMobile.value)
 const desktopCallLayout = computed(() => store.preferences.value.desktopCallLayout)
@@ -101,10 +99,6 @@ function setRemoteVideoEl(el: Element | null) {
   if (remoteVid.value && remoteStream.value) {
     remoteVid.value.srcObject = remoteStream.value
   }
-}
-
-function swapVideos() {
-  isSwapped.value = !isSwapped.value
 }
 
 function log(msg: string) {
@@ -705,7 +699,6 @@ onBeforeUnmount(() => {
     :swipe-backdrop-style="swipeBack.backdropStyle.value"
     :show-logs="showLogs"
     :logs="logs"
-    :is-swapped="isSwapped"
     :can-end-room="isAuthenticated"
     :is-audio-muted="isAudioMuted"
     :is-video-off="isVideoOff"
@@ -717,7 +710,6 @@ onBeforeUnmount(() => {
     :is-remote-disconnected="isRemoteDisconnected"
     :mobile-layout="mobileCallLayout"
     :remote-zoom-style="remoteZoom.transformStyle.value"
-    :video-layout="videoLayout"
     :set-local-video-el="setLocalVideoEl"
     :set-remote-video-el="setRemoteVideoEl"
     @update:show-logs="showLogs = $event"
@@ -727,7 +719,6 @@ onBeforeUnmount(() => {
     @toggle-screen-share="toggleScreenShare"
     @leave="leave"
     @end-room="endRoom"
-    @swap-videos="swapVideos"
     @local-video-tap="onVideoTap('local')"
     @remote-video-tap="onVideoTap('remote')"
     @remote-touch-start="remoteZoom.onTouchStart"
@@ -742,7 +733,6 @@ onBeforeUnmount(() => {
     :swipe-backdrop-style="swipeBack.backdropStyle.value"
     :show-logs="showLogs"
     :logs="logs"
-    :is-swapped="isSwapped"
     :can-end-room="isAuthenticated"
     :is-audio-muted="isAudioMuted"
     :is-video-off="isVideoOff"
@@ -754,7 +744,6 @@ onBeforeUnmount(() => {
     :is-remote-disconnected="isRemoteDisconnected"
     :desktop-layout="desktopCallLayout"
     :remote-zoom-style="remoteZoom.transformStyle.value"
-    :video-layout="videoLayout"
     :set-local-video-el="setLocalVideoEl"
     :set-remote-video-el="setRemoteVideoEl"
     @update:show-logs="showLogs = $event"
@@ -764,7 +753,6 @@ onBeforeUnmount(() => {
     @toggle-screen-share="toggleScreenShare"
     @leave="leave"
     @end-room="endRoom"
-    @swap-videos="swapVideos"
     @local-video-tap="onVideoTap('local')"
     @remote-video-tap="onVideoTap('remote')"
     @remote-touch-start="remoteZoom.onTouchStart"

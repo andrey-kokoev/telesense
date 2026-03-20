@@ -11,7 +11,6 @@ defineProps<{
   swipeBackdropStyle: CSSProperties
   showLogs: boolean
   logs: Array<{ timestamp: string; message: string }>
-  isSwapped: boolean
   canEndRoom: boolean
   isAudioMuted: boolean
   isVideoOff: boolean
@@ -23,7 +22,6 @@ defineProps<{
   isRemoteDisconnected: boolean
   mobileLayout: "picture-in-picture" | "remote-only"
   remoteZoomStyle: CSSProperties
-  videoLayout: string
   setLocalVideoEl: (el: Element | null) => void
   setRemoteVideoEl: (el: Element | null) => void
 }>()
@@ -36,7 +34,6 @@ const emit = defineEmits<{
   toggleScreenShare: []
   leave: []
   endRoom: []
-  swapVideos: []
   localVideoTap: []
   remoteVideoTap: []
   remoteTouchStart: [event: TouchEvent]
