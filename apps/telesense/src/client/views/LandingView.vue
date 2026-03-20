@@ -104,7 +104,6 @@
         :active-count="activeRecentCount"
         :set-scroll-ref="setRecentScrollRef"
         :register-visibility-ref="setRecentItemRef"
-        @add-debug="addTwelveRecentRooms"
         @toggle-active-only="showActiveRecentOnly = !showActiveRecentOnly"
         @open="handleRecentItemClick"
         @rename="renameRoom"
@@ -272,12 +271,6 @@ function generateCallId(): string {
     result += chars.charAt(Math.floor(Math.random() * chars.length))
   }
   return result
-}
-
-function addTwelveRecentRooms() {
-  for (let i = 0; i < 12; i++) {
-    addRecentCall(generateCallId())
-  }
 }
 
 async function createNewRoom() {

@@ -338,6 +338,11 @@ body {
     animation-duration: 0.8s !important;
     animation-iteration-count: infinite !important;
   }
+
+  .landing-code-caret {
+    animation-duration: 1.05s !important;
+    animation-iteration-count: infinite !important;
+  }
 }
 
 .swipe-backdrop {

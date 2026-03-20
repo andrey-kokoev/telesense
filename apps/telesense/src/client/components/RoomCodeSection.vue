@@ -4,25 +4,31 @@
 
     <form class="landing__form" @submit.prevent="emit('submit')">
       <div v-if="showInputs" class="landing__code-inputs" @paste="emit('paste', $event)">
-        <input
-          v-for="(_, index) in digits"
-          :key="index"
-          :ref="(el) => setInputRef(el, index)"
-          :value="digits[index]"
-          type="text"
-          inputmode="text"
-          autocapitalize="characters"
-          autocomplete="off"
-          autocorrect="off"
-          spellcheck="false"
-          :name="name"
-          data-form-type="other"
-          maxlength="1"
-          class="landing__code-input"
-          :disabled="isInputDisabled(index)"
-          @input="emit('input', index, $event)"
-          @keydown="emit('keydown', index, $event)"
-        />
+        <div v-for="(_, index) in digits" :key="index" class="landing__code-input-wrap">
+          <input
+            :ref="(el) => setInputRef(el, index)"
+            :value="digits[index]"
+            type="text"
+            inputmode="text"
+            autocapitalize="characters"
+            autocomplete="off"
+            autocorrect="off"
+            spellcheck="false"
+            :name="name"
+            data-form-type="other"
+            maxlength="1"
+            class="landing__code-input"
+            :disabled="isInputDisabled(index)"
+            @input="emit('input', index, $event)"
+            @keydown="emit('keydown', index, $event)"
+          />
+          <span
+            v-if="index === digits.findIndex((digit) => digit === '') && digits[index] === ''"
+            class="landing__code-caret landing-code-caret"
+            aria-hidden="true"
+            >_</span
+          >
+        </div>
       </div>
       <button type="submit" class="landing__btn" :class="buttonClass" :disabled="buttonDisabled">
         <span v-if="buttonIcon" class="landing__btn-icon">{{ buttonIcon }}</span>
@@ -33,18 +39,23 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
-  title: string
-  digits: string[]
-  name: string
-  showInputs?: boolean
-  buttonLabel: string
-  buttonClass: string
-  buttonDisabled: boolean
-  buttonIcon?: string
-  setInputRef: (el: unknown, index: number) => void
-  isInputDisabled: (index: number) => boolean
-}>()
+withDefaults(
+  defineProps<{
+    title: string
+    digits: string[]
+    name: string
+    showInputs?: boolean
+    buttonLabel: string
+    buttonClass: string
+    buttonDisabled: boolean
+    buttonIcon?: string
+    setInputRef: (el: unknown, index: number) => void
+    isInputDisabled: (index: number) => boolean
+  }>(),
+  {
+    showInputs: true,
+  },
+)
 
 const emit = defineEmits<{
   (e: "submit"): void
@@ -68,6 +79,10 @@ const emit = defineEmits<{
     inset 0 1px 0 rgb(255 255 255 / 0.22);
 }
 
+.landing__code-input-wrap {
+  position: relative;
+}
+
 .landing__code-input {
   width: 100%;
   aspect-ratio: 1;
@@ -81,7 +96,7 @@ const emit = defineEmits<{
   color: var(--color-text-primary);
   opacity: 0.8;
   background: var(--color-bg-secondary);
-  border: 1px solid color-mix(in srgb, var(--color-border-hover) 58%, var(--color-border));
+  border: 1px solid color-mix(in srgb, var(--color-border-hover) 78%, var(--color-border));
   border-radius: var(--radius-lg);
   box-shadow:
     0 1px 0 rgb(255 255 255 / 0.16),
@@ -108,5 +123,38 @@ const emit = defineEmits<{
 .landing__code-input:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+.landing__code-caret {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-accent);
+  opacity: 1;
+  animation: landing-code-caret-blink 1.05s steps(1, end) infinite;
+  pointer-events: none;
+  font-size: 1.9rem;
+  font-weight: 700;
+  line-height: 1;
+  transform: translateY(0.02em) scaleX(2);
+}
+
+.landing__code-input-wrap:focus-within .landing__code-caret {
+  opacity: 0;
+  animation: none;
+}
+
+@keyframes landing-code-caret-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+
+  50%,
+  100% {
+    opacity: 0.18;
+  }
 }
 </style>

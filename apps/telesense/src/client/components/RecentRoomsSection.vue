@@ -1,6 +1,5 @@
 <template>
   <div class="landing__recent">
-    <button type="button" class="landing__recent-debug" @click="emit('add-debug')">+12</button>
     <div class="landing__recent-header">
       <button
         type="button"
@@ -57,7 +56,6 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: "add-debug"): void
   (e: "toggle-active-only"): void
   (e: "open", roomId: string): void
   (e: "rename", roomId: string, nextLabel: string): void
@@ -70,16 +68,6 @@ const emit = defineEmits<{
   margin-top: var(--space-8);
   padding-top: var(--space-6);
   border-top: 1px solid var(--color-border);
-}
-
-.landing__recent-debug {
-  margin-bottom: var(--space-3);
-  padding: var(--space-1) var(--space-2);
-  font: inherit;
-  color: var(--color-text-secondary);
-  background: var(--color-bg-secondary);
-  border: 1px dashed var(--color-border);
-  border-radius: var(--radius-full);
 }
 
 .landing__recent-title {
