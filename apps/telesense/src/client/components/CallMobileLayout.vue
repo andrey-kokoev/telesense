@@ -85,6 +85,12 @@ function onLocalPreviewTouchEnd(event: TouchEvent) {
   const dy = touch.clientY - start.y
   if (Math.abs(dx) < 24 && Math.abs(dy) < 24) return
 
+  if (Math.abs(dx) >= 24 && Math.abs(dy) >= 24) {
+    localVideoCorner.value =
+      dx > 0 ? (dy > 0 ? "bottom-right" : "top-right") : dy > 0 ? "bottom-left" : "top-left"
+    return
+  }
+
   const horizontal = Math.abs(dx) >= Math.abs(dy)
 
   if (horizontal) {
@@ -319,8 +325,10 @@ function onLocalPreviewTouchEnd(event: TouchEvent) {
           type="button"
           class="call-mobile__menu-item"
           @click="
-            emit('update:showLogs', !showLogs)
-            showMenu = false
+            () => {
+              emit('update:showLogs', !showLogs)
+              showMenu = false
+            }
           "
           @pointerup="blurTappedButton"
         >
@@ -331,8 +339,10 @@ function onLocalPreviewTouchEnd(event: TouchEvent) {
           class="call-mobile__menu-item"
           :disabled="!hasLocalStream"
           @click="
-            emit('toggleScreenShare')
-            showMenu = false
+            () => {
+              emit('toggleScreenShare')
+              showMenu = false
+            }
           "
           @pointerup="blurTappedButton"
         >
@@ -343,8 +353,10 @@ function onLocalPreviewTouchEnd(event: TouchEvent) {
           v-if="canEndRoom"
           class="call-mobile__menu-item call-mobile__menu-item--danger"
           @click="
-            emit('endRoom')
-            showMenu = false
+            () => {
+              emit('endRoom')
+              showMenu = false
+            }
           "
           @pointerup="blurTappedButton"
         >

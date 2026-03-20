@@ -212,8 +212,10 @@ onBeforeUnmount(() => {
             <button
               class="call-desktop__menu-item"
               @click="
-                emit('update:showLogs', !showLogs)
-                showMenu = false
+                () => {
+                  emit('update:showLogs', !showLogs)
+                  showMenu = false
+                }
               "
             >
               Logs
@@ -222,8 +224,10 @@ onBeforeUnmount(() => {
               class="call-desktop__menu-item"
               :disabled="!hasLocalStream"
               @click="
-                emit('toggleScreenShare')
-                showMenu = false
+                () => {
+                  emit('toggleScreenShare')
+                  showMenu = false
+                }
               "
             >
               {{ isScreenSharing ? "Stop Sharing" : "Share Screen" }}
@@ -232,8 +236,10 @@ onBeforeUnmount(() => {
               v-if="canEndRoom"
               class="call-desktop__menu-item call-desktop__menu-item--danger"
               @click="
-                emit('endRoom')
-                showMenu = false
+                () => {
+                  emit('endRoom')
+                  showMenu = false
+                }
               "
             >
               End Room
