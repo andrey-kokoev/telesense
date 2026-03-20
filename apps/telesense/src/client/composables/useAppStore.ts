@@ -68,11 +68,11 @@ export function useAppStore() {
     const normalizedId = roomId.toUpperCase()
     const normalizedName = name?.trim() || undefined
 
-    // Remove if exists, add to front, keep max 10
+    // Remove if exists, add to front, keep max 999
     state.value.recentCalls = [
       { id: normalizedId, name: normalizedName },
       ...state.value.recentCalls.filter((c) => c.id !== normalizedId),
-    ].slice(0, 10)
+    ].slice(0, 999)
   }
 
   function renameRecentCall(roomId: string, name: string) {

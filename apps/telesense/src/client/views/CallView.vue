@@ -63,7 +63,7 @@ const isVideoOff = ref(false)
 const isScreenSharing = ref(false)
 const isRemoteAudioMuted = ref(false)
 const isRemoteVideoOff = ref(false)
-const isConnecting = ref(true)
+const isStartingCall = ref(true)
 const hadRemoteParticipant = ref(false)
 const isRemoteDisconnected = ref(false)
 const currentSessionId = ref<string | null>(null)
@@ -78,6 +78,9 @@ const isAuthenticated = store.isAuthenticated
 const useMobileLayout = computed(() => isMobile.value)
 const desktopCallLayout = computed(() => store.preferences.value.desktopCallLayout)
 const mobileCallLayout = computed(() => store.preferences.value.mobileCallLayout)
+const isWaitingForRemote = computed(
+  () => !isRemoteDisconnected.value && (isStartingCall.value || !hadRemoteParticipant.value),
+)
 
 function setDesktopCallLayout(layout: "side-by-side" | "focus-remote") {
   store.setPreference("desktopCallLayout", layout)
@@ -212,6 +215,13 @@ function leave() {
   window.location.search = ""
 }
 
+function leaveWithError(message: string) {
+  void cleanupCallPresence()
+  const params = new URLSearchParams()
+  params.set("error", message)
+  window.location.search = params.toString()
+}
+
 function clearRemoteVideo() {
   const stream = remoteStream.value ?? (remoteVid.value?.srcObject as MediaStream | null)
   if (stream) {
@@ -242,7 +252,6 @@ function handleRemoteDisconnect(reason: string) {
   log(`🔌 Remote participant disconnected (${reason})`)
   clearRemoteVideo()
   isRemoteDisconnected.value = true
-  isConnecting.value = false
   showToast("Remote participant disconnected", "error")
 }
 
@@ -280,8 +289,7 @@ function startHeartbeat(sessionId: string) {
     } catch (e) {
       if ((e as Error & { status?: number }).status === 404) {
         log("🛑 Room ended")
-        showToast("Room ended", "error")
-        leave()
+        leaveWithError("Room ended")
         return
       }
       log(`⚠️ Presence heartbeat failed: ${e}`)
@@ -499,20 +507,6 @@ onMounted(async () => {
 
   log("🚀 Starting room...")
   log(`🚪 Room ID: ${props.roomId}`)
-  log("📹 Requesting camera access...")
-
-  try {
-    localStream.value = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-    cameraTrack.value = localStream.value.getVideoTracks()[0] ?? null
-    if (localVid.value) {
-      localVid.value.srcObject = localStream.value
-    }
-    log("✅ Camera connected")
-  } catch (e) {
-    log(`❌ Camera error: ${e}`)
-    showToast("Camera access denied", "error")
-    return
-  }
 
   const pc = new RTCPeerConnection({
     iceServers: [{ urls: "stun:stun.cloudflare.com:3478" }],
@@ -524,7 +518,6 @@ onMounted(async () => {
     log("📡 Remote video received!")
     hadRemoteParticipant.value = true
     isRemoteDisconnected.value = false
-    isConnecting.value = false
 
     let stream = remoteVid.value?.srcObject as MediaStream | null
     if (!stream) {
@@ -563,6 +556,12 @@ onMounted(async () => {
     log("🔑 Creating session...")
     const sessionRes = await apiCall(`/api/rooms/${props.roomId}/session`, { method: "POST" })
     if (!sessionRes.ok) {
+      if (sessionRes.status === 401) {
+        throw new Error("Room requires a valid token")
+      }
+      if (sessionRes.status === 403) {
+        throw new Error("Token is not allowed for this room")
+      }
       if (sessionRes.status === 404) {
         throw new Error("Room not found")
       }
@@ -574,6 +573,22 @@ onMounted(async () => {
     currentSessionId.value = sessionId
     log("✅ Session ready")
     startHeartbeat(sessionId)
+
+    log("📹 Requesting camera access...")
+    try {
+      localStream.value = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      cameraTrack.value = localStream.value.getVideoTracks()[0] ?? null
+      if (localVid.value) {
+        localVid.value.srcObject = localStream.value
+      }
+      log("✅ Camera connected")
+    } catch (e) {
+      log(`❌ Camera error: ${e}`)
+      await cleanupCallPresence()
+      leaveWithError("Camera access denied")
+      return
+    }
+
     await syncMediaState()
 
     const transceivers = localStream
@@ -622,7 +637,7 @@ onMounted(async () => {
 
     log("🟢 Ready for calls!")
     showToast("Ready for calls!", "success")
-    isConnecting.value = false
+    isStartingCall.value = false
     log("👀 Waiting for remote participant...")
     void pollAndSubscribe(pc, sessionId)
 
@@ -643,11 +658,12 @@ onMounted(async () => {
     pcRef.value = null
     publishedVideoSender.value = null
     pc.close()
+    isStartingCall.value = false
     await cleanupCallPresence()
     clearRemoteVideo()
     stopLocalMedia()
     log(`❌ Error: ${e}`)
-    showToast(e instanceof Error ? e.message : "Connection failed", "error")
+    leaveWithError(e instanceof Error ? e.message : "Connection failed")
   }
 })
 
@@ -706,7 +722,7 @@ onBeforeUnmount(() => {
     :is-remote-audio-muted="isRemoteAudioMuted"
     :is-remote-video-off="isRemoteVideoOff"
     :has-local-stream="!!localStream"
-    :is-connecting="isConnecting"
+    :is-waiting-for-remote="isWaitingForRemote"
     :is-remote-disconnected="isRemoteDisconnected"
     :mobile-layout="mobileCallLayout"
     :remote-zoom-style="remoteZoom.transformStyle.value"
@@ -740,7 +756,7 @@ onBeforeUnmount(() => {
     :is-remote-audio-muted="isRemoteAudioMuted"
     :is-remote-video-off="isRemoteVideoOff"
     :has-local-stream="!!localStream"
-    :is-connecting="isConnecting"
+    :is-waiting-for-remote="isWaitingForRemote"
     :is-remote-disconnected="isRemoteDisconnected"
     :desktop-layout="desktopCallLayout"
     :remote-zoom-style="remoteZoom.transformStyle.value"

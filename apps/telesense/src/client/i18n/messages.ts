@@ -21,6 +21,27 @@ export const locales = [
 
 export type Locale = (typeof locales)[number]
 
+export const localeOptions: ReadonlyArray<{ code: Locale; label: string }> = [
+  { code: "en", label: "English" },
+  { code: "ru", label: "Русский" },
+  { code: "zh", label: "中文" },
+  { code: "hi", label: "हिन्दी" },
+  { code: "ko", label: "한국어" },
+  { code: "ja", label: "日本語" },
+  { code: "es", label: "Español" },
+  { code: "pt", label: "Português" },
+  { code: "ar", label: "العربية" },
+  { code: "id", label: "Bahasa Indonesia" },
+  { code: "fr", label: "Français" },
+  { code: "bn", label: "বাংলা" },
+  { code: "tr", label: "Türkçe" },
+  { code: "vi", label: "Tiếng Việt" },
+  { code: "th", label: "ไทย" },
+  { code: "ur", label: "اردو" },
+  { code: "fil", label: "Filipino" },
+  { code: "fa", label: "فارسی" },
+] as const
+
 export function isSupportedLocale(value: string): value is Locale {
   return (locales as readonly string[]).includes(value)
 }

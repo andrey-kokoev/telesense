@@ -161,6 +161,26 @@ function apiHeaders(env: Env) {
   }
 }
 
+async function getRoomStatus(
+  env: Env,
+  roomId: string,
+): Promise<{
+  exists: boolean
+  sessionCount: number
+}> {
+  const callRoom = getCallRoom(env, roomId)
+  const roomExistsRes = await callRoom.fetch(new Request("http://do.internal/?action=roomExists"))
+  const roomExistsData = (await roomExistsRes.json()) as {
+    roomCreated?: boolean
+    sessionCount?: number
+  }
+
+  return {
+    exists: !!roomExistsData.roomCreated,
+    sessionCount: roomExistsData.sessionCount ?? 0,
+  }
+}
+
 async function parseCloudflareResponse(
   res: Response,
   routeName: string,
@@ -234,6 +254,9 @@ app.get("/api/auth/verify", (c) => {
 const DISCOVERY_RATE_LIMIT_WINDOW = 60 * 1000 // 1 minute
 const DISCOVERY_RATE_LIMIT_MAX = 60 // 60 discovery requests per minute per IP
 const discoveryRateLimitStore = new Map<string, { count: number; resetAt: number }>()
+const STATUS_RATE_LIMIT_WINDOW = 60 * 1000 // 1 minute
+const STATUS_RATE_LIMIT_MAX = 120 // 120 room checks per minute per IP
+const statusRateLimitStore = new Map<string, { count: number; resetAt: number }>()
 
 function checkDiscoveryRateLimit(ip: string): {
   allowed: boolean
@@ -260,6 +283,43 @@ function checkDiscoveryRateLimit(ip: string): {
   return {
     allowed: true,
     remaining: DISCOVERY_RATE_LIMIT_MAX - record.count,
+    resetAt: record.resetAt,
+  }
+}
+
+function checkStatusRateLimit(
+  ip: string,
+  cost: number,
+): {
+  allowed: boolean
+  remaining: number
+  resetAt: number
+} {
+  const now = Date.now()
+  const record = statusRateLimitStore.get(ip)
+
+  if (!record || now > record.resetAt) {
+    const nextCount = Math.min(cost, STATUS_RATE_LIMIT_MAX)
+    statusRateLimitStore.set(ip, { count: nextCount, resetAt: now + STATUS_RATE_LIMIT_WINDOW })
+    return {
+      allowed: cost <= STATUS_RATE_LIMIT_MAX,
+      remaining: Math.max(0, STATUS_RATE_LIMIT_MAX - nextCount),
+      resetAt: now + STATUS_RATE_LIMIT_WINDOW,
+    }
+  }
+
+  if (record.count + cost > STATUS_RATE_LIMIT_MAX) {
+    return {
+      allowed: false,
+      remaining: Math.max(0, STATUS_RATE_LIMIT_MAX - record.count),
+      resetAt: record.resetAt,
+    }
+  }
+
+  record.count += cost
+  return {
+    allowed: true,
+    remaining: STATUS_RATE_LIMIT_MAX - record.count,
     resetAt: record.resetAt,
   }
 }
@@ -291,6 +351,88 @@ app.get("/health", (c) => {
 })
 
 // 1. SESSION — VERIFIED
+app.get("/api/rooms/:roomId/status", async (c) => {
+  const env = c.env
+  const roomId = normalizeRoomId(c.req.param("roomId"))
+
+  try {
+    requireNonEmptyString(roomId, "roomId")
+  } catch (e) {
+    return c.json(
+      {
+        error: (e as Error).message,
+        code: "BAD_REQUEST",
+      } as ErrorResponse,
+      400,
+    )
+  }
+
+  const roomStatus = await getRoomStatus(env, roomId)
+
+  return c.json({
+    exists: roomStatus.exists,
+    sessionCount: roomStatus.sessionCount,
+  })
+})
+
+app.post("/api/rooms/status", async (c) => {
+  let body: { roomIds?: string[] }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json(
+      {
+        error: "Invalid request body",
+        code: "BAD_REQUEST",
+      } as ErrorResponse,
+      400,
+    )
+  }
+
+  const roomIds = Array.isArray(body.roomIds)
+    ? body.roomIds
+        .map((roomId) => normalizeRoomId(roomId))
+        .filter(Boolean)
+        .slice(0, 12)
+    : []
+
+  if (roomIds.length === 0) {
+    return c.json(
+      {
+        error: "roomIds is required",
+        code: "BAD_REQUEST",
+      } as ErrorResponse,
+      400,
+    )
+  }
+
+  const ip = c.req.header("CF-Connecting-IP") || "unknown"
+  const rateLimit = checkStatusRateLimit(ip, roomIds.length)
+
+  c.header("X-RateLimit-Limit", String(STATUS_RATE_LIMIT_MAX))
+  c.header("X-RateLimit-Remaining", String(rateLimit.remaining))
+
+  if (!rateLimit.allowed) {
+    return c.json(
+      {
+        error: "Rate limit exceeded",
+        code: "RATE_LIMITED",
+        message: "Too many room status checks. Please wait before retrying.",
+      },
+      429,
+    )
+  }
+
+  const rooms: Record<string, { exists: boolean }> = {}
+
+  for (const roomId of roomIds) {
+    const roomStatus = await getRoomStatus(c.env, roomId)
+    rooms[roomId] = { exists: roomStatus.exists }
+  }
+
+  return c.json({ rooms })
+})
+
 app.post("/api/rooms/:roomId/session", async (c) => {
   const env = c.env
   const roomId = normalizeRoomId(c.req.param("roomId"))
@@ -312,14 +454,10 @@ app.post("/api/rooms/:roomId/session", async (c) => {
     console.log(`[sessions/new] Creating session for room: ${roomId}`)
   }
 
+  const roomStatus = await getRoomStatus(env, roomId)
   const callRoom = getCallRoom(env, roomId)
-  const roomExistsRes = await callRoom.fetch(new Request("http://do.internal/?action=roomExists"))
-  const roomExistsData = (await roomExistsRes.json()) as {
-    roomCreated?: boolean
-    sessionCount?: number
-  }
 
-  if (!roomExistsData.roomCreated) {
+  if (!roomStatus.exists) {
     if (!hasValidUserToken(c.req.raw, env)) {
       return c.json(
         {

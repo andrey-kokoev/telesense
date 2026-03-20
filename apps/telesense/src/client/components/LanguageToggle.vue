@@ -33,30 +33,10 @@
 <script setup lang="ts">
 import { ref } from "vue"
 import { useI18n } from "../composables/useI18n"
+import { localeOptions } from "../i18n/messages"
 
 const { locale, setLocale } = useI18n()
 const isOpen = ref(false)
-
-const localeOptions = [
-  { code: "en", label: "English" },
-  { code: "ru", label: "Русский" },
-  { code: "zh", label: "中文" },
-  { code: "hi", label: "हिन्दी" },
-  { code: "ko", label: "한국어" },
-  { code: "ja", label: "日本語" },
-  { code: "es", label: "Español" },
-  { code: "pt", label: "Português" },
-  { code: "ar", label: "العربية" },
-  { code: "id", label: "Bahasa Indonesia" },
-  { code: "fr", label: "Français" },
-  { code: "bn", label: "বাংলা" },
-  { code: "tr", label: "Türkçe" },
-  { code: "vi", label: "Tiếng Việt" },
-  { code: "th", label: "ไทย" },
-  { code: "ur", label: "اردو" },
-  { code: "fil", label: "Filipino" },
-  { code: "fa", label: "فارسی" },
-] as const
 </script>
 
 <style scoped>

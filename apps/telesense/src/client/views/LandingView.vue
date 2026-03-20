@@ -163,98 +163,28 @@
 
       <!-- Recent Calls -->
       <div v-if="recentCalls.length > 0" class="landing__recent">
-        <h3 class="landing__recent-title">{{ t("landing_recent") }}</h3>
-        <div class="landing__recent-scroll">
+        <button type="button" class="landing__recent-debug" @click="addTwelveRecentRooms">
+          +12
+        </button>
+        <h3 class="landing__recent-title">
+          {{
+            recentCalls.length > 8
+              ? `${t("landing_recent")} (${recentCalls.length})`
+              : t("landing_recent")
+          }}
+        </h3>
+        <div ref="recentScrollEl" class="landing__recent-scroll">
           <ul class="landing__recent-list">
-            <li
+            <RecentRoomItem
               v-for="room in recentCalls"
               :key="room.id"
-              class="landing__recent-item"
-              tabindex="0"
-              @click="editingRoomId !== room.id && goToRoom(room.id)"
-              @keydown.enter.prevent="editingRoomId !== room.id && goToRoom(room.id)"
-              @keydown.space.prevent="editingRoomId !== room.id && goToRoom(room.id)"
-            >
-              <template v-if="editingRoomId === room.id">
-                <form class="landing__recent-edit" @submit.prevent="saveRoomLabel(room.id)">
-                  <input
-                    v-model="editingRoomLabel"
-                    type="text"
-                    class="landing__input landing__recent-input"
-                    maxlength="20"
-                    @click.stop
-                    @keydown.esc.prevent="cancelRoomEdit"
-                    v-focus
-                  />
-                  <button
-                    type="submit"
-                    class="landing__recent-icon"
-                    @click.stop
-                    :aria-label="t('landing_save_label')"
-                  >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  </button>
-                </form>
-              </template>
-              <template v-else>
-                <div class="landing__recent-copy">
-                  <span v-if="room.name" class="landing__recent-label">{{ room.name }}</span>
-                  <span
-                    class="landing__recent-id"
-                    :class="{ 'landing__recent-id--muted': room.name }"
-                  >
-                    {{ room.id }}
-                  </span>
-                </div>
-                <button
-                  class="landing__recent-icon"
-                  @click.stop="startRoomEdit(room.id, room.name)"
-                  :aria-label="t('landing_edit_label')"
-                  :title="t('landing_edit_label')"
-                  tabindex="-1"
-                >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <path d="M12 20h9" />
-                    <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z" />
-                  </svg>
-                </button>
-                <button
-                  class="landing__recent-icon"
-                  @click.stop="deleteRoom(room.id)"
-                  :aria-label="t('landing_delete_room')"
-                  :title="t('landing_delete_room')"
-                  tabindex="-1"
-                >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <line x1="18" y1="6" x2="6" y2="18" />
-                    <line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
-              </template>
-            </li>
+              :room="room"
+              :availability="roomAvailability[room.id] ?? 'unchecked'"
+              :register-visibility-ref="setRecentItemRef"
+              @open="handleRecentItemClick(room.id)"
+              @rename="renameRoom(room.id, $event)"
+              @delete="deleteRoom(room.id)"
+            />
           </ul>
         </div>
       </div>
@@ -336,9 +266,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from "vue"
 import LanguageToggle from "../components/LanguageToggle.vue"
+import RecentRoomItem from "../components/RecentRoomItem.vue"
 import ThemeToggle from "../components/ThemeToggle.vue"
 import { useAppStore } from "../composables/useAppStore"
 import { useI18n } from "../composables/useI18n"
+import { useRecentRoomAvailability } from "../composables/useRecentRoomAvailability"
+import { useRoomCodeInput } from "../composables/useRoomCodeInput"
 import { useToast } from "../composables/useToast"
 
 const {
@@ -353,193 +286,44 @@ const {
 const { show } = useToast()
 const { t } = useI18n()
 
-const roomCodeDigits = ref<string[]>(Array.from({ length: 6 }, () => ""))
-const roomCodeInputs = ref<Array<HTMLInputElement | null>>([])
-const createRoomCodeDigits = ref<string[]>(Array.from({ length: 6 }, () => ""))
-const createRoomCodeInputs = ref<Array<HTMLInputElement | null>>([])
 const tokenInput = ref("")
 const showTokenModal = ref(false)
-const editingRoomId = ref<string | null>(null)
-const editingRoomLabel = ref("")
-const roomIdInput = computed(() => roomCodeDigits.value.join(""))
-const createRoomIdInput = computed(() => createRoomCodeDigits.value.join(""))
+const {
+  digits: roomCodeDigits,
+  value: roomIdInput,
+  setInputRef: setRoomCodeInputRef,
+  focusInput: focusRoomCodeInput,
+  isInputDisabled: isRoomCodeInputDisabled,
+  onInput: onRoomCodeInput,
+  onKeydown: onRoomCodeKeydown,
+  onPaste: onRoomCodePaste,
+} = useRoomCodeInput(joinExistingRoom)
+const {
+  digits: createRoomCodeDigits,
+  value: createRoomIdInput,
+  setInputRef: setCreateRoomCodeInputRef,
+  focusInput: focusCreateRoomCodeInput,
+  isInputDisabled: isCreateRoomCodeInputDisabled,
+  onInput: onCreateRoomCodeInput,
+  onKeydown: onCreateRoomCodeKeydown,
+  onPaste: onCreateRoomCodePaste,
+  setValue: setCreateRoomCodeValue,
+  clear: clearCreateRoomCode,
+} = useRoomCodeInput(submitCreateRoom)
+const { roomAvailability, recentScrollEl, setRecentItemRef } =
+  useRecentRoomAvailability(recentCalls)
 const isCreateRoomDraftActive = computed(() => createRoomIdInput.value.length > 0)
 
-function setRoomCodeInputRef(el: unknown, index: number) {
-  roomCodeInputs.value[index] = el instanceof HTMLInputElement ? el : null
-}
-
-function setCreateRoomCodeInputRef(el: unknown, index: number) {
-  createRoomCodeInputs.value[index] = el instanceof HTMLInputElement ? el : null
-}
-
-function focusRoomCodeInput(index: number) {
-  const input = roomCodeInputs.value[index]
-  input?.focus()
-  input?.setSelectionRange(0, 0)
-}
-
-function focusCreateRoomCodeInput(index: number) {
-  const input = createRoomCodeInputs.value[index]
-  input?.focus()
-  input?.setSelectionRange(0, 0)
-}
-
-function normalizeRoomCode(value: string) {
-  return value.replace(/[^A-Z0-9]/gi, "").toUpperCase()
-}
-
-function isRoomCodeInputDisabled(index: number) {
-  return index > 0 && !roomCodeDigits.value[index - 1]
-}
-
-function isCreateRoomCodeInputDisabled(index: number) {
-  return index > 0 && !createRoomCodeDigits.value[index - 1]
-}
-
-function clearRoomCodeDigitsFrom(index: number) {
-  for (let i = index; i < roomCodeDigits.value.length; i++) {
-    roomCodeDigits.value[i] = ""
-    const input = roomCodeInputs.value[i]
-    if (input) {
-      input.value = ""
-    }
-  }
-}
-
-function clearCreateRoomCodeDigitsFrom(index: number) {
-  for (let i = index; i < createRoomCodeDigits.value.length; i++) {
-    createRoomCodeDigits.value[i] = ""
-    const input = createRoomCodeInputs.value[i]
-    if (input) {
-      input.value = ""
-    }
-  }
-}
-
-async function onRoomCodeInput(index: number, event: Event) {
-  const input = event.target as HTMLInputElement
-  const normalized = normalizeRoomCode(input.value)
-  const nextChar = normalized.slice(-1)
-
-  roomCodeDigits.value[index] = nextChar
-  input.value = nextChar
-
-  if (!nextChar) {
-    clearRoomCodeDigitsFrom(index + 1)
-    return
-  }
-
-  if (nextChar && index < roomCodeDigits.value.length - 1) {
-    await nextTick()
-    focusRoomCodeInput(index + 1)
-  }
-}
-
-async function onCreateRoomCodeInput(index: number, event: Event) {
-  const input = event.target as HTMLInputElement
-  const normalized = normalizeRoomCode(input.value)
-  const nextChar = normalized.slice(-1)
-
-  createRoomCodeDigits.value[index] = nextChar
-  input.value = nextChar
-
-  if (!nextChar) {
-    clearCreateRoomCodeDigitsFrom(index + 1)
-    return
-  }
-
-  if (nextChar && index < createRoomCodeDigits.value.length - 1) {
-    await nextTick()
-    focusCreateRoomCodeInput(index + 1)
-  }
-}
-
-function onRoomCodeKeydown(index: number, event: KeyboardEvent) {
-  const replacement = normalizeRoomCode(event.key)
-  if (replacement.length === 1 && roomCodeDigits.value[index]) {
-    event.preventDefault()
-    roomCodeDigits.value[index] = replacement
-    const input = event.currentTarget as HTMLInputElement | null
-    if (input) {
-      input.value = replacement
-      input.setSelectionRange(0, 0)
-    }
-    if (index < roomCodeDigits.value.length - 1) {
-      void nextTick(() => focusRoomCodeInput(index + 1))
-    }
-    return
-  }
-
-  if (event.key === "Backspace" && !roomCodeDigits.value[index] && index > 0) {
-    roomCodeDigits.value[index - 1] = ""
-    focusRoomCodeInput(index - 1)
-  }
-
-  if (event.key === "ArrowLeft" && index > 0) {
-    event.preventDefault()
-    focusRoomCodeInput(index - 1)
-  }
-
-  if (event.key === "ArrowRight" && index < roomCodeDigits.value.length - 1) {
-    event.preventDefault()
-    focusRoomCodeInput(index + 1)
-  }
-}
-
-function onCreateRoomCodeKeydown(index: number, event: KeyboardEvent) {
-  const replacement = normalizeRoomCode(event.key)
-  if (replacement.length === 1 && createRoomCodeDigits.value[index]) {
-    event.preventDefault()
-    createRoomCodeDigits.value[index] = replacement
-    const input = event.currentTarget as HTMLInputElement | null
-    if (input) {
-      input.value = replacement
-      input.setSelectionRange(0, 0)
-    }
-    if (index < createRoomCodeDigits.value.length - 1) {
-      void nextTick(() => focusCreateRoomCodeInput(index + 1))
-    }
-    return
-  }
-
-  if (event.key === "Enter") {
-    event.preventDefault()
-    submitCreateRoom()
-    return
-  }
-
-  if (event.key === "Backspace" && !createRoomCodeDigits.value[index] && index > 0) {
-    createRoomCodeDigits.value[index - 1] = ""
-    focusCreateRoomCodeInput(index - 1)
-  }
-
-  if (event.key === "ArrowLeft" && index > 0) {
-    event.preventDefault()
-    focusCreateRoomCodeInput(index - 1)
-  }
-
-  if (event.key === "ArrowRight" && index < createRoomCodeDigits.value.length - 1) {
-    event.preventDefault()
-    focusCreateRoomCodeInput(index + 1)
-  }
-}
-
-function onRoomCodePaste(event: ClipboardEvent) {
-  event.preventDefault()
-  const pasted = normalizeRoomCode(event.clipboardData?.getData("text") || "").slice(0, 6)
-  roomCodeDigits.value = roomCodeDigits.value.map((_, index) => pasted[index] || "")
-  focusRoomCodeInput(Math.min(pasted.length, roomCodeDigits.value.length - 1))
-}
-
-function onCreateRoomCodePaste(event: ClipboardEvent) {
-  event.preventDefault()
-  const pasted = normalizeRoomCode(event.clipboardData?.getData("text") || "").slice(0, 6)
-  createRoomCodeDigits.value = createRoomCodeDigits.value.map((_, index) => pasted[index] || "")
-  focusCreateRoomCodeInput(Math.min(pasted.length, createRoomCodeDigits.value.length - 1))
-}
-
 onMounted(() => {
+  const params = new URLSearchParams(window.location.search)
+  const error = params.get("error")
+  if (error) {
+    show(error, "error")
+    params.delete("error")
+    const nextSearch = params.toString()
+    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`
+    window.history.replaceState({}, "", nextUrl)
+  }
   focusRoomCodeInput(0)
 })
 
@@ -552,20 +336,26 @@ function generateCallId(): string {
   return result
 }
 
+function addTwelveRecentRooms() {
+  for (let i = 0; i < 12; i++) {
+    addRecentCall(generateCallId())
+  }
+}
+
 async function createNewRoom() {
   const roomId = createRoomIdInput.value || generateCallId()
   if (!recentCalls.value.some((room) => room.id === roomId)) {
     addRecentCall(roomId)
   }
   show(t("landing_created_room", { roomId }), "success")
-  createRoomCodeDigits.value = Array.from({ length: 6 }, () => "")
+  clearCreateRoomCode()
   goToRoom(roomId)
 }
 
 async function submitCreateRoom() {
   if (!isCreateRoomDraftActive.value) {
     const roomId = generateCallId()
-    createRoomCodeDigits.value = roomId.split("")
+    setCreateRoomCodeValue(roomId)
     await nextTick()
     focusCreateRoomCodeInput(0)
     return
@@ -589,27 +379,43 @@ function goToRoom(roomId: string) {
   window.location.href = `/?room=${roomId}`
 }
 
-function startRoomEdit(roomId: string, currentLabel?: string) {
-  editingRoomId.value = roomId
-  editingRoomLabel.value = currentLabel || roomId
+function handleRecentItemClick(roomId: string) {
+  void openRecentRoom(roomId)
 }
 
-function cancelRoomEdit() {
-  editingRoomId.value = null
-  editingRoomLabel.value = ""
+async function openRecentRoom(roomId: string) {
+  if (isAuthenticated.value) {
+    goToRoom(roomId)
+    return
+  }
+
+  try {
+    const res = await fetch(`/api/rooms/${roomId}/status`)
+    if (!res.ok) {
+      show("Could not check room availability", "error")
+      return
+    }
+
+    const data = (await res.json()) as { exists?: boolean }
+    if (!data.exists) {
+      roomAvailability.value[roomId] = "unavailable"
+      show("Room is no longer available", "error")
+      return
+    }
+
+    roomAvailability.value[roomId] = "available"
+    goToRoom(roomId)
+  } catch {
+    show("Could not check room availability", "error")
+  }
 }
 
-function saveRoomLabel(roomId: string) {
-  const nextLabel = editingRoomLabel.value.trim()
-  renameRecentCall(roomId, nextLabel === roomId ? "" : nextLabel)
-  cancelRoomEdit()
+function renameRoom(roomId: string, nextLabel: string) {
+  renameRecentCall(roomId, nextLabel)
 }
 
 function deleteRoom(roomId: string) {
   removeRecentCall(roomId)
-  if (editingRoomId.value === roomId) {
-    cancelRoomEdit()
-  }
 }
 
 async function verifyToken(candidateToken: string) {
@@ -956,6 +762,16 @@ function clearToken() {
   border-top: 1px solid var(--color-border);
 }
 
+.landing__recent-debug {
+  margin-bottom: var(--space-3);
+  padding: var(--space-1) var(--space-2);
+  font: inherit;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-secondary);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-full);
+}
+
 .landing__recent-title {
   font-size: 0.875rem;
   font-weight: 600;
@@ -964,9 +780,59 @@ function clearToken() {
 }
 
 .landing__recent-scroll {
+  position: relative;
   min-height: 100px;
   max-height: 60vh;
   overflow-y: auto;
+  padding-inline: var(--space-4);
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-text-tertiary) 45%, var(--color-bg-tertiary))
+    transparent;
+}
+
+.landing__recent-scroll::before,
+.landing__recent-scroll::after {
+  content: "";
+  position: sticky;
+  left: 0;
+  right: 0;
+  display: block;
+  height: 24px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.landing__recent-scroll::before {
+  top: 0;
+  margin-bottom: -24px;
+  background: linear-gradient(to bottom, var(--color-bg-secondary), transparent);
+}
+
+.landing__recent-scroll::after {
+  bottom: 0;
+  margin-top: -24px;
+  background: linear-gradient(to top, var(--color-bg-secondary), transparent);
+}
+
+.landing__recent-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+
+.landing__recent-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.landing__recent-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-text-tertiary) 45%, var(--color-bg-tertiary));
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+.landing__recent-scroll::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-text-secondary) 55%, var(--color-bg-tertiary));
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
 .landing__recent-list {
@@ -976,94 +842,6 @@ function clearToken() {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-}
-
-.landing__recent-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  background: var(--color-bg-tertiary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  cursor: pointer;
-  transition:
-    background-color 0.15s ease,
-    border-color 0.15s ease;
-}
-
-.landing__recent-item:hover {
-  background: var(--color-bg-hover);
-  border-color: var(--color-border-hover);
-}
-
-.landing__recent-copy {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.landing__recent-label {
-  font-size: 0.875rem;
-  color: var(--color-text-primary);
-  font-weight: 500;
-  line-height: 1.2;
-}
-
-.landing__recent-id {
-  font-family: var(--font-mono);
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  letter-spacing: 0.05em;
-}
-
-.landing__recent-id--muted {
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--color-text-secondary);
-}
-
-.landing__recent-icon {
-  width: 2rem;
-  height: 2rem;
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--color-text-secondary);
-  background: transparent;
-  border: none;
-  border-radius: var(--radius);
-  opacity: 0;
-  cursor: pointer;
-  transition:
-    opacity 0.15s ease,
-    color 0.15s ease,
-    background-color 0.15s ease;
-}
-
-.landing__recent-item:hover .landing__recent-icon,
-.landing__recent-item:focus-within .landing__recent-icon {
-  opacity: 1;
-}
-
-.landing__recent-icon:hover {
-  color: var(--color-text-primary);
-  background: var(--color-bg-tertiary);
-}
-
-.landing__recent-edit {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.landing__recent-input {
-  padding: var(--space-2) var(--space-3);
 }
 
 .landing__modal {
@@ -1114,10 +892,6 @@ function clearToken() {
 
   .landing__title {
     font-size: 2rem;
-  }
-
-  .landing__recent-icon {
-    opacity: 1;
   }
 }
 </style>

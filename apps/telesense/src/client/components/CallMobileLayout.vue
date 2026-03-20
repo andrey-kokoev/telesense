@@ -21,7 +21,7 @@ const props = defineProps<{
   isRemoteAudioMuted: boolean
   isRemoteVideoOff: boolean
   hasLocalStream: boolean
-  isConnecting: boolean
+  isWaitingForRemote: boolean
   isRemoteDisconnected: boolean
   mobileLayout: "picture-in-picture" | "remote-only"
   remoteZoomStyle: CSSProperties
@@ -205,15 +205,16 @@ async function copyRoomCode() {
           aria-label="Remote participant video feed"
           :style="remoteZoomStyle"
           :class="{
-            'call-mobile__video--hidden': isConnecting || isRemoteVideoOff || isRemoteDisconnected,
+            'call-mobile__video--hidden':
+              isWaitingForRemote || isRemoteVideoOff || isRemoteDisconnected,
           }"
         ></video>
         <span class="video-label">{{ t("call_remote") }}</span>
         <span v-if="isRemoteAudioMuted" class="video-status-badge">{{
           t("call_muted_badge")
         }}</span>
-        <TvNoiseSurface v-if="isConnecting || isRemoteDisconnected">
-          <div v-if="isConnecting" class="connecting-overlay">
+        <TvNoiseSurface v-if="isWaitingForRemote || isRemoteDisconnected">
+          <div v-if="isWaitingForRemote" class="connecting-overlay">
             <div class="spinner call-spinner"></div>
             <span>{{ t("call_waiting_for_participant") }}</span>
           </div>
