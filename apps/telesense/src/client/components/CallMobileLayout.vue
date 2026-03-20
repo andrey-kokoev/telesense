@@ -17,7 +17,6 @@ const props = defineProps<{
   canEndRoom: boolean
   isAudioMuted: boolean
   isVideoOff: boolean
-  isScreenSharing: boolean
   isRemoteAudioMuted: boolean
   isRemoteVideoOff: boolean
   hasLocalStream: boolean
@@ -37,7 +36,6 @@ const emit = defineEmits<{
   setMobileLayout: [value: "picture-in-picture" | "remote-only"]
   toggleAudio: []
   toggleVideo: []
-  toggleScreenShare: []
   leave: []
   endRoom: []
   localVideoTap: []
@@ -359,20 +357,6 @@ async function copyRoomCode() {
           @pointerup="blurTappedButton"
         >
           {{ t("call_logs") }}
-        </button>
-        <button
-          type="button"
-          class="call-mobile__menu-item"
-          :disabled="!hasLocalStream"
-          @click="
-            () => {
-              emit('toggleScreenShare')
-              showMenu = false
-            }
-          "
-          @pointerup="blurTappedButton"
-        >
-          {{ isScreenSharing ? t("call_stop_sharing") : t("call_share_screen") }}
         </button>
         <button
           type="button"
