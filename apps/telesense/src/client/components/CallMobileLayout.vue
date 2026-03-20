@@ -404,6 +404,8 @@ async function copyRoomCode() {
   </div>
 </template>
 
+<style scoped src="./callLayoutShared.css"></style>
+
 <style scoped>
 .call-mobile {
   position: fixed;
@@ -433,69 +435,10 @@ async function copyRoomCode() {
   margin-bottom: 0;
 }
 
-.call-mobile__layout-selector {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.2rem;
-  border-radius: 999px;
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  min-height: 2.5rem;
-}
-
-.call-mobile__layout-option {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.4rem;
-  height: 2.1rem;
-  padding: 0;
-  border: none;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--color-text-secondary);
-}
-
-.call-mobile__layout-option--active {
-  background: var(--color-bg-tertiary);
-  color: var(--color-text-primary);
-}
-
-.call-mobile__layout-option :deep(svg) {
-  width: 1.1rem;
-  height: 1.1rem;
-}
-
 .call-mobile__header-copy {
   display: flex;
   align-items: baseline;
   gap: 0.45rem;
-}
-
-.call-mobile__eyebrow {
-  font-size: 0.72rem;
-  font-family: "Geist Mono", var(--font-mono);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-text-secondary);
-}
-
-.call-mobile__room-code {
-  color: var(--color-text-primary);
-  font-size: 0.92rem;
-  font-family: "Geist Mono", var(--font-mono);
-}
-
-.call-mobile__room-code-button {
-  border: none;
-  padding: 0;
-  background: transparent;
-  cursor: copy;
-  text-decoration-line: underline;
-  text-decoration-style: dotted;
-  text-decoration-color: color-mix(in srgb, var(--color-text-secondary) 70%, transparent);
-  text-decoration-thickness: 0.08em;
-  text-underline-offset: 0.16em;
 }
 
 .call-mobile__videos {
@@ -505,10 +448,7 @@ async function copyRoomCode() {
 }
 
 .call-mobile__video-card {
-  position: relative;
-  overflow: hidden;
   border-radius: 1.25rem;
-  background: color-mix(in srgb, var(--color-bg-secondary) 18%, #000);
   min-height: 28vh;
 }
 
@@ -548,86 +488,8 @@ async function copyRoomCode() {
   bottom: 0.9rem;
 }
 
-.call-mobile__video-card video {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
 .call-mobile__video--hidden {
   opacity: 0;
-}
-
-.video-label {
-  position: absolute;
-  top: 0.75rem;
-  left: 0.75rem;
-  bottom: auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.28rem 0.56rem;
-  border-radius: 999px;
-  background: rgb(0 0 0 / 0.55);
-  color: white;
-  font-size: 0.75rem;
-  width: fit-content;
-  height: auto;
-  line-height: 1;
-}
-
-.video-status-badge {
-  position: absolute;
-  top: 0.75rem;
-  right: 0.75rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.28rem 0.56rem;
-  border-radius: 999px;
-  background: rgb(0 0 0 / 0.55);
-  color: white;
-  font-size: 0.75rem;
-  line-height: 1;
-}
-
-.connecting-overlay,
-.video-off-overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  color: white;
-  z-index: 1;
-  text-shadow: 0 1px 2px rgb(0 0 0 / 0.8);
-}
-
-.connecting-overlay {
-  background: rgb(0 0 0 / 0.2);
-}
-
-.video-off-overlay {
-  background: #000;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.16s ease;
-}
-
-.video-off-overlay--visible {
-  opacity: 1;
-}
-
-.spinner {
-  width: 2rem;
-  height: 2rem;
-  border: 2px solid rgb(255 255 255 / 0.25);
-  border-top-color: white;
-  border-radius: 999px;
-  animation: spin 0.8s linear infinite;
 }
 
 .call-mobile__bottom-bar {
@@ -689,8 +551,6 @@ async function copyRoomCode() {
   padding: 0.85rem 0.95rem;
   border: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
   border-radius: 1rem;
-  background: var(--color-bg-secondary);
-  box-shadow: 0 10px 30px rgb(0 0 0 / 0.16);
   z-index: 11;
 }
 
@@ -703,47 +563,6 @@ async function copyRoomCode() {
   flex-direction: column;
   padding: 0.4rem;
   border-radius: 1rem;
-  background: var(--color-bg-secondary);
-  box-shadow: 0 10px 30px rgb(0 0 0 / 0.16);
   overflow-anchor: none;
-}
-
-.call-mobile__menu-item {
-  border: none;
-  background: transparent;
-  color: var(--color-text-primary);
-  text-align: left;
-  padding: 0.7rem 0.8rem;
-  border-radius: 0.7rem;
-  font: inherit;
-}
-
-.call-mobile__menu-item:disabled {
-  opacity: 0.5;
-}
-
-.call-mobile__menu-item--danger {
-  color: var(--color-accent);
-}
-
-.call-mobile__log-row {
-  display: flex;
-  gap: 0.6rem;
-  align-items: baseline;
-  font: 0.8rem/1.45 var(--font-mono);
-}
-
-.call-mobile__log-time {
-  flex: 0 0 auto;
-}
-
-.muted {
-  color: var(--ui-text-muted);
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 </style>

@@ -291,6 +291,8 @@ async function copyRoomCode() {
   </div>
 </template>
 
+<style scoped src="./callLayoutShared.css"></style>
+
 <style scoped>
 .call-desktop {
   min-height: 100vh;
@@ -319,39 +321,6 @@ async function copyRoomCode() {
   height: 2.5rem;
 }
 
-.call-desktop__layout-selector {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.2rem;
-  border-radius: 999px;
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  min-height: 2.5rem;
-}
-
-.call-desktop__layout-option {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: transparent;
-  color: var(--color-text-secondary);
-  width: 2.4rem;
-  height: 2.1rem;
-  padding: 0;
-  border-radius: 999px;
-}
-
-.call-desktop__layout-option :deep(svg) {
-  width: 1.1rem;
-  height: 1.1rem;
-}
-
-.call-desktop__layout-option--active {
-  background: var(--color-bg-tertiary);
-  color: var(--color-text-primary);
-}
-
 .call-desktop__footer {
   display: flex;
   flex-direction: column;
@@ -371,32 +340,6 @@ async function copyRoomCode() {
   justify-content: center;
   gap: 0.75rem;
   flex-wrap: nowrap;
-}
-
-.call-desktop__eyebrow {
-  font-size: 0.72rem;
-  font-family: "Geist Mono", var(--font-mono);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-text-secondary);
-}
-
-.call-desktop__room-code {
-  color: var(--color-text-primary);
-  font-size: 0.95rem;
-  font-family: "Geist Mono", var(--font-mono);
-}
-
-.call-desktop__room-code-button {
-  border: none;
-  padding: 0;
-  background: transparent;
-  cursor: copy;
-  text-decoration-line: underline;
-  text-decoration-style: dotted;
-  text-decoration-color: color-mix(in srgb, var(--color-text-secondary) 70%, transparent);
-  text-decoration-thickness: 0.08em;
-  text-underline-offset: 0.16em;
 }
 
 .call-desktop__control,
@@ -432,26 +375,6 @@ async function copyRoomCode() {
   flex-direction: column;
   padding: 0.4rem;
   border-radius: 1rem;
-  background: var(--color-bg-secondary);
-  box-shadow: 0 10px 30px rgb(0 0 0 / 0.16);
-}
-
-.call-desktop__menu-item {
-  border: none;
-  background: transparent;
-  color: var(--color-text-primary);
-  text-align: left;
-  padding: 0.7rem 0.8rem;
-  border-radius: 0.7rem;
-  font: inherit;
-}
-
-.call-desktop__menu-item:disabled {
-  opacity: 0.5;
-}
-
-.call-desktop__menu-item--danger {
-  color: var(--color-accent);
 }
 
 .call-desktop__control--muted {
@@ -484,10 +407,7 @@ async function copyRoomCode() {
 }
 
 .call-desktop__video-card {
-  position: relative;
-  overflow: hidden;
   border-radius: 1.5rem;
-  background: color-mix(in srgb, var(--color-bg-secondary) 18%, #000);
   min-height: 60vh;
 }
 
@@ -507,115 +427,15 @@ async function copyRoomCode() {
   box-shadow: 0 10px 30px rgb(0 0 0 / 0.3);
 }
 
-.call-desktop__video-card video {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
 .call-desktop__video--hidden {
   opacity: 0;
 }
 
-.video-label {
-  position: absolute;
-  top: 0.8rem;
-  left: 0.8rem;
-  bottom: auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.28rem 0.56rem;
-  border-radius: 999px;
-  background: rgb(0 0 0 / 0.55);
-  color: white;
-  font-size: 0.75rem;
-  width: fit-content;
-  height: auto;
-  line-height: 1;
-}
-
-.video-status-badge {
-  position: absolute;
-  top: 0.8rem;
-  right: 0.8rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.28rem 0.56rem;
-  border-radius: 999px;
-  background: rgb(0 0 0 / 0.55);
-  color: white;
-  font-size: 0.75rem;
-  line-height: 1;
-}
-
-.connecting-overlay,
-.video-off-overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  color: white;
-  z-index: 1;
-  text-shadow: 0 1px 2px rgb(0 0 0 / 0.8);
-}
-
-.connecting-overlay {
-  background: rgb(0 0 0 / 0.2);
-}
-
-.video-off-overlay {
-  background: #000;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.16s ease;
-}
-
-.video-off-overlay--visible {
-  opacity: 1;
-}
-
-.spinner {
-  width: 2rem;
-  height: 2rem;
-  border: 2px solid rgb(255 255 255 / 0.25);
-  border-top-color: white;
-  border-radius: 999px;
-  animation: spin 0.8s linear infinite;
-}
-
 .call-desktop__sidebar {
   border-radius: 1rem;
-  background: var(--color-bg-secondary);
   padding: 1rem;
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
-}
-
-.call-desktop__log-row {
-  display: flex;
-  gap: 0.6rem;
-  align-items: baseline;
-  font: 0.8rem/1.45 var(--font-mono);
-}
-
-.call-desktop__log-time {
-  flex: 0 0 auto;
-}
-
-.muted {
-  color: var(--ui-text-muted);
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 </style>

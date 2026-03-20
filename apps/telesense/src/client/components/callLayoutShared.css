@@ -1,0 +1,223 @@
+.call-desktop__layout-selector,
+.call-mobile__layout-selector {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem;
+  border-radius: 999px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  min-height: 2.5rem;
+}
+
+.call-desktop__layout-option,
+.call-mobile__layout-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.4rem;
+  height: 2.1rem;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+.call-desktop__layout-option :deep(svg),
+.call-mobile__layout-option :deep(svg) {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.call-desktop__layout-option--active,
+.call-mobile__layout-option--active {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+
+.call-desktop__eyebrow,
+.call-mobile__eyebrow {
+  font-size: 0.72rem;
+  font-family: "Geist Mono", var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.call-desktop__room-code,
+.call-mobile__room-code {
+  color: var(--color-text-primary);
+  font-family: "Geist Mono", var(--font-mono);
+}
+
+.call-desktop__room-code {
+  font-size: 0.95rem;
+}
+
+.call-mobile__room-code {
+  font-size: 0.92rem;
+}
+
+.call-desktop__room-code-button,
+.call-mobile__room-code-button {
+  border: none;
+  padding: 0;
+  background: transparent;
+  cursor: copy;
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: color-mix(in srgb, var(--color-text-secondary) 70%, transparent);
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.16em;
+}
+
+.call-desktop__video-card,
+.call-mobile__video-card {
+  position: relative;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--color-bg-secondary) 18%, #000);
+}
+
+.call-desktop__video-card video,
+.call-mobile__video-card video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.video-label {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  bottom: auto;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.55);
+  color: white;
+  font-size: 0.75rem;
+  width: fit-content;
+  height: auto;
+  line-height: 1;
+}
+
+.call-desktop .video-label,
+.call-desktop .video-status-badge {
+  top: 0.8rem;
+}
+
+.call-mobile .video-label,
+.call-mobile .video-status-badge {
+  top: 0.75rem;
+}
+
+.call-desktop .video-label,
+.call-mobile .video-label {
+  left: 0.75rem;
+  padding: 0.28rem 0.56rem;
+}
+
+.call-desktop .video-status-badge,
+.call-mobile .video-status-badge {
+  position: absolute;
+  right: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.28rem 0.56rem;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.55);
+  color: white;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.connecting-overlay,
+.video-off-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: white;
+  z-index: 1;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.8);
+}
+
+.connecting-overlay {
+  background: rgb(0 0 0 / 0.2);
+}
+
+.video-off-overlay {
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+}
+
+.video-off-overlay--visible {
+  opacity: 1;
+}
+
+.spinner {
+  width: 2rem;
+  height: 2rem;
+  border: 2px solid rgb(255 255 255 / 0.25);
+  border-top-color: white;
+  border-radius: 999px;
+  animation: spin 0.8s linear infinite;
+}
+
+.call-desktop__menu,
+.call-mobile__menu,
+.call-mobile__sheet,
+.call-desktop__sidebar {
+  background: var(--color-bg-secondary);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.16);
+}
+
+.call-desktop__menu-item,
+.call-mobile__menu-item {
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  text-align: left;
+  padding: 0.7rem 0.8rem;
+  border-radius: 0.7rem;
+  font: inherit;
+}
+
+.call-desktop__menu-item:disabled,
+.call-mobile__menu-item:disabled {
+  opacity: 0.5;
+}
+
+.call-desktop__menu-item--danger,
+.call-mobile__menu-item--danger {
+  color: var(--color-accent);
+}
+
+.call-desktop__log-row,
+.call-mobile__log-row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+  font: 0.8rem/1.45 var(--font-mono);
+}
+
+.call-desktop__log-time,
+.call-mobile__log-time {
+  flex: 0 0 auto;
+}
+
+.muted {
+  color: var(--ui-text-muted);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -1,138 +1,67 @@
 <template>
   <div class="landing">
-    <header class="landing__header">
-      <h1 class="landing__title">
-        <span class="landing__title__glyph landing__title__glyph--t">t</span
-        ><span class="landing__title-rest"
-          >ele<span class="landing__title__glyph landing__title__glyph--s">s</span>ense</span
-        >
-      </h1>
-      <p class="landing__subtitle">{{ t("landing_secure_video_calls") }}</p>
-    </header>
+    <LandingHero :subtitle="t('landing_secure_video_calls')" />
 
     <main class="landing__main">
       <!-- Authenticated User View -->
       <template v-if="isAuthenticated">
-        <div class="landing__section">
-          <h2 class="landing__section-title">{{ t("landing_start_room") }}</h2>
-
-          <form class="landing__form" @submit.prevent="submitCreateRoom">
-            <div
-              v-if="isCreateRoomDraftActive"
-              class="landing__code-inputs"
-              @paste="onCreateRoomCodePaste"
-            >
-              <input
-                v-for="(_, index) in createRoomCodeDigits"
-                :key="index"
-                :ref="(el) => setCreateRoomCodeInputRef(el, index)"
-                :value="createRoomCodeDigits[index]"
-                type="text"
-                inputmode="text"
-                autocapitalize="characters"
-                autocomplete="off"
-                autocorrect="off"
-                spellcheck="false"
-                name="create-room-code"
-                data-form-type="other"
-                maxlength="1"
-                class="landing__code-input"
-                :disabled="isCreateRoomCodeInputDisabled(index)"
-                @input="onCreateRoomCodeInput(index, $event)"
-                @keydown="onCreateRoomCodeKeydown(index, $event)"
-              />
-            </div>
-            <button
-              type="submit"
-              class="landing__btn landing__btn--primary"
-              :disabled="isCreateRoomDraftActive && createRoomIdInput.length !== 6"
-            >
-              <span class="landing__btn-icon">{{ isCreateRoomDraftActive ? "✓" : "+" }}</span>
-              <span>{{
-                isCreateRoomDraftActive
-                  ? t("landing_create_room_with_id", { roomId: createRoomIdInput })
-                  : t("landing_create_new_room")
-              }}</span>
-            </button>
-          </form>
-        </div>
+        <RoomCodeSection
+          :title="t('landing_start_room')"
+          :digits="createRoomCodeDigits"
+          name="create-room-code"
+          :show-inputs="isCreateRoomDraftActive"
+          :button-label="
+            isCreateRoomDraftActive
+              ? t('landing_create_room_with_id', { roomId: createRoomIdInput })
+              : t('landing_create_new_room')
+          "
+          button-class="landing__btn--primary"
+          :button-disabled="isCreateRoomDraftActive && createRoomIdInput.length !== 6"
+          :button-icon="isCreateRoomDraftActive ? '✓' : '+'"
+          :set-input-ref="setCreateRoomCodeInputRef"
+          :is-input-disabled="isCreateRoomCodeInputDisabled"
+          @submit="submitCreateRoom"
+          @paste="onCreateRoomCodePaste"
+          @input="onCreateRoomCodeInput"
+          @keydown="onCreateRoomCodeKeydown"
+        />
 
         <div class="landing__divider">
           <span>{{ t("landing_or") }}</span>
         </div>
 
-        <div class="landing__section">
-          <h2 class="landing__section-title">{{ t("landing_join_room") }}</h2>
-
-          <form class="landing__form" @submit.prevent="joinExistingRoom">
-            <div class="landing__code-inputs" @paste="onRoomCodePaste">
-              <input
-                v-for="(_, index) in roomCodeDigits"
-                :key="index"
-                :ref="(el) => setRoomCodeInputRef(el, index)"
-                :value="roomCodeDigits[index]"
-                type="text"
-                inputmode="text"
-                autocapitalize="characters"
-                autocomplete="off"
-                autocorrect="off"
-                spellcheck="false"
-                name="room-code"
-                data-form-type="other"
-                maxlength="1"
-                class="landing__code-input"
-                :disabled="isRoomCodeInputDisabled(index)"
-                @input="onRoomCodeInput(index, $event)"
-                @keydown="onRoomCodeKeydown(index, $event)"
-              />
-            </div>
-            <button
-              type="submit"
-              class="landing__btn landing__btn--secondary"
-              :disabled="roomIdInput.length !== 6"
-            >
-              {{ t("landing_join") }}
-            </button>
-          </form>
-        </div>
+        <RoomCodeSection
+          :title="t('landing_join_room')"
+          :digits="roomCodeDigits"
+          name="room-code"
+          button-class="landing__btn--secondary"
+          :button-label="t('landing_join')"
+          :button-disabled="roomIdInput.length !== 6"
+          :set-input-ref="setRoomCodeInputRef"
+          :is-input-disabled="isRoomCodeInputDisabled"
+          @submit="joinExistingRoom"
+          @paste="onRoomCodePaste"
+          @input="onRoomCodeInput"
+          @keydown="onRoomCodeKeydown"
+        />
       </template>
 
       <!-- Unauthenticated User View -->
       <template v-else>
-        <div class="landing__section">
-          <h2 class="landing__section-title">{{ t("landing_join_room") }}</h2>
-
-          <form class="landing__form" @submit.prevent="joinExistingRoom">
-            <div class="landing__code-inputs" @paste="onRoomCodePaste">
-              <input
-                v-for="(_, index) in roomCodeDigits"
-                :key="index"
-                :ref="(el) => setRoomCodeInputRef(el, index)"
-                :value="roomCodeDigits[index]"
-                type="text"
-                inputmode="text"
-                autocapitalize="characters"
-                autocomplete="off"
-                autocorrect="off"
-                spellcheck="false"
-                name="room-code"
-                data-form-type="other"
-                maxlength="1"
-                class="landing__code-input"
-                :disabled="isRoomCodeInputDisabled(index)"
-                @input="onRoomCodeInput(index, $event)"
-                @keydown="onRoomCodeKeydown(index, $event)"
-              />
-            </div>
-            <button
-              type="submit"
-              class="landing__btn landing__btn--secondary"
-              :disabled="roomIdInput.length !== 6"
-            >
-              {{ t("landing_join") }}
-            </button>
-          </form>
-        </div>
+        <RoomCodeSection
+          :title="t('landing_join_room')"
+          :digits="roomCodeDigits"
+          name="room-code"
+          button-class="landing__btn--secondary"
+          :button-label="t('landing_join')"
+          :button-disabled="roomIdInput.length !== 6"
+          :set-input-ref="setRoomCodeInputRef"
+          :is-input-disabled="isRoomCodeInputDisabled"
+          @submit="joinExistingRoom"
+          @paste="onRoomCodePaste"
+          @input="onRoomCodeInput"
+          @keydown="onRoomCodeKeydown"
+        />
 
         <div class="landing__divider">
           <span>{{ t("landing_or") }}</span>
@@ -162,32 +91,22 @@
       </template>
 
       <!-- Recent Calls -->
-      <div v-if="recentCalls.length > 0" class="landing__recent">
-        <button type="button" class="landing__recent-debug" @click="addTwelveRecentRooms">
-          +12
-        </button>
-        <h3 class="landing__recent-title">
-          {{
-            recentCalls.length > 8
-              ? `${t("landing_recent")} (${recentCalls.length})`
-              : t("landing_recent")
-          }}
-        </h3>
-        <div ref="recentScrollEl" class="landing__recent-scroll">
-          <ul class="landing__recent-list">
-            <RecentRoomItem
-              v-for="room in recentCalls"
-              :key="room.id"
-              :room="room"
-              :availability="roomAvailability[room.id] ?? 'unchecked'"
-              :register-visibility-ref="setRecentItemRef"
-              @open="handleRecentItemClick(room.id)"
-              @rename="renameRoom(room.id, $event)"
-              @delete="deleteRoom(room.id)"
-            />
-          </ul>
-        </div>
-      </div>
+      <RecentRoomsSection
+        v-if="recentCalls.length > 0"
+        :title="
+          recentCalls.length > 8
+            ? `${t('landing_recent')} (${recentCalls.length})`
+            : t('landing_recent')
+        "
+        :recent-calls="recentCalls"
+        :room-availability="roomAvailability"
+        :set-scroll-ref="setRecentScrollRef"
+        :register-visibility-ref="setRecentItemRef"
+        @add-debug="addTwelveRecentRooms"
+        @open="handleRecentItemClick"
+        @rename="renameRoom"
+        @delete="deleteRoom"
+      />
     </main>
 
     <!-- Token Change Modal (for authenticated users) -->
@@ -265,8 +184,10 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from "vue"
+import LandingHero from "../components/LandingHero.vue"
 import LanguageToggle from "../components/LanguageToggle.vue"
-import RecentRoomItem from "../components/RecentRoomItem.vue"
+import RecentRoomsSection from "../components/RecentRoomsSection.vue"
+import RoomCodeSection from "../components/RoomCodeSection.vue"
 import ThemeToggle from "../components/ThemeToggle.vue"
 import { useAppStore } from "../composables/useAppStore"
 import { useI18n } from "../composables/useI18n"
@@ -418,6 +339,10 @@ function deleteRoom(roomId: string) {
   removeRecentCall(roomId)
 }
 
+function setRecentScrollRef(el: Element | null) {
+  recentScrollEl.value = el instanceof HTMLElement ? el : null
+}
+
 async function verifyToken(candidateToken: string) {
   const res = await fetch("/api/auth/verify", {
     headers: {
@@ -464,60 +389,6 @@ function clearToken() {
   background: var(--color-bg-primary);
 }
 
-.landing__header {
-  width: 100%;
-  max-width: 360px;
-  display: flex;
-  flex-direction: column;
-  text-align: center;
-  margin-bottom: var(--space-10);
-}
-
-.landing__title {
-  font-size: 2.5rem;
-  font-weight: 700;
-  font-family: "Geist Mono", var(--font-mono);
-  color: var(--color-text-primary);
-  opacity: 0.8;
-  margin: 0;
-  letter-spacing: 0.1ch;
-  margin-top: var(--space-2);
-}
-
-.landing__title-rest {
-  font-weight: 500;
-}
-
-.landing__title__glyph {
-  display: inline-block;
-  padding: 0 0.04em;
-  color: var(--color-bg-primary);
-  background: var(--color-text-primary);
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: 0;
-  border-radius: 0.08em;
-}
-
-.landing__title__glyph--s {
-  padding-left: 0.02em;
-  margin-right: 0.05ch;
-  margin-left: 0.05ch;
-}
-
-.landing__title__glyph--t {
-  padding-left: 0.035em;
-  margin-right: 0.1ch;
-}
-
-.landing__subtitle {
-  font-family: "Geist Mono", var(--font-mono);
-  font-size: 1rem;
-  color: var(--color-text-secondary);
-  letter-spacing: 0.04ch;
-  margin: var(--space-2) 0 0;
-}
-
 .landing__main {
   width: 100%;
   max-width: 360px;
@@ -543,12 +414,14 @@ function clearToken() {
   margin-bottom: 0;
 }
 
+:deep(.landing__section),
 .landing__section {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
 }
 
+:deep(.landing__section-title),
 .landing__section-title {
   font-size: 0.875rem;
   font-weight: 600;
@@ -564,12 +437,14 @@ function clearToken() {
   margin: calc(var(--space-1) * -1) 0 var(--space-1);
 }
 
+:deep(.landing__form),
 .landing__form {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
 }
 
+:deep(.landing__input),
 .landing__input {
   width: 100%;
   padding: var(--space-3) var(--space-4);
@@ -585,57 +460,18 @@ function clearToken() {
     box-shadow 0.15s ease;
 }
 
+:deep(.landing__input:focus),
 .landing__input:focus {
   border-color: var(--color-accent);
   box-shadow: 0 0 0 3px var(--color-accent-alpha);
 }
 
+:deep(.landing__input::placeholder),
 .landing__input::placeholder {
   color: var(--color-text-tertiary);
 }
 
-.landing__code-inputs {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: var(--space-2);
-}
-
-.landing__code-input {
-  width: 100%;
-  aspect-ratio: 1;
-  padding: 0;
-  font-size: 1.35rem;
-  font-family: "Geist Mono", var(--font-mono);
-  font-weight: 500;
-  line-height: 1;
-  text-align: center;
-  text-transform: uppercase;
-  color: var(--color-text-primary);
-  opacity: 0.8;
-  background: var(--color-bg-secondary);
-  border: 1.5px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  outline: none;
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease,
-    background-color 0.15s ease;
-}
-
-.landing__code-input:focus {
-  border-width: 2px;
-  border-color: var(--color-accent);
-  box-shadow:
-    inset 0 0 0 2px var(--color-accent-alpha),
-    0 0 0 2px var(--color-accent-alpha),
-    0 0 14px 4px var(--color-accent-alpha);
-}
-
-.landing__code-input:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
+:deep(.landing__btn),
 .landing__btn {
   display: inline-flex;
   align-items: center;
@@ -654,44 +490,53 @@ function clearToken() {
     opacity 0.15s ease;
 }
 
+:deep(.landing__btn:disabled),
 .landing__btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
+:deep(.landing__btn:active:not(:disabled)),
 .landing__btn:active:not(:disabled) {
   transform: scale(0.98);
 }
 
+:deep(.landing__btn--primary),
 .landing__btn--primary {
   background: var(--color-accent);
   color: var(--color-accent-foreground);
 }
 
+:deep(.landing__btn--primary:hover:not(:disabled)),
 .landing__btn--primary:hover:not(:disabled) {
   background: var(--color-accent-hover);
 }
 
+:deep(.landing__btn--secondary),
 .landing__btn--secondary {
   background: var(--color-bg-tertiary);
   color: var(--color-text-primary);
   border: 1px solid var(--color-border);
 }
 
+:deep(.landing__btn--secondary:hover:not(:disabled)),
 .landing__btn--secondary:hover:not(:disabled) {
   background: var(--color-bg-hover);
 }
 
+:deep(.landing__btn--ghost),
 .landing__btn--ghost {
   background: transparent;
   color: var(--color-text-secondary);
 }
 
+:deep(.landing__btn--ghost:hover:not(:disabled)),
 .landing__btn--ghost:hover:not(:disabled) {
   background: var(--color-bg-secondary);
   color: var(--color-text-primary);
 }
 
+:deep(.landing__btn-icon),
 .landing__btn-icon {
   font-size: 1.25rem;
   line-height: 1;
@@ -756,94 +601,6 @@ function clearToken() {
   color: var(--color-text-primary);
 }
 
-.landing__recent {
-  margin-top: var(--space-8);
-  padding-top: var(--space-6);
-  border-top: 1px solid var(--color-border);
-}
-
-.landing__recent-debug {
-  margin-bottom: var(--space-3);
-  padding: var(--space-1) var(--space-2);
-  font: inherit;
-  color: var(--color-text-secondary);
-  background: var(--color-bg-secondary);
-  border: 1px dashed var(--color-border);
-  border-radius: var(--radius-full);
-}
-
-.landing__recent-title {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--color-text-secondary);
-  margin: 0 0 var(--space-3);
-}
-
-.landing__recent-scroll {
-  position: relative;
-  min-height: 100px;
-  max-height: 60vh;
-  overflow-y: auto;
-  padding-inline: var(--space-4);
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--color-text-tertiary) 45%, var(--color-bg-tertiary))
-    transparent;
-}
-
-.landing__recent-scroll::before,
-.landing__recent-scroll::after {
-  content: "";
-  position: sticky;
-  left: 0;
-  right: 0;
-  display: block;
-  height: 24px;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.landing__recent-scroll::before {
-  top: 0;
-  margin-bottom: -24px;
-  background: linear-gradient(to bottom, var(--color-bg-secondary), transparent);
-}
-
-.landing__recent-scroll::after {
-  bottom: 0;
-  margin-top: -24px;
-  background: linear-gradient(to top, var(--color-bg-secondary), transparent);
-}
-
-.landing__recent-scroll::-webkit-scrollbar {
-  width: 10px;
-}
-
-.landing__recent-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.landing__recent-scroll::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--color-text-tertiary) 45%, var(--color-bg-tertiary));
-  border: 2px solid transparent;
-  border-radius: 999px;
-  background-clip: padding-box;
-}
-
-.landing__recent-scroll::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--color-text-secondary) 55%, var(--color-bg-tertiary));
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-
-.landing__recent-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
 .landing__modal {
   position: fixed;
   inset: 0;
@@ -884,14 +641,6 @@ function clearToken() {
 @media (max-width: 480px) {
   .landing {
     padding: var(--space-6) var(--space-4);
-  }
-
-  .landing__header {
-    margin-bottom: var(--space-8);
-  }
-
-  .landing__title {
-    font-size: 2rem;
   }
 }
 </style>
