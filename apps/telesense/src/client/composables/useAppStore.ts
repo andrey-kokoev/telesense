@@ -17,6 +17,8 @@ interface AppState {
     showLogs: boolean
     audioEnabled: boolean
     videoEnabled: boolean
+    desktopCallLayout: "side-by-side" | "focus-remote"
+    mobileCallLayout: "picture-in-picture" | "remote-only"
   }
 }
 
@@ -28,6 +30,8 @@ const defaultState: AppState = {
     showLogs: false,
     audioEnabled: true,
     videoEnabled: true,
+    desktopCallLayout: "side-by-side",
+    mobileCallLayout: "picture-in-picture",
   },
 }
 

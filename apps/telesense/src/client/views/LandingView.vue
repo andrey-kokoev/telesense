@@ -40,8 +40,13 @@
                 inputmode="text"
                 autocapitalize="characters"
                 autocomplete="off"
+                autocorrect="off"
+                spellcheck="false"
+                name="room-code"
+                data-form-type="other"
                 maxlength="1"
                 class="landing__code-input"
+                :disabled="isRoomCodeInputDisabled(index)"
                 @input="onRoomCodeInput(index, $event)"
                 @keydown="onRoomCodeKeydown(index, $event)"
               />
@@ -73,8 +78,13 @@
                 inputmode="text"
                 autocapitalize="characters"
                 autocomplete="off"
+                autocorrect="off"
+                spellcheck="false"
+                name="room-code"
+                data-form-type="other"
                 maxlength="1"
                 class="landing__code-input"
+                :disabled="isRoomCodeInputDisabled(index)"
                 @input="onRoomCodeInput(index, $event)"
                 @keydown="onRoomCodeKeydown(index, $event)"
               />
@@ -286,7 +296,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue"
+import { computed, nextTick, onMounted, ref } from "vue"
 import ThemeToggle from "../components/ThemeToggle.vue"
 import { useAppStore } from "../composables/useAppStore"
 import { useToast } from "../composables/useToast"
@@ -324,7 +334,21 @@ function normalizeRoomCode(value: string) {
   return value.replace(/[^A-Z0-9]/gi, "").toUpperCase()
 }
 
-function onRoomCodeInput(index: number, event: Event) {
+function isRoomCodeInputDisabled(index: number) {
+  return index > 0 && !roomCodeDigits.value[index - 1]
+}
+
+function clearRoomCodeDigitsFrom(index: number) {
+  for (let i = index; i < roomCodeDigits.value.length; i++) {
+    roomCodeDigits.value[i] = ""
+    const input = roomCodeInputs.value[i]
+    if (input) {
+      input.value = ""
+    }
+  }
+}
+
+async function onRoomCodeInput(index: number, event: Event) {
   const input = event.target as HTMLInputElement
   const normalized = normalizeRoomCode(input.value)
   const nextChar = normalized.slice(-1)
@@ -332,7 +356,13 @@ function onRoomCodeInput(index: number, event: Event) {
   roomCodeDigits.value[index] = nextChar
   input.value = nextChar
 
+  if (!nextChar) {
+    clearRoomCodeDigitsFrom(index + 1)
+    return
+  }
+
   if (nextChar && index < roomCodeDigits.value.length - 1) {
+    await nextTick()
     focusRoomCodeInput(index + 1)
   }
 }
@@ -620,6 +650,11 @@ function clearToken() {
     inset 0 0 0 2px var(--color-accent-alpha),
     0 0 0 2px var(--color-accent-alpha),
     0 0 14px 4px var(--color-accent-alpha);
+}
+
+.landing__code-input:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 .landing__btn {

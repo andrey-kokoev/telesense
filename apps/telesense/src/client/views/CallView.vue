@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue"
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import CallDesktopLayout from "../components/CallDesktopLayout.vue"
 import CallMobileLayout from "../components/CallMobileLayout.vue"
 import { useAppStore } from "../composables/useAppStore"
@@ -55,8 +55,13 @@ const remoteStream = ref<MediaStream | null>(null)
 const showLogs = ref(false)
 const logs = ref<LogEntry[]>([])
 const localStream = ref<MediaStream | null>(null)
+const pcRef = ref<RTCPeerConnection | null>(null)
+const publishedVideoSender = ref<RTCRtpSender | null>(null)
+const cameraTrack = ref<MediaStreamTrack | null>(null)
+const screenTrack = ref<MediaStreamTrack | null>(null)
 const isAudioMuted = ref(false)
 const isVideoOff = ref(false)
+const isScreenSharing = ref(false)
 const isRemoteAudioMuted = ref(false)
 const isRemoteVideoOff = ref(false)
 const isConnecting = ref(true)
@@ -72,6 +77,17 @@ let viewportQuery: MediaQueryList | null = null
 
 const videoLayout = computed(() => (isConnecting.value ? "solo" : "duo"))
 const isAuthenticated = store.isAuthenticated
+const useMobileLayout = computed(() => isMobile.value)
+const desktopCallLayout = computed(() => store.preferences.value.desktopCallLayout)
+const mobileCallLayout = computed(() => store.preferences.value.mobileCallLayout)
+
+function setDesktopCallLayout(layout: "side-by-side" | "focus-remote") {
+  store.setPreference("desktopCallLayout", layout)
+}
+
+function setMobileCallLayout(layout: "picture-in-picture" | "remote-only") {
+  store.setPreference("mobileCallLayout", layout)
+}
 
 function setLocalVideoEl(el: Element | null) {
   localVid.value = el instanceof HTMLVideoElement ? el : undefined
@@ -111,12 +127,79 @@ function toggleAudio() {
 
 function toggleVideo() {
   if (!localStream.value) return
+  if (isScreenSharing.value) return
   for (const track of localStream.value.getVideoTracks()) {
     track.enabled = !track.enabled
   }
   isVideoOff.value = !isVideoOff.value
   syncMediaState()
   log(isVideoOff.value ? "📹 Camera off" : "📹 Camera on")
+}
+
+function updateLocalPreview(videoTrack: MediaStreamTrack | null) {
+  const stream = localStream.value
+  if (!stream) return
+
+  const nextStream = new MediaStream()
+  for (const track of stream.getAudioTracks()) {
+    nextStream.addTrack(track)
+  }
+  if (videoTrack) {
+    nextStream.addTrack(videoTrack)
+  }
+
+  localStream.value = nextStream
+  if (localVid.value) {
+    localVid.value.srcObject = nextStream
+  }
+}
+
+async function restoreCameraTrack() {
+  const sender = publishedVideoSender.value
+  const track = cameraTrack.value
+  if (!sender || !track) return
+
+  screenTrack.value?.stop()
+  screenTrack.value = null
+  isScreenSharing.value = false
+  await sender.replaceTrack(track)
+  updateLocalPreview(track)
+  log("🖥️ Screen sharing stopped")
+}
+
+async function toggleScreenShare() {
+  const sender = publishedVideoSender.value
+  if (!sender || !localStream.value) return
+
+  if (isScreenSharing.value) {
+    await restoreCameraTrack()
+    return
+  }
+
+  try {
+    const displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true })
+    const track = displayStream.getVideoTracks()[0]
+    if (!track) return
+
+    screenTrack.value = track
+    track.addEventListener(
+      "ended",
+      () => {
+        void restoreCameraTrack()
+      },
+      { once: true },
+    )
+
+    await sender.replaceTrack(track)
+    isScreenSharing.value = true
+    isVideoOff.value = false
+    updateLocalPreview(track)
+    syncMediaState()
+    log("🖥️ Screen sharing started")
+  } catch (e) {
+    log(`❌ Screen share error: ${e}`)
+    showToast("Could not start screen share", "error")
+  }
 }
 
 async function apiCall(url: string, options: RequestInit = {}) {
@@ -147,6 +230,9 @@ function clearRemoteVideo() {
 }
 
 function stopLocalMedia() {
+  screenTrack.value?.stop()
+  screenTrack.value = null
+  isScreenSharing.value = false
   const stream = localStream.value
   if (stream) {
     stream.getTracks().forEach((track) => track.stop())
@@ -423,6 +509,7 @@ onMounted(async () => {
 
   try {
     localStream.value = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+    cameraTrack.value = localStream.value.getVideoTracks()[0] ?? null
     if (localVid.value) {
       localVid.value.srcObject = localStream.value
     }
@@ -437,6 +524,7 @@ onMounted(async () => {
     iceServers: [{ urls: "stun:stun.cloudflare.com:3478" }],
     bundlePolicy: "max-bundle",
   })
+  pcRef.value = pc
 
   pc.ontrack = (event) => {
     log("📡 Remote video received!")
@@ -497,6 +585,8 @@ onMounted(async () => {
     const transceivers = localStream
       .value!.getTracks()
       .map((track) => pc.addTransceiver(track, { direction: "sendonly" }))
+    publishedVideoSender.value =
+      transceivers.find(({ sender }) => sender.track?.kind === "video")?.sender ?? null
 
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
@@ -556,6 +646,8 @@ onMounted(async () => {
     }
     window.addEventListener("beforeunload", beforeUnloadListener.value)
   } catch (e) {
+    pcRef.value = null
+    publishedVideoSender.value = null
     pc.close()
     await cleanupCallPresence()
     clearRemoteVideo()
@@ -564,6 +656,16 @@ onMounted(async () => {
     showToast(e instanceof Error ? e.message : "Connection failed", "error")
   }
 })
+
+watch(
+  useMobileLayout,
+  (enabled) => {
+    document.documentElement.style.overflow = enabled ? "hidden" : ""
+    document.body.style.overflow = enabled ? "hidden" : ""
+    document.body.style.touchAction = enabled ? "none" : ""
+  },
+  { immediate: true },
+)
 
 onBeforeUnmount(() => {
   if (viewportQuery && mediaQueryListener.value) {
@@ -582,7 +684,14 @@ onBeforeUnmount(() => {
     beforeUnloadListener.value = null
   }
 
+  document.documentElement.style.overflow = ""
+  document.body.style.overflow = ""
+  document.body.style.touchAction = ""
+
   void cleanupCallPresence()
+  pcRef.value?.close()
+  pcRef.value = null
+  publishedVideoSender.value = null
   clearRemoteVideo()
   stopLocalMedia()
 })
@@ -590,7 +699,7 @@ onBeforeUnmount(() => {
 
 <template>
   <CallMobileLayout
-    v-if="isMobile"
+    v-if="useMobileLayout"
     :room-id="roomId"
     :swipe-page-style="swipeBack.pageStyle.value"
     :swipe-backdrop-style="swipeBack.backdropStyle.value"
@@ -600,18 +709,22 @@ onBeforeUnmount(() => {
     :can-end-room="isAuthenticated"
     :is-audio-muted="isAudioMuted"
     :is-video-off="isVideoOff"
+    :is-screen-sharing="isScreenSharing"
     :is-remote-audio-muted="isRemoteAudioMuted"
     :is-remote-video-off="isRemoteVideoOff"
     :has-local-stream="!!localStream"
     :is-connecting="isConnecting"
     :is-remote-disconnected="isRemoteDisconnected"
+    :mobile-layout="mobileCallLayout"
     :remote-zoom-style="remoteZoom.transformStyle.value"
     :video-layout="videoLayout"
     :set-local-video-el="setLocalVideoEl"
     :set-remote-video-el="setRemoteVideoEl"
     @update:show-logs="showLogs = $event"
+    @set-mobile-layout="setMobileCallLayout"
     @toggle-audio="toggleAudio"
     @toggle-video="toggleVideo"
+    @toggle-screen-share="toggleScreenShare"
     @leave="leave"
     @end-room="endRoom"
     @swap-videos="swapVideos"
@@ -633,18 +746,22 @@ onBeforeUnmount(() => {
     :can-end-room="isAuthenticated"
     :is-audio-muted="isAudioMuted"
     :is-video-off="isVideoOff"
+    :is-screen-sharing="isScreenSharing"
     :is-remote-audio-muted="isRemoteAudioMuted"
     :is-remote-video-off="isRemoteVideoOff"
     :has-local-stream="!!localStream"
     :is-connecting="isConnecting"
     :is-remote-disconnected="isRemoteDisconnected"
+    :desktop-layout="desktopCallLayout"
     :remote-zoom-style="remoteZoom.transformStyle.value"
     :video-layout="videoLayout"
     :set-local-video-el="setLocalVideoEl"
     :set-remote-video-el="setRemoteVideoEl"
     @update:show-logs="showLogs = $event"
+    @set-desktop-layout="setDesktopCallLayout"
     @toggle-audio="toggleAudio"
     @toggle-video="toggleVideo"
+    @toggle-screen-share="toggleScreenShare"
     @leave="leave"
     @end-room="endRoom"
     @swap-videos="swapVideos"
