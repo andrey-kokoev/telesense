@@ -4,8 +4,11 @@
   align-items: center;
   padding: 0.2rem;
   border-radius: 999px;
-  background: var(--color-bg-secondary);
+  background: var(--color-bg-primary);
   border: 1px solid var(--color-border);
+  box-shadow:
+    inset 0 2px 5px rgb(0 0 0 / 0.08),
+    inset 0 1px 0 rgb(255 255 255 / 0.22);
   min-height: 2.5rem;
 }
 
@@ -175,7 +178,11 @@
 .call-mobile__sheet,
 .call-desktop__sidebar {
   background: var(--color-bg-secondary);
-  box-shadow: 0 10px 30px rgb(0 0 0 / 0.16);
+  border: 1px solid var(--color-border);
+  box-shadow:
+    inset 0 2px 5px rgb(0 0 0 / 0.08),
+    inset 0 1px 0 rgb(255 255 255 / 0.22),
+    0 10px 30px rgb(0 0 0 / 0.12);
 }
 
 .call-desktop__menu-item,

@@ -59,6 +59,13 @@ const emit = defineEmits<{
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow:
+    inset 0 2px 5px rgb(0 0 0 / 0.08),
+    inset 0 1px 0 rgb(255 255 255 / 0.22);
 }
 
 .landing__code-input {
@@ -74,19 +81,25 @@ const emit = defineEmits<{
   color: var(--color-text-primary);
   opacity: 0.8;
   background: var(--color-bg-secondary);
-  border: 1.5px solid var(--color-border);
+  border: 1px solid color-mix(in srgb, var(--color-border-hover) 58%, var(--color-border));
   border-radius: var(--radius-lg);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.16),
+    0 6px 13px rgb(0 0 0 / 0.08);
   outline: none;
   transition:
     border-color 0.15s ease,
     box-shadow 0.15s ease,
-    background-color 0.15s ease;
+    background-color 0.15s ease,
+    transform 0.15s ease;
 }
 
 .landing__code-input:focus {
-  border-width: 2px;
+  border-width: 1.5px;
   border-color: var(--color-accent);
   box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.18),
+    0 7px 15px rgb(0 0 0 / 0.1),
     inset 0 0 0 2px var(--color-accent-alpha),
     0 0 0 2px var(--color-accent-alpha),
     0 0 14px 4px var(--color-accent-alpha);

@@ -98,11 +98,14 @@
             ? `${t('landing_recent')} (${recentCalls.length})`
             : t('landing_recent')
         "
-        :recent-calls="recentCalls"
+        :recent-calls="displayedRecentCalls"
         :room-availability="roomAvailability"
+        :active-only="showActiveRecentOnly"
+        :active-count="activeRecentCount"
         :set-scroll-ref="setRecentScrollRef"
         :register-visibility-ref="setRecentItemRef"
         @add-debug="addTwelveRecentRooms"
+        @toggle-active-only="showActiveRecentOnly = !showActiveRecentOnly"
         @open="handleRecentItemClick"
         @rename="renameRoom"
         @delete="deleteRoom"
@@ -234,6 +237,20 @@ const {
 const { roomAvailability, recentScrollEl, setRecentItemRef } =
   useRecentRoomAvailability(recentCalls)
 const isCreateRoomDraftActive = computed(() => createRoomIdInput.value.length > 0)
+const showActiveRecentOnly = ref(false)
+const activeRecentCount = computed(
+  () =>
+    recentCalls.value.filter(
+      (room) => (roomAvailability.value[room.id] ?? "unchecked") === "available",
+    ).length,
+)
+const displayedRecentCalls = computed(() =>
+  showActiveRecentOnly.value
+    ? recentCalls.value.filter(
+        (room) => (roomAvailability.value[room.id] ?? "unchecked") === "available",
+      )
+    : recentCalls.value,
+)
 
 onMounted(() => {
   const params = new URLSearchParams(window.location.search)

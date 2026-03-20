@@ -1,7 +1,29 @@
 <template>
   <div class="landing__recent">
     <button type="button" class="landing__recent-debug" @click="emit('add-debug')">+12</button>
-    <h3 class="landing__recent-title">{{ title }}</h3>
+    <div class="landing__recent-header">
+      <button
+        type="button"
+        class="landing__recent-title"
+        :class="{ 'landing__recent-title--interactive': activeOnly }"
+        :disabled="!activeOnly"
+        @click="activeOnly && emit('toggle-active-only')"
+      >
+        {{ title }}
+      </button>
+      <button
+        v-if="activeCount > 0"
+        type="button"
+        class="landing__recent-filter"
+        :class="{ 'landing__recent-filter--active': activeOnly }"
+        :aria-pressed="activeOnly"
+        aria-label="Show active rooms only"
+        @click="emit('toggle-active-only')"
+      >
+        <span class="landing__recent-filter-dot" aria-hidden="true"></span>
+        <span v-if="activeCount > 0" class="landing__recent-filter-count">({{ activeCount }})</span>
+      </button>
+    </div>
     <div :ref="setScrollRef" class="landing__recent-scroll">
       <ul class="landing__recent-list">
         <RecentRoomItem
@@ -28,12 +50,15 @@ defineProps<{
   title: string
   recentCalls: RecentCall[]
   roomAvailability: Record<string, Availability>
+  activeOnly: boolean
+  activeCount: number
   setScrollRef: (el: Element | null) => void
   registerVisibilityRef: (el: unknown, roomId: string) => void
 }>()
 
 const emit = defineEmits<{
   (e: "add-debug"): void
+  (e: "toggle-active-only"): void
   (e: "open", roomId: string): void
   (e: "rename", roomId: string, nextLabel: string): void
   (e: "delete", roomId: string): void
@@ -61,42 +86,69 @@ const emit = defineEmits<{
   font-size: 0.875rem;
   font-weight: 600;
   color: var(--color-text-secondary);
-  margin: 0 0 var(--space-3);
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+}
+
+.landing__recent-title--interactive {
+  cursor: pointer;
+}
+
+.landing__recent-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.landing__recent-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-right: var(--space-1);
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.landing__recent-filter-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: var(--ui-success);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-border) 82%, transparent);
+}
+
+.landing__recent-filter--active .landing__recent-filter-dot {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-success) 26%, transparent);
+}
+
+.landing__recent-filter-count {
+  font-family: "Geist Mono", var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1;
 }
 
 .landing__recent-scroll {
-  position: relative;
-  min-height: 100px;
+  min-height: 0;
   max-height: 60vh;
   overflow-y: auto;
-  padding-inline: var(--space-4);
+  padding: var(--space-4);
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow:
+    inset 0 2px 5px rgb(0 0 0 / 0.08),
+    inset 0 1px 0 rgb(255 255 255 / 0.22);
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--color-text-tertiary) 45%, var(--color-bg-tertiary))
     transparent;
-}
-
-.landing__recent-scroll::before,
-.landing__recent-scroll::after {
-  content: "";
-  position: sticky;
-  left: 0;
-  right: 0;
-  display: block;
-  height: 24px;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.landing__recent-scroll::before {
-  top: 0;
-  margin-bottom: -24px;
-  background: linear-gradient(to bottom, var(--color-bg-secondary), transparent);
-}
-
-.landing__recent-scroll::after {
-  bottom: 0;
-  margin-top: -24px;
-  background: linear-gradient(to top, var(--color-bg-secondary), transparent);
 }
 
 .landing__recent-scroll::-webkit-scrollbar {

@@ -73,6 +73,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import RecentRoomBody from "./RecentRoomBody.vue"
 import type { RecentCall } from "../composables/useAppStore"
+import { useI18n } from "../composables/useI18n"
 import { useSwipePhysics } from "../composables/useSwipePhysics"
 import type { Availability } from "../composables/useRecentRoomAvailability"
 
@@ -87,6 +88,7 @@ const emit = defineEmits<{
   (e: "rename", label: string): void
   (e: "delete"): void
 }>()
+const { t } = useI18n()
 const rootEl = ref<HTMLElement | null>(null)
 const bodyRef = ref<InstanceType<typeof RecentRoomBody> | null>(null)
 const editing = ref(false)
@@ -275,17 +277,24 @@ onBeforeUnmount(() => {
   position: relative;
   overflow: hidden;
   background: color-mix(in srgb, var(--color-bg-tertiary) 92%, var(--color-bg-secondary) 8%);
-  border: 1px solid var(--color-border);
+  border: 1px solid color-mix(in srgb, var(--color-border-hover) 72%, var(--color-border));
   border-radius: var(--radius-lg);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.16),
+    0 6px 13px rgb(0 0 0 / 0.08);
   cursor: pointer;
   transition:
     background-color 0.15s ease,
-    border-color 0.15s ease;
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .landing__recent-item:hover {
   background: var(--color-bg-hover);
   border-color: var(--color-border-hover);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.18),
+    0 7px 15px rgb(0 0 0 / 0.1);
 }
 
 .landing__recent-item--editing {
