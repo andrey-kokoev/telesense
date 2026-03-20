@@ -6,6 +6,9 @@
     {
       "path": "../realtime-examples",
     },
+    {
+      "path": "../feedback-gitops",
+    },
   ],
   "settings": {},
 }
