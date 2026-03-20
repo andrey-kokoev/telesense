@@ -32,10 +32,6 @@ function getCallRoom(env: Env, roomId: string): DurableObjectStub {
   return env.CALL_ROOMS.get(id)
 }
 
-// Legacy in-memory store (deprecated, kept for compatibility during transition)
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _deprecatedCalls = new Map()
-
 // Type definitions
 interface CreateSessionResponse {
   sessionId: string
