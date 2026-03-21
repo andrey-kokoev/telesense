@@ -59,6 +59,7 @@ export async function decodeCallApiError(response: Response) {
     .catch(() => ({}))) as {
     code?: string
     error?: string
+    graceEndsAt?: number
   }
 
   if (response.status === 409 && errorData.code === "SESSION_REPLACED") {
@@ -98,6 +99,15 @@ export async function decodeCallApiError(response: Response) {
       kind: "service-entitlement-required" as const,
       message: "Room requires a valid service entitlement",
       code: errorData.code,
+    }
+  }
+
+  if (response.status === 402) {
+    return {
+      kind: "service-budget-exhausted" as const,
+      message: "Service budget exhausted - room will terminate soon",
+      code: errorData.code,
+      graceEndsAt: errorData.graceEndsAt as number | undefined,
     }
   }
 

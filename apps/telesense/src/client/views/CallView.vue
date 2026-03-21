@@ -9,6 +9,7 @@ import { useI18n } from "../composables/useI18n"
 import { usePinchZoom } from "../composables/usePinchZoom"
 import { useSwipeBack } from "../composables/useSwipeBack"
 import { useToast } from "../composables/useToast"
+import { useMetering } from "../composables/useMetering"
 
 interface LogEntry {
   timestamp: string
@@ -29,6 +30,7 @@ const props = defineProps<{ roomId: string }>()
 const { show: showToast } = useToast()
 const store = useAppStore()
 const { t } = useI18n()
+const metering = useMetering(props.roomId)
 
 const swipeBack = useSwipeBack(() => {
   leave()
@@ -171,7 +173,23 @@ onMounted(() => {
     isMobile.value = event.matches
   }
   viewportQuery.addEventListener("change", mediaQueryListener.value)
+
+  // Start metering polling
+  metering.startPolling()
 })
+
+// Watch for grace period entry and show toast
+watch(
+  () => metering.isInGrace.value,
+  (inGrace) => {
+    if (inGrace) {
+      showToast(
+        `Service budget exhausted. Room will terminate in ${metering.graceRemainingMinutes.value} minutes.`,
+        "error",
+      )
+    }
+  },
+)
 
 watch(
   useMobileLayout,
@@ -207,6 +225,17 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <!-- Grace period banner -->
+  <div v-if="metering.isInGrace.value" class="grace-banner" role="alert">
+    <span class="grace-banner__icon">⚠️</span>
+    <span class="grace-banner__text">
+      Service budget exhausted. Room will terminate in
+      {{ metering.graceRemainingMinutes.value }} minute{{
+        metering.graceRemainingMinutes.value === 1 ? "" : "s"
+      }}.
+    </span>
+  </div>
+
   <CallMobileLayout
     v-if="useMobileLayout"
     :room-id="roomId"
@@ -357,5 +386,30 @@ onBeforeUnmount(() => {
   background: var(--ui-primary);
   border-color: var(--ui-primary);
   color: var(--color-accent-foreground);
+}
+
+.grace-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-accent);
+  color: white;
+  font-weight: 500;
+  text-align: center;
+}
+
+.grace-banner__icon {
+  font-size: 1.25rem;
+}
+
+.grace-banner__text {
+  font-size: 0.875rem;
 }
 </style>
