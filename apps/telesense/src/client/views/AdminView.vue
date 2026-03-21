@@ -43,32 +43,68 @@
         <p v-else class="admin-card__empty">{{ t("admin_not_loaded") }}</p>
       </section>
 
-      <section class="admin-card">
+      <section class="admin-card admin-card--wide">
         <div class="admin-card__header">
           <h2 class="admin-card__title">{{ t("admin_budget_title") }}</h2>
           <span v-if="budget" class="admin-card__badge">{{ budget.grace.lifecycle }}</span>
         </div>
 
-        <div v-if="budget" class="admin-card__rows">
-          <div class="admin-card__row">
-            <span>{{ t("admin_budget_key") }}</span>
-            <code>{{ budget.budgetKey }}</code>
+        <div v-if="budget" class="admin-budget">
+          <div class="admin-card__rows">
+            <div class="admin-card__row">
+              <span>{{ t("admin_budget_key") }}</span>
+              <code>{{ budget.budgetKey }}</code>
+            </div>
+            <div class="admin-card__row">
+              <span>{{ t("admin_budget_id") }}</span>
+              <code>{{ budget.budgetId }}</code>
+            </div>
+            <div class="admin-card__row">
+              <span>{{ t("admin_budget_remaining") }}</span>
+              <strong>{{ formatBytes(budget.allowance.remainingBytes) }}</strong>
+            </div>
+            <div class="admin-card__row">
+              <span>{{ t("admin_budget_consumed") }}</span>
+              <strong>{{ formatBytes(budget.allowance.consumedBytes) }}</strong>
+            </div>
+            <div class="admin-card__row">
+              <span>{{ t("admin_budget_grace_ends") }}</span>
+              <strong>{{ formatTime(budget.grace.graceEndsAt) }}</strong>
+            </div>
           </div>
-          <div class="admin-card__row">
-            <span>{{ t("admin_budget_id") }}</span>
-            <code>{{ budget.budgetId }}</code>
-          </div>
-          <div class="admin-card__row">
-            <span>{{ t("admin_budget_remaining") }}</span>
-            <strong>{{ formatBytes(budget.allowance.remainingBytes) }}</strong>
-          </div>
-          <div class="admin-card__row">
-            <span>{{ t("admin_budget_consumed") }}</span>
-            <strong>{{ formatBytes(budget.allowance.consumedBytes) }}</strong>
-          </div>
-          <div class="admin-card__row">
-            <span>{{ t("admin_budget_grace_ends") }}</span>
-            <strong>{{ formatTime(budget.grace.graceEndsAt) }}</strong>
+
+          <div class="admin-budget__actions">
+            <div class="admin-card__header">
+              <h3 class="admin-card__subtitle">{{ t("admin_budget_actions_title") }}</h3>
+            </div>
+            <button
+              class="admin-card__button"
+              :disabled="loadingState === 'minting' || !selectedBudgetKey"
+              @click="mintToken"
+            >
+              {{ loadingState === "minting" ? t("admin_minting") : t("admin_mint_button") }}
+            </button>
+            <p class="admin-card__hint">{{ t("admin_mint_hint") }}</p>
+
+            <button
+              class="admin-card__button admin-card__button--warn"
+              :disabled="loadingState === 'rotating' || !selectedBudgetKey"
+              @click="rotateSecret"
+            >
+              {{ loadingState === "rotating" ? t("admin_rotating") : t("admin_rotate_button") }}
+            </button>
+            <p class="admin-card__hint">{{ t("admin_secret_hint") }}</p>
+
+            <div v-if="mintedToken" class="admin-card__minted">
+              <textarea class="admin-card__textarea" readonly :value="mintedToken"></textarea>
+              <div class="admin-card__row">
+                <span>{{ t("admin_budget_remaining") }}</span>
+                <strong>{{ mintedRemainingBytes }}</strong>
+              </div>
+              <button class="admin-card__button admin-card__button--ghost" @click="copyMintedToken">
+                {{ t("admin_copy_token") }}
+              </button>
+            </div>
           </div>
         </div>
         <p v-else class="admin-card__empty">{{ t("admin_not_loaded") }}</p>
@@ -77,22 +113,22 @@
       <section class="admin-card">
         <div class="admin-card__header">
           <h2 class="admin-card__title">{{ t("admin_monthly_list_title") }}</h2>
-          <span class="admin-card__badge">{{ monthlyAllowances.length }}</span>
+          <span class="admin-card__badge">{{ linkedMonthlyAllowances.length }}</span>
         </div>
 
-        <div v-if="monthlyAllowances.length" class="admin-list">
+        <div v-if="linkedMonthlyAllowances.length" class="admin-list">
           <button
-            v-for="item in monthlyAllowances"
+            v-for="item in linkedMonthlyAllowances"
             :key="item.allowanceId"
             class="admin-list__item"
             :class="{ 'admin-list__item--active': item.allowanceId === selectedAllowanceId }"
             @click="selectMonthlyAllowance(item.allowanceId)"
           >
             <strong>{{ item.allowanceId }}</strong>
-            <span>{{ item.budgetKey }}</span>
+            <span>{{ item.active ? item.cronExpr : t("admin_monthly_inactive") }}</span>
           </button>
         </div>
-        <p v-else class="admin-card__empty">{{ t("admin_not_loaded") }}</p>
+        <p v-else class="admin-card__empty">{{ t("admin_monthly_none_for_budget") }}</p>
       </section>
 
       <section class="admin-card">
@@ -124,6 +160,7 @@
               class="admin-card__input"
               type="text"
               spellcheck="false"
+              readonly
             />
           </label>
           <label class="admin-card__field admin-card__field--checkbox">
@@ -164,68 +201,12 @@
           </button>
         </form>
       </section>
-
-      <section class="admin-card">
-        <div class="admin-card__header">
-          <h2 class="admin-card__title">{{ t("admin_mint_title") }}</h2>
-        </div>
-
-        <div class="admin-card__rows admin-card__rows--compact">
-          <div class="admin-card__row">
-            <span>{{ t("admin_budget_key") }}</span>
-            <code>{{ selectedBudgetKey || "—" }}</code>
-          </div>
-        </div>
-
-        <button
-          class="admin-card__button"
-          :disabled="loadingState === 'minting' || !selectedBudgetKey"
-          @click="mintToken"
-        >
-          {{ loadingState === "minting" ? t("admin_minting") : t("admin_mint_button") }}
-        </button>
-
-        <p class="admin-card__hint">{{ t("admin_mint_hint") }}</p>
-
-        <div v-if="mintedToken" class="admin-card__minted">
-          <textarea class="admin-card__textarea" readonly :value="mintedToken"></textarea>
-          <div class="admin-card__row">
-            <span>{{ t("admin_budget_remaining") }}</span>
-            <strong>{{ mintedRemainingBytes }}</strong>
-          </div>
-          <button class="admin-card__button admin-card__button--ghost" @click="copyMintedToken">
-            {{ t("admin_copy_token") }}
-          </button>
-        </div>
-      </section>
-
-      <section class="admin-card">
-        <div class="admin-card__header">
-          <h2 class="admin-card__title">{{ t("admin_secret_title") }}</h2>
-        </div>
-
-        <div class="admin-card__rows admin-card__rows--compact">
-          <div class="admin-card__row">
-            <span>{{ t("admin_budget_key") }}</span>
-            <code>{{ selectedBudgetKey || "—" }}</code>
-          </div>
-        </div>
-
-        <p class="admin-card__hint">{{ t("admin_secret_hint") }}</p>
-        <button
-          class="admin-card__button admin-card__button--warn"
-          :disabled="loadingState === 'rotating' || !selectedBudgetKey"
-          @click="rotateSecret"
-        >
-          {{ loadingState === "rotating" ? t("admin_rotating") : t("admin_rotate_button") }}
-        </button>
-      </section>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue"
+import { computed, onMounted, reactive, ref, watch } from "vue"
 import { useAppStore } from "../composables/useAppStore"
 import { useI18n } from "../composables/useI18n"
 import { useToast } from "../composables/useToast"
@@ -302,6 +283,9 @@ const monthlyAllowanceForm = reactive({
 })
 
 const hasAdminToken = computed(() => !!store.serviceEntitlementToken.value)
+const linkedMonthlyAllowances = computed(() =>
+  monthlyAllowances.value.filter((item) => item.budgetKey === selectedBudgetKey.value),
+)
 
 function goBack() {
   window.location.search = ""
@@ -355,9 +339,7 @@ async function loadMonthlyAllowanceList() {
   if (!response.ok) throw new Error(await response.text())
   const data = (await response.json()) as { monthlyAllowances: MonthlyAllowanceListItem[] }
   monthlyAllowances.value = data.monthlyAllowances
-  if (!selectedAllowanceId.value && data.monthlyAllowances.length > 0) {
-    selectedAllowanceId.value = data.monthlyAllowances[0].allowanceId
-  }
+  syncSelectedAllowance()
 }
 
 async function loadBudget() {
@@ -376,6 +358,11 @@ async function loadBudget() {
 async function loadMonthlyAllowance() {
   if (!selectedAllowanceId.value) {
     monthlyAllowance.value = null
+    monthlyAllowanceForm.allowanceId = "global"
+    monthlyAllowanceForm.budgetKey = selectedBudgetKey.value
+    monthlyAllowanceForm.active = false
+    monthlyAllowanceForm.resetAmountBytes = "0"
+    monthlyAllowanceForm.cronExpr = "0 0 1 * *"
     return
   }
 
@@ -411,9 +398,24 @@ async function refreshAll() {
   }
 }
 
+function syncSelectedAllowance() {
+  const linked = monthlyAllowances.value.filter(
+    (item) => item.budgetKey === selectedBudgetKey.value,
+  )
+  if (linked.length === 0) {
+    selectedAllowanceId.value = ""
+    return
+  }
+
+  if (!linked.some((item) => item.allowanceId === selectedAllowanceId.value)) {
+    selectedAllowanceId.value = linked[0].allowanceId
+  }
+}
+
 async function selectBudget(budgetKey: string) {
   selectedBudgetKey.value = budgetKey
-  await loadBudget()
+  syncSelectedAllowance()
+  await Promise.all([loadBudget(), loadMonthlyAllowance()])
 }
 
 async function selectMonthlyAllowance(allowanceId: string) {
@@ -442,6 +444,7 @@ async function saveMonthlyAllowance() {
     monthlyAllowance.value = data
     selectedAllowanceId.value = data.allowanceId
     selectedBudgetKey.value = data.budgetKey
+    syncSelectedAllowance()
     await Promise.all([loadBudgetList(), loadMonthlyAllowanceList(), loadBudget()])
     show(t("admin_monthly_saved"), "success")
   } catch (error) {
@@ -514,6 +517,14 @@ async function rotateSecret() {
 onMounted(() => {
   void refreshAll()
 })
+
+watch(
+  selectedBudgetKey,
+  (budgetKey) => {
+    monthlyAllowanceForm.budgetKey = budgetKey
+  },
+  { immediate: true },
+)
 </script>
 
 <style scoped>
@@ -600,6 +611,10 @@ onMounted(() => {
     0 8px 24px rgb(0 0 0 / 0.08);
 }
 
+.admin-card--wide {
+  grid-column: span 2;
+}
+
 .admin-card__header {
   display: flex;
   justify-content: space-between;
@@ -610,6 +625,12 @@ onMounted(() => {
 .admin-card__title {
   margin: 0;
   font-size: 1rem;
+  color: var(--color-text-primary);
+}
+
+.admin-card__subtitle {
+  margin: 0;
+  font-size: 0.9rem;
   color: var(--color-text-primary);
 }
 
@@ -646,6 +667,20 @@ onMounted(() => {
 .admin-list__item--active {
   border-color: var(--color-accent, #d96b1d);
   background: color-mix(in srgb, var(--color-bg-secondary) 82%, #d96b1d 18%);
+}
+
+.admin-budget {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(18rem, 0.9fr);
+  gap: var(--space-5);
+}
+
+.admin-budget__actions {
+  display: grid;
+  align-content: start;
+  gap: var(--space-3);
+  padding-left: var(--space-4);
+  border-left: 1px solid var(--color-border);
 }
 
 .admin-card__rows {
@@ -729,6 +764,21 @@ onMounted(() => {
 @media (max-width: 720px) {
   .admin-view__header {
     grid-template-columns: 1fr;
+  }
+
+  .admin-card--wide {
+    grid-column: auto;
+  }
+
+  .admin-budget {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-budget__actions {
+    padding-left: 0;
+    border-left: 0;
+    border-top: 1px solid var(--color-border);
+    padding-top: var(--space-4);
   }
 }
 </style>
