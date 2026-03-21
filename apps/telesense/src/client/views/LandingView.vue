@@ -502,7 +502,7 @@ function clearServiceEntitlementToken() {
 }
 
 function openAdmin() {
-  window.location.search = "admin=1"
+  window.location.href = "/host-admin"
 }
 </script>
 

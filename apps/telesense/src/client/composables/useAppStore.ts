@@ -20,7 +20,7 @@ interface AppState {
   browserInstanceId: string
   serviceEntitlementToken: string
   serviceEntitlementState: StoredServiceEntitlementState
-  hostAdminToken: string
+  hostAdminSessionToken: string
   recentCalls: RecentCall[]
   roomParticipantCredentials: Record<string, RoomParticipantCredential>
   preferences: {
@@ -41,7 +41,7 @@ const defaultState: AppState = {
   browserInstanceId: generateBrowserInstanceId(),
   serviceEntitlementToken: "",
   serviceEntitlementState: "missing",
-  hostAdminToken: "",
+  hostAdminSessionToken: "",
   recentCalls: [],
   roomParticipantCredentials: {},
   preferences: {
@@ -62,6 +62,7 @@ export function useAppStore() {
     userId?: string
     serviceEntitlementTokenVerified?: boolean
     hostToken?: string
+    hostAdminToken?: string
   }
   if (!state.value.browserInstanceId && legacyState.userId) {
     state.value.browserInstanceId = legacyState.userId
@@ -97,14 +98,19 @@ export function useAppStore() {
     delete legacyState.serviceEntitlementTokenVerified
   }
 
-  if (!state.value.hostAdminToken && legacyState.hostToken) {
-    state.value.hostAdminToken = legacyState.hostToken
+  if (!state.value.hostAdminSessionToken && (legacyState.hostAdminToken || legacyState.hostToken)) {
+    state.value.hostAdminSessionToken = legacyState.hostAdminToken || legacyState.hostToken || ""
+    delete legacyState.hostAdminToken
     delete legacyState.hostToken
+  }
+
+  if (!state.value.hostAdminSessionToken) {
+    state.value.hostAdminSessionToken = ""
   }
 
   // Auth
   const hasServiceEntitlementToken = computed(() => !!state.value.serviceEntitlementToken)
-  const hasHostAdminToken = computed(() => !!state.value.hostAdminToken)
+  const hasHostAdminSessionToken = computed(() => !!state.value.hostAdminSessionToken)
   const serviceEntitlementTokenVerified = computed(
     () => !!state.value.serviceEntitlementToken && state.value.serviceEntitlementState === "valid",
   )
@@ -125,12 +131,12 @@ export function useAppStore() {
     state.value.serviceEntitlementState = "missing"
   }
 
-  function setHostAdminToken(token: string) {
-    state.value.hostAdminToken = token.trim()
+  function setHostAdminSessionToken(token: string) {
+    state.value.hostAdminSessionToken = token.trim()
   }
 
-  function clearHostAdminToken() {
-    state.value.hostAdminToken = ""
+  function clearHostAdminSessionToken() {
+    state.value.hostAdminSessionToken = ""
   }
 
   function getServiceEntitlementHeaders(): Record<string, string> {
@@ -141,7 +147,7 @@ export function useAppStore() {
 
   function getHostAdminHeaders(): Record<string, string> {
     return {
-      "X-Host-Admin-Token": state.value.hostAdminToken,
+      "X-Host-Admin-Session": state.value.hostAdminSessionToken,
     }
   }
 
@@ -211,10 +217,10 @@ export function useAppStore() {
     browserInstanceId: computed(() => state.value.browserInstanceId),
     serviceEntitlementToken: computed(() => state.value.serviceEntitlementToken),
     serviceEntitlementState: computed(() => state.value.serviceEntitlementState),
-    hostAdminToken: computed(() => state.value.hostAdminToken),
+    hostAdminSessionToken: computed(() => state.value.hostAdminSessionToken),
     serviceEntitlementTokenVerified,
     hasServiceEntitlementToken,
-    hasHostAdminToken,
+    hasHostAdminSessionToken,
     recentCalls,
     roomParticipantCredentials,
     preferences,
@@ -223,8 +229,8 @@ export function useAppStore() {
     // Actions
     setServiceEntitlementToken,
     clearServiceEntitlementToken,
-    setHostAdminToken,
-    clearHostAdminToken,
+    setHostAdminSessionToken,
+    clearHostAdminSessionToken,
     getServiceEntitlementHeaders,
     getHostAdminHeaders,
     addRecentCall,

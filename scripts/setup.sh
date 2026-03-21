@@ -140,7 +140,7 @@ Host Admin Token
 $host_admin_token
 
 Use this token on first host-admin startup at:
-  ?admin=1
+  /host-admin
 EOF
 }
 
@@ -384,11 +384,11 @@ say "${GREEN}Next steps:${NC}"
 maybe_deploy
 if [[ "$MODE" == "local-dev" ]]; then
   say "  1. Run locally: vp dev"
-  say "  2. Open host admin locally at: http://localhost:5173/?admin=1"
+  say "  2. Open host admin locally at: http://localhost:5173/host-admin"
   say "  3. Run E2E tests: vp run test"
 else
   say "  1. Open the deployed app"
-  say "  2. Go to ?admin=1 and paste the Host Admin Token from $SETUP_SUMMARY_FILE"
+  say "  2. Go to /host-admin and paste the Host Admin Token from $SETUP_SUMMARY_FILE"
   say "  3. Configure labels, monthly allowances, and mint service entitlement tokens"
 fi
 say ""

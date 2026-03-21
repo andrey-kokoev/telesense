@@ -37,7 +37,7 @@ setup: ## Setup instructions for new developers
 	@echo "   vp dev"
 	@echo ""
 	@echo "3. Host admin:"
-	@echo "   http://localhost:5173/?admin=1"
+	@echo "   http://localhost:5173/host-admin"
 	@echo ""
 	@echo "4. Room test:"
 	@echo "   http://localhost:5173/?room=TEST"

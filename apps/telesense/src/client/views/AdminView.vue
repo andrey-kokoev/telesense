@@ -59,7 +59,7 @@
             {{ t("admin_bootstrap_save") }}
           </button>
           <button
-            v-if="hasHostAdminToken"
+            v-if="hasHostAdminSessionToken"
             type="button"
             class="admin-card__button admin-card__button--ghost"
             :disabled="adminAccessState === 'checking'"
@@ -364,7 +364,7 @@ const monthlyAllowanceForm = reactive({
   cronExpr: "0 0 1 * *",
 })
 
-const hasHostAdminToken = computed(() => !!store.hostAdminToken.value)
+const hasHostAdminSessionToken = computed(() => !!store.hostAdminSessionToken.value)
 const linkedMonthlyAllowances = computed(() =>
   monthlyAllowances.value.filter((item) => item.budgetKey === selectedBudgetKey.value),
 )
@@ -373,7 +373,7 @@ const selectedBudgetLabel = computed(
 )
 
 function goBack() {
-  window.location.search = ""
+  window.location.href = "/"
 }
 
 function formatBytes(bytes: number | null | undefined) {
@@ -409,6 +409,15 @@ async function adminFetch(path: string, init: RequestInit = {}) {
   })
 }
 
+async function exchangeHostAdminBootstrapToken(bootstrapToken: string) {
+  return fetch("/admin/auth/exchange", {
+    method: "POST",
+    headers: {
+      "X-Host-Admin-Token": bootstrapToken,
+    },
+  })
+}
+
 async function loadBudgetList() {
   const response = await adminFetch("/admin/host/budgets")
   if (!response.ok) throw new Error(await response.text())
@@ -420,46 +429,48 @@ async function loadBudgetList() {
 }
 
 async function verifyAdminAccess() {
-  if (!hasHostAdminToken.value) {
+  if (!hasHostAdminSessionToken.value) {
     adminAccessState.value = "unauthorized"
     return false
   }
 
   adminAccessState.value = "checking"
-  const response = await adminFetch("/admin/host/budgets")
+  const response = await adminFetch("/admin/auth/verify")
   if (!response.ok) {
     adminAccessState.value = "unauthorized"
+    store.clearHostAdminSessionToken()
     throw new Error(await response.text())
   }
 
-  const data = (await response.json()) as { budgets: BudgetListItem[] }
-  budgets.value = data.budgets
-  hostAdminTokenInput.value = store.hostAdminToken.value
-  if (!selectedBudgetKey.value && data.budgets.length > 0) {
-    selectedBudgetKey.value = data.budgets[0].budgetKey
-  }
   adminAccessState.value = "authorized"
   return true
 }
 
 async function saveHostAdminToken() {
-  const token = hostAdminTokenInput.value.trim()
-  if (!token) return
+  const bootstrapToken = hostAdminTokenInput.value.trim()
+  if (!bootstrapToken) return
 
-  store.setHostAdminToken(token)
   lastError.value = ""
 
   try {
+    const exchange = await exchangeHostAdminBootstrapToken(bootstrapToken)
+    if (!exchange.ok) {
+      throw new Error(await exchange.text())
+    }
+    const exchangeData = (await exchange.json()) as { hostAdminSessionToken: string }
+    store.setHostAdminSessionToken(exchangeData.hostAdminSessionToken)
+
     const authorized = await verifyAdminAccess()
     if (!authorized) {
       lastError.value = t("admin_access_denied_hint")
       show(lastError.value, "error")
       return
     }
+    hostAdminTokenInput.value = ""
     show(t("admin_bootstrap_saved"), "success")
-    await Promise.all([loadMonthlyAllowanceList(), loadBudget(), loadMonthlyAllowance()])
+    await refreshAll()
   } catch (error) {
-    store.clearHostAdminToken()
+    store.clearHostAdminSessionToken()
     adminAccessState.value = "unauthorized"
     lastError.value = error instanceof Error ? error.message : String(error)
     show(lastError.value, "error")
@@ -467,7 +478,7 @@ async function saveHostAdminToken() {
 }
 
 function clearStoredHostAdminToken() {
-  store.clearHostAdminToken()
+  store.clearHostAdminSessionToken()
   hostAdminTokenInput.value = ""
   adminAccessState.value = "unauthorized"
   budgets.value = []
@@ -532,7 +543,7 @@ async function refreshAll() {
   try {
     const authorized = await verifyAdminAccess()
     if (!authorized) return
-    await loadMonthlyAllowanceList()
+    await Promise.all([loadBudgetList(), loadMonthlyAllowanceList()])
     await Promise.all([loadBudget(), loadMonthlyAllowance()])
   } catch (error) {
     lastError.value = error instanceof Error ? error.message : String(error)
@@ -695,7 +706,6 @@ async function rotateSecret() {
 }
 
 onMounted(() => {
-  hostAdminTokenInput.value = store.hostAdminToken.value
   void refreshAll()
 })
 

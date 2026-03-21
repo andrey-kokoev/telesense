@@ -12,6 +12,9 @@ const roomId = computed(() => {
 })
 
 const adminMode = computed(() => {
+  if (location.pathname === "/host-admin") {
+    return true
+  }
   const params = new URLSearchParams(location.search)
   return params.get("admin") === "1"
 })

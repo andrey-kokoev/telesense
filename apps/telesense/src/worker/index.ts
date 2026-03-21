@@ -19,9 +19,11 @@ import {
   GLOBAL_ENTITLEMENT_BUDGET_NAME,
   GLOBAL_MONTHLY_ALLOWANCE_NAME,
   HOST_ADMIN_HEADER,
+  HOST_ADMIN_SESSION_HEADER,
   SERVICE_ENTITLEMENT_HEADER,
 } from "./entitlement-constants"
 import { EntitlementBudget } from "./entitlement-budget"
+import { mintHostAdminSessionToken, verifyHostAdminSessionToken } from "./host-admin-auth"
 import {
   findBudgetKeyByBudgetId,
   listBudgetRegistry,
@@ -229,15 +231,6 @@ function isAuthDisabled(env: Env): boolean {
   return env.DO_NOT_ENFORCE_SERVICE_ENTITLEMENT === "true"
 }
 
-function hasValidAdminServiceEntitlementToken(request: Request, env: Env): boolean {
-  if (isAuthDisabled(env)) {
-    return true
-  }
-
-  const token = request.headers.get(HOST_ADMIN_HEADER)
-  return !!token && token === env.HOST_ADMIN_BOOTSTRAP_TOKEN
-}
-
 function serviceEntitlementHeader(c: AppContext): string | undefined {
   return c.req.header(SERVICE_ENTITLEMENT_HEADER)
 }
@@ -251,14 +244,20 @@ function serviceEntitlementErrorResponse(
   return c.json({ error, code } as ErrorResponse, status)
 }
 
-function requireAdminServiceEntitlement(c: AppContext): Response | null {
-  if (hasValidAdminServiceEntitlementToken(c.req.raw, c.env)) return null
+async function requireAdminSession(c: AppContext): Promise<Response | null> {
+  if (isAuthDisabled(c.env)) {
+    return null
+  }
+
+  const token = c.req.header(HOST_ADMIN_SESSION_HEADER)
+  const verification = await verifyHostAdminSessionToken(token, c.env.HOST_ADMIN_BOOTSTRAP_TOKEN)
+  if (verification.valid) return null
 
   return serviceEntitlementErrorResponse(
     c,
-    "Invalid host admin token",
-    c.req.header(HOST_ADMIN_HEADER) ? "HOST_ADMIN_INVALID" : "HOST_ADMIN_REQUIRED",
-    c.req.header(HOST_ADMIN_HEADER) ? 403 : 401,
+    "Invalid host admin session",
+    token ? "HOST_ADMIN_SESSION_INVALID" : "HOST_ADMIN_SESSION_REQUIRED",
+    token ? 403 : 401,
   )
 }
 
@@ -905,6 +904,39 @@ app.get("/api/auth/verify", async (c) => {
   } as OkResponse & { budgetId: string; budgetKey: string; remainingBytes: number })
 })
 
+app.post("/admin/auth/exchange", async (c) => {
+  if (!isAuthDisabled(c.env)) {
+    const bootstrapToken = c.req.header(HOST_ADMIN_HEADER)
+    if (!bootstrapToken) {
+      return serviceEntitlementErrorResponse(
+        c,
+        "Host admin bootstrap token required",
+        "HOST_ADMIN_REQUIRED",
+        401,
+      )
+    }
+
+    if (bootstrapToken !== c.env.HOST_ADMIN_BOOTSTRAP_TOKEN) {
+      return serviceEntitlementErrorResponse(
+        c,
+        "Invalid host admin token",
+        "HOST_ADMIN_INVALID",
+        403,
+      )
+    }
+  }
+
+  const hostAdminSessionToken = await mintHostAdminSessionToken(c.env.HOST_ADMIN_BOOTSTRAP_TOKEN)
+  return c.json({ ok: true, hostAdminSessionToken })
+})
+
+app.get("/admin/auth/verify", async (c) => {
+  const adminError = await requireAdminSession(c)
+  if (adminError) return adminError
+
+  return c.json({ ok: true })
+})
+
 // Rate limiting for call ID discovery (prevents brute force scanning)
 const DISCOVERY_RATE_LIMIT_WINDOW = 60 * 1000 // 1 minute
 const DISCOVERY_RATE_LIMIT_MAX = 60 // 60 discovery requests per minute per IP
@@ -998,7 +1030,7 @@ app.onError((err, c) => {
 app.post("/admin/entitlement/mint", async (c) => {
   const env = c.env
 
-  const adminError = requireAdminServiceEntitlement(c)
+  const adminError = await requireAdminSession(c)
   if (adminError) return adminError
 
   let body: { budgetKey?: string } = {}
@@ -1081,7 +1113,7 @@ app.post("/admin/entitlement/mint", async (c) => {
 
 // Admin: Rotate budget secret
 app.post("/admin/entitlement/rotate", async (c) => {
-  const adminError = requireAdminServiceEntitlement(c)
+  const adminError = await requireAdminSession(c)
   if (adminError) return adminError
 
   const env = c.env
@@ -1121,7 +1153,7 @@ app.post("/admin/entitlement/rotate", async (c) => {
 
 // Admin: Get budget inspection data
 app.get("/admin/entitlement/budget", async (c) => {
-  const adminError = requireAdminServiceEntitlement(c)
+  const adminError = await requireAdminSession(c)
   if (adminError) return adminError
 
   const env = c.env
@@ -1135,7 +1167,7 @@ app.get("/admin/entitlement/budget", async (c) => {
 })
 
 app.post("/admin/entitlement/budget-label", async (c) => {
-  const adminError = requireAdminServiceEntitlement(c)
+  const adminError = await requireAdminSession(c)
   if (adminError) return adminError
 
   let body: { budgetKey?: string; label?: string | null }
@@ -1162,7 +1194,7 @@ app.post("/admin/entitlement/budget-label", async (c) => {
 
 // Admin: Configure monthly allowance reset policy
 app.post("/admin/entitlement/monthly-allowance", async (c) => {
-  const adminError = requireAdminServiceEntitlement(c)
+  const adminError = await requireAdminSession(c)
   if (adminError) return adminError
 
   let body: {
@@ -1247,7 +1279,7 @@ app.post("/admin/entitlement/monthly-allowance", async (c) => {
 
 // Admin: Inspect monthly allowance reset policy
 app.get("/admin/entitlement/monthly-allowance", async (c) => {
-  const adminError = requireAdminServiceEntitlement(c)
+  const adminError = await requireAdminSession(c)
   if (adminError) return adminError
 
   const allowanceId = c.req.query("allowanceId")?.trim() || defaultMonthlyAllowanceId(c.env)
@@ -1283,7 +1315,7 @@ app.get("/admin/entitlement/monthly-allowance", async (c) => {
 })
 
 app.get("/admin/host/budgets", async (c) => {
-  const adminError = requireAdminServiceEntitlement(c)
+  const adminError = await requireAdminSession(c)
   if (adminError) return adminError
 
   await ensureHostAdminRegistrySeeded(c.env)
@@ -1294,7 +1326,7 @@ app.get("/admin/host/budgets", async (c) => {
 })
 
 app.get("/admin/host/monthly-allowances", async (c) => {
-  const adminError = requireAdminServiceEntitlement(c)
+  const adminError = await requireAdminSession(c)
   if (adminError) return adminError
 
   await ensureHostAdminRegistrySeeded(c.env)
@@ -1817,7 +1849,7 @@ app.post("/api/rooms/:roomId/terminate", async (c) => {
     return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
   }
 
-  const adminError = requireAdminServiceEntitlement(c)
+  const adminError = await requireAdminSession(c)
   if (adminError) return adminError
 
   const callRoom = getCallRoom(env, roomId)
