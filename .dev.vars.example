@@ -1,6 +1,9 @@
-# Cloudflare Realtime App Secret
+# Cloudflare Realtime API Secret
 # Get this from: https://dash.cloudflare.com/?to=/:account/calls
-REALTIME_APP_SECRET=your-app-token-here
+CF_CALLS_SECRET=your-calls-secret-here
+
+# Admin/master service entitlement token
+SERVICE_ENTITLEMENT_TOKEN=your-admin-service-entitlement-token-here
 
 # Debug mode - set to 'true' to enable verbose logging
 # DEBUG=true

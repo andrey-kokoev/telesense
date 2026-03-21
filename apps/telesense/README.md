@@ -39,11 +39,13 @@ vp run health         # Check health endpoint
 Copy `.dev.vars.example` to `.dev.vars` and set:
 
 - `CF_CALLS_SECRET` - From Cloudflare dashboard
-- `SERVICE_ENTITLEMENT_TOKEN` - Shared secret for room creation (generate with `openssl rand -hex 32`)
+- `SERVICE_ENTITLEMENT_TOKEN` - Admin/master token for mint and rotation routes
 
 Edit `wrangler.toml`:
 
 - `REALTIME_APP_ID` - Your app ID
+- `GLOBAL_ENTITLEMENT_BUDGET_ID` - Shared budget name for current rollout
+- `SERVICE_ENTITLEMENT_ALLOWANCE_BYTES` - Bytes added to the shared budget per minted token
 
 ## Identity Model
 
@@ -63,7 +65,7 @@ Multiple tabs are not supported for the same browser participant. Taking over fr
 ### Room APIs
 
 - `GET /api/rooms/:roomId/status` - Check whether a room currently exists
-- `POST /api/rooms/status` - Batch room availability checks, capped at 12 room IDs
+- `POST /api/rooms/status` - Batch room availability checks, capped at 100 room IDs
 - `POST /api/rooms/:roomId/session` - Create or reconnect a participant session
 - `POST /api/rooms/:roomId/publish-offer` - Publish local tracks
 - `POST /api/rooms/:roomId/subscribe-offer` - Request remote tracks
@@ -94,7 +96,7 @@ Multiple tabs are not supported for the same browser participant. Taking over fr
 - `401 SERVICE_ENTITLEMENT_REQUIRED`
   - room does not currently exist and a valid service entitlement token is required to create it
 - `403 SERVICE_ENTITLEMENT_INVALID`
-  - the provided service entitlement token is invalid or expired
+  - the provided service entitlement token is invalid
 - `402 SERVICE_BUDGET_EXHAUSTED`
   - the service entitlement budget is exhausted; room enters grace period
 - `404 ROOM_NOT_FOUND`
@@ -127,8 +129,9 @@ budgetId.secretVersion.claims.proof
 
 - One shared global budget per deployment
 - Budget tracks `remainingBytes` and `consumedBytes`
+- Each minted service entitlement token adds `SERVICE_ENTITLEMENT_ALLOWANCE_BYTES` to the shared budget
 - 60-second metering ticks estimate egress usage
-- Grace period (5 minutes) when budget exhausted
+- Grace period (15 minutes) when budget exhausted
 - New joins rejected during grace; room terminates at grace end
 
 ### Secret Rotation

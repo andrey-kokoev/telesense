@@ -107,7 +107,7 @@ export async function mintToken(
 ): Promise<string> {
   const fullClaims: TokenClaims = {
     tokenFormatVersion: TOKEN_FORMAT_VERSION,
-    issuedAt: Date.now(),
+    issuedAt: Math.floor(Date.now() / 1000),
     ...claims,
   }
 

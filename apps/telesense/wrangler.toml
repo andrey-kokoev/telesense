@@ -8,6 +8,8 @@ compatibility_date = "2026-03-18"
 # Set CF_CALLS_SECRET via: wrangler secret put CF_CALLS_SECRET
 [vars]
 REALTIME_APP_ID = "fb81ae5790a5960bdaacfc844c27366f"
+GLOBAL_ENTITLEMENT_BUDGET_ID = "global"
+SERVICE_ENTITLEMENT_ALLOWANCE_BYTES = "10737418240" # 10 GiB per minted entitlement token
 
 # Serve static frontend assets from the Worker
 [assets]

@@ -1,7 +1,7 @@
 // Durable Object for managing entitlement budget state
 // Tracks allowance, secrets, and grace periods for service entitlement
 
-export const GRACE_PERIOD_MS = 5 * 60 * 1000 // 5 minutes grace period
+import { GRACE_PERIOD_MS } from "./entitlement-constants"
 
 export type SecretVersionRecord = {
   version: number
@@ -18,17 +18,28 @@ export type EntitlementBudgetState = {
   secretVersions: SecretVersionRecord[]
   lastChargedAt: number | null
   graceEndsAt: number | null
+  graceClaimedByRoomId: string | null
 }
+
+export type BudgetLifecycle = "active" | "in_grace" | "exhausted"
 
 export type ChargeResult =
   | {
       ok: true
       remainingBytes: number
       consumedBytes: number
-      inGrace: boolean
+      lifecycle: BudgetLifecycle
       graceEndsAt: number | null
+      graceClaimedByRoomId: string | null
     }
-  | { ok: false; reason: "exhausted"; remainingBytes: 0; graceEndsAt: number | null }
+  | {
+      ok: false
+      reason: "exhausted"
+      remainingBytes: 0
+      lifecycle: BudgetLifecycle
+      graceEndsAt: number | null
+      graceClaimedByRoomId: string | null
+    }
 
 export class EntitlementBudget {
   private state: DurableObjectState
@@ -39,6 +50,7 @@ export class EntitlementBudget {
   private secretVersions: SecretVersionRecord[] = []
   private lastChargedAt: number | null = null
   private graceEndsAt: number | null = null
+  private graceClaimedByRoomId: string | null = null
   private initialized: boolean = false
 
   constructor(state: DurableObjectState) {
@@ -58,6 +70,7 @@ export class EntitlementBudget {
       this.secretVersions = stored.secretVersions
       this.lastChargedAt = stored.lastChargedAt ?? null
       this.graceEndsAt = stored.graceEndsAt ?? null
+      this.graceClaimedByRoomId = stored.graceClaimedByRoomId ?? null
       console.log(
         `[EntitlementBudget] Loaded budget ${this.budgetId.slice(0, 8)}, remaining: ${this.remainingBytes}`,
       )
@@ -70,6 +83,7 @@ export class EntitlementBudget {
       this.secretVersions = []
       this.lastChargedAt = null
       this.graceEndsAt = null
+      this.graceClaimedByRoomId = null
       console.log(`[EntitlementBudget] Created new budget ${this.budgetId.slice(0, 8)}`)
       await this.persist()
     }
@@ -86,6 +100,7 @@ export class EntitlementBudget {
       secretVersions: this.secretVersions,
       lastChargedAt: this.lastChargedAt,
       graceEndsAt: this.graceEndsAt,
+      graceClaimedByRoomId: this.graceClaimedByRoomId,
     } satisfies EntitlementBudgetState)
   }
 
@@ -104,6 +119,9 @@ export class EntitlementBudget {
 
         case "setAllowance":
           return this.handleSetAllowance(request)
+
+        case "addAllowance":
+          return this.handleAddAllowance(request)
 
         case "consume":
           return this.handleConsume(request)
@@ -135,6 +153,7 @@ export class EntitlementBudget {
   }
 
   private handleGetBudget(): Response {
+    const lifecycle = this.getLifecycle()
     return new Response(
       JSON.stringify({
         budgetId: this.budgetId,
@@ -150,7 +169,9 @@ export class EntitlementBudget {
         })),
         lastChargedAt: this.lastChargedAt,
         graceEndsAt: this.graceEndsAt,
-        inGrace: this.isInGrace(),
+        graceClaimedByRoomId: this.graceClaimedByRoomId,
+        lifecycle,
+        inGrace: lifecycle === "in_grace",
       }),
       { status: 200 },
     )
@@ -170,6 +191,27 @@ export class EntitlementBudget {
     return new Response(JSON.stringify({ ok: true, remainingBytes: this.remainingBytes }), {
       status: 200,
     })
+  }
+
+  private async handleAddAllowance(request: Request): Promise<Response> {
+    const body = (await request.json()) as { bytes: number }
+    const bytes = body.bytes
+
+    if (typeof bytes !== "number" || bytes <= 0) {
+      return new Response(JSON.stringify({ error: "Invalid bytes value" }), { status: 400 })
+    }
+
+    this.remainingBytes += bytes
+    await this.persist()
+
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        addedBytes: bytes,
+        remainingBytes: this.remainingBytes,
+      }),
+      { status: 200 },
+    )
   }
 
   private async handleConsume(request: Request): Promise<Response> {
@@ -209,21 +251,28 @@ export class EntitlementBudget {
    * Charge the budget for usage. Enters grace period if budget exhausted.
    */
   private async handleCharge(request: Request): Promise<Response> {
-    const body = (await request.json()) as { bytes: number }
+    const body = (await request.json()) as { bytes: number; roomId?: string }
     const bytes = body.bytes
+    const roomId = body.roomId
 
     if (typeof bytes !== "number" || bytes <= 0) {
       return new Response(JSON.stringify({ error: "Invalid bytes value" }), { status: 400 })
     }
 
-    const result = await this.charge(bytes)
+    if (!roomId) {
+      return new Response(JSON.stringify({ error: "roomId required" }), { status: 400 })
+    }
+
+    const result = await this.charge(bytes, roomId)
 
     if (!result.ok) {
       return new Response(
         JSON.stringify({
           error: "Budget exhausted",
           graceEndsAt: result.graceEndsAt,
-          inGrace: true,
+          graceClaimedByRoomId: result.graceClaimedByRoomId,
+          lifecycle: result.lifecycle,
+          inGrace: result.lifecycle === "in_grace",
         }),
         { status: 402 }, // PAYMENT_REQUIRED
       )
@@ -234,8 +283,10 @@ export class EntitlementBudget {
         ok: true,
         remainingBytes: result.remainingBytes,
         consumedBytes: result.consumedBytes,
-        inGrace: result.inGrace,
+        lifecycle: result.lifecycle,
+        inGrace: result.lifecycle === "in_grace",
         graceEndsAt: result.graceEndsAt,
+        graceClaimedByRoomId: result.graceClaimedByRoomId,
       }),
       { status: 200 },
     )
@@ -244,7 +295,7 @@ export class EntitlementBudget {
   /**
    * Charge the budget. Returns success/failure and grace status.
    */
-  async charge(bytes: number): Promise<ChargeResult> {
+  async charge(bytes: number, roomId: string): Promise<ChargeResult> {
     const now = Date.now()
     this.lastChargedAt = now
 
@@ -254,7 +305,25 @@ export class EntitlementBudget {
         ok: false,
         reason: "exhausted",
         remainingBytes: 0,
+        lifecycle: this.getLifecycle(now),
         graceEndsAt: this.graceEndsAt,
+        graceClaimedByRoomId: this.graceClaimedByRoomId,
+      }
+    }
+
+    // Another room has already claimed the only grace window.
+    if (
+      this.getLifecycle(now) === "in_grace" &&
+      this.graceClaimedByRoomId &&
+      this.graceClaimedByRoomId !== roomId
+    ) {
+      return {
+        ok: false,
+        reason: "exhausted",
+        remainingBytes: 0,
+        lifecycle: "exhausted",
+        graceEndsAt: this.graceEndsAt,
+        graceClaimedByRoomId: this.graceClaimedByRoomId,
       }
     }
 
@@ -268,6 +337,7 @@ export class EntitlementBudget {
     if (remainingAfterCharge > 0 && !this.graceEndsAt) {
       // Enter grace period
       this.graceEndsAt = now + GRACE_PERIOD_MS
+      this.graceClaimedByRoomId = roomId
       console.log(
         `[EntitlementBudget] Entering grace until ${new Date(this.graceEndsAt).toISOString()}`,
       )
@@ -279,15 +349,17 @@ export class EntitlementBudget {
       ok: true,
       remainingBytes: this.remainingBytes,
       consumedBytes: this.consumedBytes,
-      inGrace: this.isInGrace(),
+      lifecycle: this.getLifecycle(now),
       graceEndsAt: this.graceEndsAt,
+      graceClaimedByRoomId: this.graceClaimedByRoomId,
     }
   }
 
   private handleGetChargeStatus(): Response {
     const now = Date.now()
-    const inGrace = this.isInGrace()
-    const graceExpired = this.graceEndsAt ? now > this.graceEndsAt : false
+    const lifecycle = this.getLifecycle(now)
+    const inGrace = lifecycle === "in_grace"
+    const graceExpired = lifecycle === "exhausted" && this.graceEndsAt !== null
 
     return new Response(
       JSON.stringify({
@@ -296,6 +368,8 @@ export class EntitlementBudget {
         consumedBytes: this.consumedBytes,
         lastChargedAt: this.lastChargedAt,
         graceEndsAt: this.graceEndsAt,
+        graceClaimedByRoomId: this.graceClaimedByRoomId,
+        lifecycle,
         inGrace,
         graceExpired,
         graceRemainingMs: inGrace && this.graceEndsAt ? Math.max(0, this.graceEndsAt - now) : 0,
@@ -304,9 +378,10 @@ export class EntitlementBudget {
     )
   }
 
-  private isInGrace(): boolean {
-    if (!this.graceEndsAt) return false
-    return Date.now() < this.graceEndsAt
+  private getLifecycle(now = Date.now()): BudgetLifecycle {
+    if (!this.graceEndsAt) return "active"
+    if (now < this.graceEndsAt) return "in_grace"
+    return "exhausted"
   }
 
   private async handleRotateSecret(): Promise<Response> {

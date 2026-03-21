@@ -15,6 +15,7 @@
 import { Context, Hono } from "hono"
 import { logger } from "hono/logger"
 import { CallRoom } from "./call-room"
+import { GLOBAL_ENTITLEMENT_BUDGET_NAME, SERVICE_ENTITLEMENT_HEADER } from "./entitlement-constants"
 import { EntitlementBudget } from "./entitlement-budget"
 import { mintToken, verifyTokenWithSecret } from "./tokens"
 
@@ -22,6 +23,8 @@ type Env = {
   REALTIME_APP_ID: string
   CF_CALLS_SECRET: string
   SERVICE_ENTITLEMENT_TOKEN: string
+  SERVICE_ENTITLEMENT_ALLOWANCE_BYTES: string
+  GLOBAL_ENTITLEMENT_BUDGET_ID?: string
   DO_NOT_ENFORCE_SERVICE_ENTITLEMENT?: string // Dev-only: set 'true' to disable auth
   DEBUG?: string
   BUDGET_KV?: KVNamespace // Optional: for usage limiting
@@ -41,7 +44,9 @@ function getCallRoom(env: Env, roomId: string): DurableObjectStub {
 
 // Helper to get EntitlementBudget DO instance (shared global budget)
 function getEntitlementBudget(env: Env): DurableObjectStub {
-  const id = env.ENTITLEMENT_BUDGETS.idFromName("global")
+  const id = env.ENTITLEMENT_BUDGETS.idFromName(
+    env.GLOBAL_ENTITLEMENT_BUDGET_ID || GLOBAL_ENTITLEMENT_BUDGET_NAME,
+  )
   return env.ENTITLEMENT_BUDGETS.get(id)
 }
 
@@ -161,6 +166,19 @@ interface OkResponse {
   ok: true
 }
 
+type ServiceEntitlementVerificationResult =
+  | {
+      ok: true
+      budgetId: string
+      remainingBytes: number
+    }
+  | {
+      ok: false
+      status: 401 | 402 | 403 | 503
+      error: string
+      code: string
+    }
+
 type AppContext = Context<{ Bindings: Env }>
 const ROOM_STATUS_BATCH_LIMIT = 100
 
@@ -168,13 +186,112 @@ function isAuthDisabled(env: Env): boolean {
   return env.DO_NOT_ENFORCE_SERVICE_ENTITLEMENT === "true"
 }
 
-function hasValidServiceEntitlementToken(request: Request, env: Env): boolean {
+function hasValidAdminServiceEntitlementToken(request: Request, env: Env): boolean {
   if (isAuthDisabled(env)) {
     return true
   }
 
-  const token = request.headers.get("X-Service-Entitlement-Token")
+  const token = request.headers.get(SERVICE_ENTITLEMENT_HEADER)
   return !!token && token === env.SERVICE_ENTITLEMENT_TOKEN
+}
+
+function serviceEntitlementHeader(c: AppContext): string | undefined {
+  return c.req.header(SERVICE_ENTITLEMENT_HEADER)
+}
+
+function serviceEntitlementErrorResponse(
+  c: AppContext,
+  error: string,
+  code: string,
+  status: 400 | 401 | 402 | 403 | 404 | 429 | 500 | 503,
+) {
+  return c.json({ error, code } as ErrorResponse, status)
+}
+
+function requireAdminServiceEntitlement(c: AppContext): Response | null {
+  if (hasValidAdminServiceEntitlementToken(c.req.raw, c.env)) return null
+
+  return serviceEntitlementErrorResponse(
+    c,
+    "Invalid service entitlement token",
+    serviceEntitlementHeader(c) ? "SERVICE_ENTITLEMENT_INVALID" : "SERVICE_ENTITLEMENT_MISSING",
+    serviceEntitlementHeader(c) ? 403 : 401,
+  )
+}
+
+async function verifyServiceEntitlementToken(
+  env: Env,
+  providedToken: string | null | undefined,
+): Promise<ServiceEntitlementVerificationResult> {
+  const budget = getEntitlementBudget(env)
+  const budgetRes = await budget.fetch(new Request("http://do.internal/?action=getBudget"))
+  if (!budgetRes.ok) {
+    return {
+      ok: false,
+      status: 503,
+      error: "Service entitlement not available",
+      code: "SERVICE_ENTITLEMENT_UNAVAILABLE",
+    }
+  }
+
+  const budgetData = (await budgetRes.json()) as { budgetId: string; remainingBytes: number }
+
+  if (isAuthDisabled(env)) {
+    return {
+      ok: true,
+      budgetId: budgetData.budgetId,
+      remainingBytes: budgetData.remainingBytes,
+    }
+  }
+
+  const token = providedToken?.trim()
+  if (!token) {
+    return {
+      ok: false,
+      status: 401,
+      error: "Service entitlement required",
+      code: "SERVICE_ENTITLEMENT_REQUIRED",
+    }
+  }
+
+  const currentSecretRes = await budget.fetch(
+    new Request("http://do.internal/?action=getCurrentSecret"),
+  )
+  if (!currentSecretRes.ok) {
+    return {
+      ok: false,
+      status: 503,
+      error: "Service entitlement not available",
+      code: "SERVICE_ENTITLEMENT_UNAVAILABLE",
+    }
+  }
+
+  const { secret } = (await currentSecretRes.json()) as { secret: string }
+  const verification = await verifyTokenWithSecret(token, secret)
+
+  if (!verification.valid || verification.budgetId !== budgetData.budgetId) {
+    return {
+      ok: false,
+      status: 403,
+      error: "Invalid service entitlement token",
+      code: "SERVICE_ENTITLEMENT_INVALID",
+    }
+  }
+
+  if (budgetData.remainingBytes <= 0) {
+    return {
+      ok: false,
+      status: 402,
+      error: "Service entitlement budget exhausted",
+      code: "SERVICE_ENTITLEMENT_EXHAUSTED",
+    }
+  }
+
+  return {
+    ok: true,
+    budgetId: budgetData.budgetId,
+    remainingBytes: budgetData.remainingBytes,
+  }
 }
 
 // Helper functions
@@ -378,64 +495,23 @@ async function handleCreateSession(c: AppContext) {
   const callRoom = getCallRoom(env, roomId)
 
   // Extract and verify service entitlement token
-  const token = c.req.header("X-Service-Entitlement-Token") || ""
+  const token = serviceEntitlementHeader(c)
   let tokenBudgetId: string | null = null
 
   if (!roomStatus.exists) {
     // Room doesn't exist - require valid token and check budget
-    if (!token) {
+    const verification = await verifyServiceEntitlementToken(env, token)
+    if (!verification.ok) {
       return c.json(
         {
-          error: "Room not found",
-          code: "SERVICE_ENTITLEMENT_REQUIRED",
+          error: verification.error,
+          code: verification.code,
         } as ErrorResponse,
-        401,
-      )
-    }
-
-    // Verify token statelessly
-    const budget = getEntitlementBudget(env)
-    const currentSecretRes = await budget.fetch(
-      new Request("http://do.internal/?action=getCurrentSecret"),
-    )
-    if (!currentSecretRes.ok) {
-      return c.json(
-        {
-          error: "Service entitlement not available",
-          code: "SERVICE_ENTITLEMENT_UNAVAILABLE",
-        } as ErrorResponse,
-        503,
-      )
-    }
-
-    const { secret } = (await currentSecretRes.json()) as { secret: string }
-    const verification = await verifyTokenWithSecret(token, secret)
-
-    if (!verification.valid) {
-      return c.json(
-        {
-          error: "Invalid service entitlement token",
-          code: "SERVICE_ENTITLEMENT_INVALID",
-        } as ErrorResponse,
-        403,
+        verification.status,
       )
     }
 
     tokenBudgetId = verification.budgetId
-
-    // Check budget depletion before activating room
-    const budgetRes = await budget.fetch(new Request("http://do.internal/?action=getBudget"))
-    const budgetData = (await budgetRes.json()) as { budgetId: string; remainingBytes: number }
-
-    if (budgetData.remainingBytes <= 0) {
-      return c.json(
-        {
-          error: "Service entitlement budget exhausted",
-          code: "SERVICE_ENTITLEMENT_EXHAUSTED",
-        } as ErrorResponse,
-        403,
-      )
-    }
 
     // Bind room to budget on activation
     await callRoom.fetch(
@@ -581,20 +657,22 @@ const app = new Hono<{ Bindings: Env }>()
 // Request logging in development
 app.use("*", logger())
 
-app.get("/api/auth/verify", (c) => {
-  if (!hasValidServiceEntitlementToken(c.req.raw, c.env)) {
-    return c.json(
-      {
-        error: "Invalid service entitlement token",
-        code: c.req.header("X-Service-Entitlement-Token")
-          ? "SERVICE_ENTITLEMENT_INVALID"
-          : "SERVICE_ENTITLEMENT_MISSING",
-      },
-      c.req.header("X-Service-Entitlement-Token") ? 403 : 401,
+app.get("/api/auth/verify", async (c) => {
+  const verification = await verifyServiceEntitlementToken(c.env, serviceEntitlementHeader(c))
+  if (!verification.ok) {
+    return serviceEntitlementErrorResponse(
+      c,
+      verification.error,
+      verification.code,
+      verification.status,
     )
   }
 
-  return c.json({ ok: true } as OkResponse)
+  return c.json({
+    ok: true,
+    budgetId: verification.budgetId,
+    remainingBytes: verification.remainingBytes,
+  } as OkResponse & { budgetId: string; remainingBytes: number })
 })
 
 // Rate limiting for call ID discovery (prevents brute force scanning)
@@ -690,19 +768,21 @@ app.onError((err, c) => {
 app.post("/admin/entitlement/mint", async (c) => {
   const env = c.env
 
-  // Require master SERVICE_ENTITLEMENT_TOKEN for admin access
-  const providedToken = c.req.header("X-Service-Entitlement-Token")
-  if (!providedToken || providedToken !== env.SERVICE_ENTITLEMENT_TOKEN) {
-    return c.json(
-      {
-        error: "Unauthorized",
-        code: "SERVICE_ENTITLEMENT_INVALID",
-      },
-      403,
-    )
-  }
+  const adminError = requireAdminServiceEntitlement(c)
+  if (adminError) return adminError
 
   const budget = getEntitlementBudget(env)
+  const allowancePerToken = Number.parseInt(env.SERVICE_ENTITLEMENT_ALLOWANCE_BYTES, 10)
+
+  if (!Number.isFinite(allowancePerToken) || allowancePerToken <= 0) {
+    return c.json(
+      {
+        error: "SERVICE_ENTITLEMENT_ALLOWANCE_BYTES must be a positive integer",
+        code: "BAD_CONFIGURATION",
+      },
+      500,
+    )
+  }
 
   // Ensure budget has a secret
   const secretRes = await budget.fetch(new Request("http://do.internal/?action=getCurrentSecret"))
@@ -731,30 +811,37 @@ app.post("/admin/entitlement/mint", async (c) => {
   const budgetData = (await budgetRes.json()) as { budgetId: string }
 
   // Mint token
-  const token = await mintToken(budgetData.budgetId, version, secret)
+  const serviceEntitlementToken = await mintToken(budgetData.budgetId, version, secret)
+
+  const allowanceRes = await budget.fetch(
+    new Request("http://do.internal/?action=addAllowance", {
+      method: "POST",
+      body: JSON.stringify({ bytes: allowancePerToken }),
+    }),
+  )
+  if (!allowanceRes.ok) {
+    return c.json({ error: "Failed to add service entitlement allowance" }, 500)
+  }
+
+  const allowanceData = (await allowanceRes.json()) as {
+    remainingBytes: number
+  }
 
   return c.json({
-    token,
+    serviceEntitlementToken,
     budgetId: budgetData.budgetId,
     secretVersion: version,
+    allowanceAddedBytes: allowancePerToken,
+    remainingBytes: allowanceData.remainingBytes,
   })
 })
 
 // Admin: Rotate budget secret
 app.post("/admin/entitlement/rotate", async (c) => {
-  const env = c.env
+  const adminError = requireAdminServiceEntitlement(c)
+  if (adminError) return adminError
 
-  // Require master SERVICE_ENTITLEMENT_TOKEN for admin access
-  const providedToken = c.req.header("X-Service-Entitlement-Token")
-  if (!providedToken || providedToken !== env.SERVICE_ENTITLEMENT_TOKEN) {
-    return c.json(
-      {
-        error: "Unauthorized",
-        code: "SERVICE_ENTITLEMENT_INVALID",
-      },
-      403,
-    )
-  }
+  const env = c.env
 
   const budget = getEntitlementBudget(env)
 
@@ -778,19 +865,10 @@ app.post("/admin/entitlement/rotate", async (c) => {
 
 // Admin: Get budget inspection data
 app.get("/admin/entitlement/budget", async (c) => {
-  const env = c.env
+  const adminError = requireAdminServiceEntitlement(c)
+  if (adminError) return adminError
 
-  // Require master SERVICE_ENTITLEMENT_TOKEN for admin access
-  const providedToken = c.req.header("X-Service-Entitlement-Token")
-  if (!providedToken || providedToken !== env.SERVICE_ENTITLEMENT_TOKEN) {
-    return c.json(
-      {
-        error: "Unauthorized",
-        code: "SERVICE_ENTITLEMENT_INVALID",
-      },
-      403,
-    )
-  }
+  const env = c.env
 
   const budget = getEntitlementBudget(env)
   const budgetRes = await budget.fetch(new Request("http://do.internal/?action=getBudget"))
@@ -1350,17 +1428,8 @@ app.post("/api/rooms/:roomId/terminate", async (c) => {
     return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
   }
 
-  if (!hasValidServiceEntitlementToken(c.req.raw, env)) {
-    return c.json(
-      {
-        error: "Invalid service entitlement token",
-        code: c.req.header("X-Service-Entitlement-Token")
-          ? "SERVICE_ENTITLEMENT_INVALID"
-          : "SERVICE_ENTITLEMENT_MISSING",
-      } as ErrorResponse,
-      c.req.header("X-Service-Entitlement-Token") ? 403 : 401,
-    )
-  }
+  const adminError = requireAdminServiceEntitlement(c)
+  if (adminError) return adminError
 
   const callRoom = getCallRoom(env, roomId)
   await callRoom.fetch(
@@ -1401,15 +1470,17 @@ app.post("/api/rooms/:roomId/meter", async (c) => {
   const chargeRes = await budget.fetch(
     new Request("http://do.internal/?action=charge", {
       method: "POST",
-      body: JSON.stringify({ bytes: body.bytes }),
+      body: JSON.stringify({ bytes: body.bytes, roomId }),
     }),
   )
 
   const chargeResult = (await chargeRes.json()) as {
     ok: boolean
     remainingBytes?: number
+    lifecycle?: "active" | "in_grace" | "exhausted"
     inGrace?: boolean
     graceEndsAt?: number
+    graceClaimedByRoomId?: string | null
   }
 
   // Update room with charge result
@@ -1426,7 +1497,9 @@ app.post("/api/rooms/:roomId/meter", async (c) => {
       {
         error: "Service budget exhausted",
         code: "SERVICE_BUDGET_EXHAUSTED",
+        lifecycle: chargeResult.lifecycle,
         graceEndsAt: chargeResult.graceEndsAt,
+        graceClaimedByRoomId: chargeResult.graceClaimedByRoomId,
       },
       402,
     )
@@ -1435,8 +1508,10 @@ app.post("/api/rooms/:roomId/meter", async (c) => {
   return c.json({
     ok: true,
     remainingBytes: chargeResult.remainingBytes,
+    lifecycle: chargeResult.lifecycle,
     inGrace: chargeResult.inGrace,
     graceEndsAt: chargeResult.graceEndsAt,
+    graceClaimedByRoomId: chargeResult.graceClaimedByRoomId,
   })
 })
 
@@ -1456,15 +1531,19 @@ app.get("/api/rooms/:roomId/meter", async (c) => {
   const statusRes = await budget.fetch(new Request("http://do.internal/?action=getChargeStatus"))
   const status = (await statusRes.json()) as {
     remainingBytes: number
+    lifecycle: "active" | "in_grace" | "exhausted"
     graceEndsAt: number | null
+    graceClaimedByRoomId: string | null
     inGrace: boolean
     graceRemainingMs: number
   }
 
   return c.json({
     remainingBytes: status.remainingBytes,
+    lifecycle: status.lifecycle,
     inGrace: status.inGrace,
     graceEndsAt: status.graceEndsAt,
+    graceClaimedByRoomId: status.graceClaimedByRoomId,
     graceRemainingMinutes: Math.ceil(status.graceRemainingMs / 60000),
   })
 })

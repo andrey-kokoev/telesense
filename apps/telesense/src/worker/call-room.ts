@@ -1,9 +1,10 @@
 // Durable Object for managing call state across worker instances
 // Enables cross-device session discovery and coordination
 
+import { GRACE_PERIOD_MS } from "./entitlement-constants"
+
 // Metering constants
 const METERING_TICK_MS = 60 * 1000 // 60 seconds between metering ticks
-const GRACE_PERIOD_MS = 5 * 60 * 1000 // 5 minutes grace period
 
 // Estimated bitrate per track type (bytes per second)
 const TRACK_BITRATE_ESTIMATES = {
@@ -57,6 +58,8 @@ type ParticipantLifecycle =
       pendingSessionId: string
     }
 
+type RoomLifecycle = "inactive" | "active" | "in_grace" | "terminated"
+
 export class CallRoom {
   private static readonly SESSION_TTL_MS = 15000
   private state: DurableObjectState
@@ -71,7 +74,6 @@ export class CallRoom {
   private meteringTimer: number | null = null
   private lastMeteredAt: number | null = null
   private graceEndsAt: number | null = null
-  private isInGrace: boolean = false
   private shouldTerminateAt: number | null = null
 
   constructor(state: DurableObjectState) {
@@ -88,7 +90,6 @@ export class CallRoom {
     const storedMetering = await this.state.storage.get<{
       lastMeteredAt: number | null
       graceEndsAt: number | null
-      isInGrace: boolean
     }>("metering")
 
     if (storedSessions && Array.isArray(storedSessions)) {
@@ -126,8 +127,7 @@ export class CallRoom {
     if (storedMetering) {
       this.lastMeteredAt = storedMetering.lastMeteredAt
       this.graceEndsAt = storedMetering.graceEndsAt
-      this.isInGrace = storedMetering.isInGrace
-      console.log(`[CallRoom] Loaded metering state, inGrace: ${this.isInGrace}`)
+      console.log(`[CallRoom] Loaded metering state, lifecycle: ${this.getRoomLifecycle()}`)
     }
 
     // Resume metering if budget is bound
@@ -335,6 +335,20 @@ export class CallRoom {
     return count
   }
 
+  private getRoomLifecycle(now = Date.now()): RoomLifecycle {
+    const hasLiveParticipants = this.participants.size > 0
+
+    if (!hasLiveParticipants) {
+      return this.budgetId || this.roomId ? "terminated" : "inactive"
+    }
+
+    if (this.graceEndsAt && now < this.graceEndsAt) {
+      return "in_grace"
+    }
+
+    return "active"
+  }
+
   private async createSession(request: Request): Promise<Response> {
     const { internalId, participantId, participantSecret, cfSessionId } =
       (await request.json()) as {
@@ -487,9 +501,11 @@ export class CallRoom {
   }
 
   private roomExists(): Response {
+    const lifecycle = this.getRoomLifecycle()
     return new Response(
       JSON.stringify({
-        roomCreated: this.participants.size > 0,
+        roomCreated: lifecycle !== "inactive" && lifecycle !== "terminated",
+        lifecycle,
         sessionCount: this.countLiveSessions(),
         participantCount: this.participants.size,
       }),
@@ -723,6 +739,7 @@ export class CallRoom {
   private async terminateRoom(): Promise<Response> {
     this.sessions.clear()
     this.participants.clear()
+    this.stopMetering()
     await this.persist()
     console.log("[CallRoom] Room terminated")
 
@@ -732,8 +749,10 @@ export class CallRoom {
   }
 
   private getState(): Response {
+    const lifecycle = this.getRoomLifecycle()
     return new Response(
       JSON.stringify({
+        lifecycle,
         sessionCount: this.sessions.size,
         participantCount: this.participants.size,
         participants: Array.from(this.participants.values()).map((participant) => ({
@@ -808,7 +827,6 @@ export class CallRoom {
     await this.state.storage.put("metering", {
       lastMeteredAt: this.lastMeteredAt,
       graceEndsAt: this.graceEndsAt,
-      isInGrace: this.isInGrace,
     })
   }
 
@@ -861,7 +879,7 @@ export class CallRoom {
     this.lastMeteredAt = now
 
     // Check if grace period has expired
-    if (this.isInGrace && this.graceEndsAt && now > this.graceEndsAt) {
+    if (this.graceEndsAt && now > this.graceEndsAt) {
       console.log("[CallRoom] Grace period expired, terminating room")
       await this.terminateRoom()
       return
@@ -895,22 +913,32 @@ export class CallRoom {
       })
 
       if (response.status === 402) {
-        // Budget exhausted - enter grace
-        const data = (await response.json()) as { graceEndsAt: number }
-        this.isInGrace = true
-        this.graceEndsAt = data.graceEndsAt
-        console.log(
-          `[CallRoom] Budget exhausted, entered grace until ${new Date(data.graceEndsAt).toISOString()}`,
-        )
-        await this.persist()
+        const data = (await response.json()) as {
+          lifecycle?: "in_grace" | "exhausted"
+          graceEndsAt: number | null
+          graceClaimedByRoomId?: string | null
+        }
+
+        if (data.lifecycle === "in_grace") {
+          this.graceEndsAt = data.graceEndsAt
+          console.log(
+            `[CallRoom] Budget exhausted, entered grace until ${new Date(data.graceEndsAt ?? Date.now()).toISOString()}`,
+          )
+          await this.persist()
+        } else {
+          console.log(
+            `[CallRoom] Budget grace already claimed by ${data.graceClaimedByRoomId ?? "another room"}, terminating immediately`,
+          )
+          await this.terminateRoom()
+        }
       } else if (response.ok) {
         const data = (await response.json()) as {
+          lifecycle?: RoomLifecycle
           inGrace?: boolean
           graceEndsAt?: number
           remainingBytes: number
         }
-        if (data.inGrace) {
-          this.isInGrace = true
+        if (data.lifecycle === "in_grace" || data.inGrace) {
           this.graceEndsAt = data.graceEndsAt || null
         }
         console.log(`[CallRoom] Charged ${bytes} bytes, remaining: ${data.remainingBytes}`)
@@ -955,6 +983,7 @@ export class CallRoom {
    * Get current metering and grace status
    */
   getMeteringStatus(): {
+    lifecycle: RoomLifecycle
     budgetId: string | null
     lastMeteredAt: number | null
     isInGrace: boolean
@@ -964,14 +993,16 @@ export class CallRoom {
   } {
     const now = Date.now()
     const shouldTerminate = this.shouldTerminateAt ? now > this.shouldTerminateAt : false
+    const lifecycle = this.getRoomLifecycle(now)
 
     return {
+      lifecycle,
       budgetId: this.budgetId,
       lastMeteredAt: this.lastMeteredAt,
-      isInGrace: this.isInGrace,
+      isInGrace: lifecycle === "in_grace",
       graceEndsAt: this.graceEndsAt,
       graceRemainingMs:
-        this.isInGrace && this.graceEndsAt ? Math.max(0, this.graceEndsAt - now) : 0,
+        lifecycle === "in_grace" && this.graceEndsAt ? Math.max(0, this.graceEndsAt - now) : 0,
       shouldTerminate,
     }
   }
@@ -980,9 +1011,8 @@ export class CallRoom {
    * Enter grace period (called when budget is exhausted)
    */
   enterGrace(): void {
-    if (this.isInGrace) return
+    if (this.getRoomLifecycle() === "in_grace") return
 
-    this.isInGrace = true
     this.graceEndsAt = Date.now() + GRACE_PERIOD_MS
     console.log(
       `[CallRoom] Entering grace period until ${new Date(this.graceEndsAt).toISOString()}`,
@@ -993,7 +1023,7 @@ export class CallRoom {
    * Check if new joins should be rejected (during grace)
    */
   shouldRejectNewJoins(): boolean {
-    return this.isInGrace
+    return this.getRoomLifecycle() === "in_grace"
   }
 
   /**
@@ -1001,16 +1031,24 @@ export class CallRoom {
    */
   async handleChargeResult(result: {
     ok: boolean
+    lifecycle?: "active" | "in_grace" | "exhausted"
     inGrace?: boolean
     graceEndsAt?: number | null
+    graceClaimedByRoomId?: string | null
   }): Promise<void> {
     if (!result.ok) {
-      // Budget exhausted - enter grace
-      this.enterGrace()
-    } else if (result.inGrace) {
+      if (result.lifecycle === "in_grace") {
+        this.enterGrace()
+        this.graceEndsAt = result.graceEndsAt || this.graceEndsAt
+      } else {
+        await this.terminateRoom()
+        return
+      }
+    } else if (result.lifecycle === "in_grace" || result.inGrace) {
       // Already in grace from budget side
-      this.isInGrace = true
       this.graceEndsAt = result.graceEndsAt || null
+    } else if (result.lifecycle === "active") {
+      this.graceEndsAt = null
     }
     await this.persist()
   }
@@ -1021,6 +1059,7 @@ export class CallRoom {
   private async handleChargeResultAction(request: Request): Promise<Response> {
     const result = (await request.json()) as {
       ok: boolean
+      lifecycle?: "active" | "in_grace" | "exhausted"
       inGrace?: boolean
       graceEndsAt?: number
     }

@@ -391,27 +391,41 @@ async function verifyServiceEntitlementToken(candidateToken: string) {
     },
   })
 
-  return res.ok
+  const data = (await res.json().catch(() => ({}))) as { error?: string; code?: string }
+  return {
+    ok: res.ok,
+    status: res.status,
+    error: data.error || null,
+  }
 }
 
 async function saveServiceEntitlementToken() {
   const token = tokenInput.value.trim()
-  if (!token) return
+  if (!token) return false
 
-  const isValid = await verifyServiceEntitlementToken(token)
-  if (!isValid) {
-    show(t("landing_invalid_token"), "error")
-    return
+  const verification = await verifyServiceEntitlementToken(token)
+  if (!verification.ok && verification.status !== 402) {
+    show(verification.error || t("landing_invalid_token"), "error")
+    return false
   }
 
   setServiceEntitlementToken(token, true)
   tokenInput.value = ""
+
+  if (verification.status === 402) {
+    show(verification.error || "Service entitlement budget exhausted", "error")
+    return true
+  }
+
   show(t("landing_token_saved"), "success")
+  return true
 }
 
 async function updateServiceEntitlementToken() {
-  await saveServiceEntitlementToken()
-  showTokenModal.value = false
+  const saved = await saveServiceEntitlementToken()
+  if (saved) {
+    showTokenModal.value = false
+  }
 }
 
 function clearServiceEntitlementToken() {

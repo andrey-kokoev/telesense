@@ -2,6 +2,7 @@ import { ref, computed, onUnmounted } from "vue"
 
 export type MeteringStatus = {
   remainingBytes: number
+  lifecycle: "active" | "in_grace" | "exhausted"
   inGrace: boolean
   graceEndsAt: number | null
   graceRemainingMinutes: number
@@ -14,7 +15,8 @@ export function useMetering(roomId: string) {
   const error = ref<string | null>(null)
   const isLoading = ref(false)
 
-  const isInGrace = computed(() => status.value?.inGrace ?? false)
+  const lifecycle = computed(() => status.value?.lifecycle ?? "active")
+  const isInGrace = computed(() => lifecycle.value === "in_grace")
   const graceRemainingMinutes = computed(() => status.value?.graceRemainingMinutes ?? 0)
   const graceEndsAt = computed(() =>
     status.value?.graceEndsAt ? new Date(status.value.graceEndsAt) : null,
@@ -65,6 +67,7 @@ export function useMetering(roomId: string) {
     status,
     error,
     isLoading,
+    lifecycle,
     isInGrace,
     graceRemainingMinutes,
     graceEndsAt,
