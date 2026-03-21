@@ -8,7 +8,6 @@ export interface Session {
   publishedTracks: Array<{ trackName: string; mid: string }>
   joinedAt: number
   lastSeenAt: number
-  supersededBy?: string
 }
 
 export interface Participant {
@@ -149,7 +148,7 @@ export class CallRoom {
         this.participants.set(session.participantId, {
           participantId: session.participantId,
           participantSecret: "",
-          activeSessionId: session.supersededBy ? null : session.internalId,
+          activeSessionId: session.internalId,
           pendingSessionId: null,
           audioEnabled: true,
           videoEnabled: true,
@@ -159,10 +158,7 @@ export class CallRoom {
         continue
       }
 
-      if (
-        !session.supersededBy &&
-        (!existing.activeSessionId || session.joinedAt > existing.joinedAt)
-      ) {
+      if (!existing.activeSessionId || session.joinedAt > existing.joinedAt) {
         existing.activeSessionId = session.internalId
         existing.joinedAt = session.joinedAt
       }
@@ -297,13 +293,6 @@ export class CallRoom {
 
     const resolvedParticipantSecret =
       existingParticipant?.participantSecret || participantSecret || crypto.randomUUID()
-
-    if (previousActiveSessionId && previousActiveSessionId !== internalId) {
-      const previousActiveSession = this.sessions.get(previousActiveSessionId)
-      if (previousActiveSession) {
-        previousActiveSession.supersededBy = internalId
-      }
-    }
 
     const session: Session = {
       internalId,
@@ -673,7 +662,6 @@ export class CallRoom {
           participantId: session.participantId.slice(0, 8),
           lastSeenAt: session.lastSeenAt,
           trackCount: session.publishedTracks.length,
-          supersededBy: session.supersededBy?.slice(0, 8) ?? null,
         })),
       }),
       {

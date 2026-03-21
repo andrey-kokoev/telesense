@@ -151,6 +151,12 @@ defineExpose({
   background: var(--ui-success);
 }
 
+.landing__recent-status-dot--queued,
+.landing__recent-status-dot--checking {
+  background: color-mix(in srgb, var(--color-text-tertiary) 72%, var(--ui-success) 28%);
+  opacity: 0.75;
+}
+
 .landing__recent-status-dot--unavailable {
   background: color-mix(in srgb, var(--color-text-tertiary) 85%, var(--color-accent) 15%);
   opacity: 0.45;

@@ -2,7 +2,7 @@ import { onBeforeUnmount, ref, watch, type Ref } from "vue"
 import { useIntersectionObserver } from "@vueuse/core"
 import type { RecentCall } from "./useAppStore"
 
-export type Availability = "available" | "unavailable" | "unchecked"
+export type Availability = "available" | "unavailable" | "unchecked" | "queued" | "checking"
 
 export function useRecentRoomAvailability(recentCalls: Ref<RecentCall[]>) {
   const roomAvailability = ref<Record<string, Availability>>({})
@@ -60,6 +60,7 @@ export function useRecentRoomAvailability(recentCalls: Ref<RecentCall[]>) {
     if (inFlightRoomIds.has(roomId)) return
 
     queuedRoomIds.add(roomId)
+    roomAvailability.value[roomId] = "queued"
     void runAvailabilityBatch()
   }
 
@@ -73,6 +74,7 @@ export function useRecentRoomAvailability(recentCalls: Ref<RecentCall[]>) {
     for (const roomId of roomIds) {
       queuedRoomIds.delete(roomId)
       inFlightRoomIds.add(roomId)
+      roomAvailability.value[roomId] = "checking"
     }
 
     try {
@@ -92,6 +94,15 @@ export function useRecentRoomAvailability(recentCalls: Ref<RecentCall[]>) {
             ? "available"
             : "unavailable"
         }
+      }
+      if (!res.ok) {
+        for (const roomId of roomIds) {
+          roomAvailability.value[roomId] = "unchecked"
+        }
+      }
+    } catch {
+      for (const roomId of roomIds) {
+        roomAvailability.value[roomId] = "unchecked"
       }
     } finally {
       for (const roomId of roomIds) {
