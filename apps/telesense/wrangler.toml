@@ -38,7 +38,7 @@ class_name = "MonthlyAllowance"
 [[d1_databases]]
 binding = "HOST_ADMIN_DB"
 database_name = "telesense-host-admin"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "3632dd1d-dcb0-4c1d-9ebb-15e6625049dd"
 migrations_dir = "migrations"
 
 # Durable Object migration (required for new DO classes)

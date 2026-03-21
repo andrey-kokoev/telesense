@@ -155,6 +155,23 @@ process.stdout.write(String(value))
 NODE
 }
 
+extract_json_array_from_output() {
+  local output="$1"
+  node - <<'NODE' "$output"
+const output = process.argv[2] || ""
+const lines = output.split(/\r?\n/)
+const startIndex = lines.findIndex((line) => {
+  const trimmed = line.trim()
+  return trimmed === "[" || trimmed.startsWith("[{")
+})
+if (startIndex === -1) {
+  process.stdout.write("[]")
+  process.exit(0)
+}
+process.stdout.write(lines.slice(startIndex).join("\n"))
+NODE
+}
+
 run_or_echo() {
   if [[ "$DRY_RUN" == true ]]; then
     say "${BLUE}[dry-run] $*${NC}"
@@ -167,10 +184,14 @@ maybe_deploy() {
   local should_deploy="$AUTO_DEPLOY"
 
   if [[ "$AUTO_DEPLOY" == false && "$DRY_RUN" == false ]]; then
-    echo
-    read -r -p "Deploy telesense now? [y/N] " deploy_reply
-    if [[ "$deploy_reply" =~ ^[Yy]$ ]]; then
-      should_deploy=true
+    if [[ -t 0 ]]; then
+      echo
+      read -r -p "Deploy telesense now? [y/N] " deploy_reply
+      if [[ "$deploy_reply" =~ ^[Yy]$ ]]; then
+        should_deploy=true
+      fi
+    else
+      say "${BLUE}Non-interactive shell detected; skipping deploy prompt${NC}"
     fi
   fi
 
@@ -300,7 +321,7 @@ D1_LIST_JSON="$(
   if [[ "$DRY_RUN" == true ]]; then
     echo '[]'
   else
-    vp exec wrangler d1 list --json 2>/dev/null || echo '[]'
+    extract_json_array_from_output "$(vp exec wrangler d1 list --json 2>/dev/null || echo '[]')"
   fi
 )"
 HOST_ADMIN_DB_NAME="telesense-host-admin"
