@@ -153,6 +153,7 @@ interface OkResponse {
 }
 
 type AppContext = Context<{ Bindings: Env }>
+const ROOM_STATUS_BATCH_LIMIT = 100
 
 function isAuthDisabled(env: Env): boolean {
   return env.DO_NOT_ENFORCE_USER_TOKEN === "true"
@@ -290,7 +291,7 @@ async function handleBatchRoomStatus(c: AppContext) {
     ? body.roomIds
         .map((roomId) => normalizeRoomId(roomId))
         .filter(Boolean)
-        .slice(0, 12)
+        .slice(0, ROOM_STATUS_BATCH_LIMIT)
     : []
 
   if (roomIds.length === 0) {

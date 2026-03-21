@@ -16,10 +16,12 @@
         class="landing__recent-filter"
         :class="{ 'landing__recent-filter--active': activeOnly }"
         :aria-pressed="activeOnly"
+        :title="activeOnly ? 'Showing active rooms only' : 'Show active rooms only'"
         aria-label="Show active rooms only"
         @click="emit('toggle-active-only')"
       >
         <span class="landing__recent-filter-dot" aria-hidden="true"></span>
+        <span class="landing__recent-filter-label">Active</span>
         <span v-if="activeCount > 0" class="landing__recent-filter-count">({{ activeCount }})</span>
       </button>
     </div>
@@ -98,11 +100,20 @@ const emit = defineEmits<{
   align-items: center;
   gap: 0.35rem;
   margin-right: var(--space-1);
-  padding: 0;
+  padding: 0.15rem 0.4rem;
+  border-radius: var(--radius-full);
   border: none;
   background: transparent;
   color: var(--color-text-secondary);
   cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.landing__recent-filter:hover {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
 }
 
 .landing__recent-filter-dot {
@@ -115,6 +126,12 @@ const emit = defineEmits<{
 
 .landing__recent-filter--active .landing__recent-filter-dot {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-success) 26%, transparent);
+}
+
+.landing__recent-filter-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
 }
 
 .landing__recent-filter-count {

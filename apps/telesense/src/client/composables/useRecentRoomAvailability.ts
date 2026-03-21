@@ -4,6 +4,9 @@ import type { RecentCall } from "./useAppStore"
 
 export type Availability = "available" | "unavailable" | "unchecked" | "queued" | "checking"
 
+const INITIAL_BATCH_LIMIT = 100
+const VISIBILITY_BATCH_LIMIT = 12
+
 export function useRecentRoomAvailability(recentCalls: Ref<RecentCall[]>) {
   const roomAvailability = ref<Record<string, Availability>>({})
   const recentScrollEl = ref<HTMLElement | null>(null)
@@ -11,6 +14,7 @@ export function useRecentRoomAvailability(recentCalls: Ref<RecentCall[]>) {
   const queuedRoomIds = new Set<string>()
   const inFlightRoomIds = new Set<string>()
   const isBatchRunning = ref(false)
+  const hasRunInitialBatch = ref(false)
 
   onBeforeUnmount(() => {
     for (const stop of recentItemStops.values()) {
@@ -27,6 +31,13 @@ export function useRecentRoomAvailability(recentCalls: Ref<RecentCall[]>) {
         nextAvailability[room.id] = roomAvailability.value[room.id] ?? "unchecked"
       }
       roomAvailability.value = nextAvailability
+
+      if (!hasRunInitialBatch.value) {
+        for (const room of recentCalls.value.slice(0, INITIAL_BATCH_LIMIT)) {
+          queueRoomAvailabilityCheck(room.id, "initial")
+        }
+        hasRunInitialBatch.value = true
+      }
     },
     { deep: true, immediate: true },
   )
@@ -43,7 +54,7 @@ export function useRecentRoomAvailability(recentCalls: Ref<RecentCall[]>) {
       el,
       ([entry]) => {
         if (entry?.isIntersecting) {
-          queueRoomAvailabilityCheck(roomId)
+          queueRoomAvailabilityCheck(roomId, "visible")
         }
       },
       {
@@ -55,19 +66,19 @@ export function useRecentRoomAvailability(recentCalls: Ref<RecentCall[]>) {
     recentItemStops.set(roomId, stop)
   }
 
-  function queueRoomAvailabilityCheck(roomId: string) {
+  function queueRoomAvailabilityCheck(roomId: string, source: "initial" | "visible") {
     if ((roomAvailability.value[roomId] ?? "unchecked") !== "unchecked") return
     if (inFlightRoomIds.has(roomId)) return
 
     queuedRoomIds.add(roomId)
     roomAvailability.value[roomId] = "queued"
-    void runAvailabilityBatch()
+    void runAvailabilityBatch(source === "initial" ? INITIAL_BATCH_LIMIT : VISIBILITY_BATCH_LIMIT)
   }
 
-  async function runAvailabilityBatch() {
+  async function runAvailabilityBatch(batchLimit = VISIBILITY_BATCH_LIMIT) {
     if (isBatchRunning.value) return
 
-    const roomIds = Array.from(queuedRoomIds).slice(0, 12)
+    const roomIds = Array.from(queuedRoomIds).slice(0, batchLimit)
     if (roomIds.length === 0) return
 
     isBatchRunning.value = true
