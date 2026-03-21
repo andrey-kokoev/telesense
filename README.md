@@ -2,7 +2,7 @@
 
 **Status: `full 1:1 call works` (protocol verified via Echo Demo 2026-03-18)**
 
-Cloudflare Realtime SFU implementation with verified protocol. Now organized as a pnpm monorepo.
+Cloudflare Realtime SFU implementation with verified protocol.
 
 ## Quick Start
 
@@ -10,7 +10,7 @@ Cloudflare Realtime SFU implementation with verified protocol. Now organized as 
 # Install dependencies
 vp install
 
-# Run automated setup (creates tokens, sets secrets)
+# Run automated setup (Calls app, entitlement token, D1 host-admin registry, secrets)
 ./scripts/setup.sh
 
 # Or manual setup: cp apps/telesense/.dev.vars.example apps/telesense/.dev.vars
@@ -33,10 +33,6 @@ tesense/
 │   │   ├── public/                # Static assets
 │   │   └── wrangler.toml
 │   │
-│   └── usage-meter/               # Usage tracking worker
-│       ├── src/index.ts           # Analytics query + KV writer
-│       └── wrangler.toml
-│
 ├── packages/                      # Shared packages (if needed)
 │   └── (empty for now)
 │
@@ -57,10 +53,9 @@ tesense/
 
 ```bash
 vp dev                # Run telesense app
-vp run dev:meter      # Run usage meter
-vp build              # Build all apps
+vp build              # Build telesense
 vp run test           # Run E2E tests (Playwright)
-vp run deploy         # Deploy all apps
+vp run deploy         # Deploy telesense
 vp check              # Format, lint, and type check
 ```
 
@@ -71,12 +66,6 @@ vp check              # Format, lint, and type check
 vp dev                # Start dev server
 vp run test           # Run E2E tests
 vp run deploy         # Deploy to Cloudflare
-
-# In apps/usage-meter/
-vp dev                # Start dev server
-vp run logs           # View logs
-vp run trigger        # Manual trigger
-vp run status         # Check budget status
 ```
 
 ## Applications
@@ -87,19 +76,9 @@ The main video calling application.
 
 - **Worker**: Hono backend with Cloudflare Realtime API
 - **Client**: Vanilla TypeScript WebRTC client
-- **Features**: 1:1 calls, discovery, subscription
+- **Features**: 1:1 calls, entitlement budgets, monthly allowance reset, host admin
 
 [Details](./apps/telesense/README.md)
-
-### 2. Usage Meter (`apps/usage-meter`)
-
-Optional usage tracking and budget enforcement.
-
-- **Purpose**: Query Cloudflare Analytics, write to KV
-- **Schedule**: Runs every 5 minutes via cron
-- **Function**: Budget enforcement for telesense
-
-[Details](./apps/usage-meter/README.md)
 
 ## Documentation
 
@@ -112,12 +91,11 @@ Optional usage tracking and budget enforcement.
 ## Deployment
 
 ```bash
-# Deploy everything
+# Deploy
 vp run deploy
 
-# Or individually
+# Or directly
 vp run --filter telesense deploy
-vp run --filter usage-meter deploy
 ```
 
 ## License

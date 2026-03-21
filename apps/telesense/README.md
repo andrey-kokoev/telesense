@@ -49,7 +49,9 @@ Edit `wrangler.toml`:
 - `GLOBAL_ENTITLEMENT_BUDGET_ID` - Shared budget name for current rollout
 - `SERVICE_ENTITLEMENT_ALLOWANCE_BYTES` - Bytes added to the shared budget per minted token
 - `GLOBAL_MONTHLY_ALLOWANCE_ID` - Shared monthly allowance policy name for current rollout
-- Optional: bind `HOST_ADMIN_DB` to a D1 database to enable deployment-wide budget/allowance enumeration in host admin
+- Bind `HOST_ADMIN_DB` to a D1 database to enable deployment-wide budget/allowance enumeration in host admin
+- `wrangler.toml` includes the binding stanza with a placeholder `database_id`; replace it with the real D1 id before deploy
+- Apply [0001_host_admin_registry.sql](/home/andrey/src/telesense/apps/telesense/migrations/0001_host_admin_registry.sql) to that database before using host admin
 
 ## Identity Model
 
@@ -160,10 +162,11 @@ budgetId.secretVersion.claims.proof
 
 ### Host Admin Registry
 
-- Host admin can operate in singleton mode without D1
-- If `HOST_ADMIN_DB` is configured, the worker records known:
+- Host admin uses `HOST_ADMIN_DB` as its discovery registry
+- The worker records known:
   - budgets by `budgetKey -> budgetId`
   - monthly allowances by `allowanceId -> budgetKey`
+- On first host-admin access or scheduled allowance processing, the worker seeds D1 from the current global budget and monthly allowance DOs if the registry is empty
 - This registry exists for deployment-wide admin discovery only; budget and allowance authority remains in the DOs
 
 ### Secret Rotation

@@ -33,10 +33,28 @@ export async function upsertBudgetRegistry(
        VALUES (?1, ?2, ?3, ?4, ?4)
        ON CONFLICT(budget_key) DO UPDATE SET
          budget_id = excluded.budget_id,
-         label = excluded.label,
+         label = COALESCE(excluded.label, entitlement_budgets.label),
          updated_at = excluded.updated_at`,
     )
     .bind(record.budgetKey, record.budgetId, record.label ?? null, now)
+    .run()
+}
+
+export async function updateBudgetRegistryLabel(
+  env: RegistryEnv,
+  record: { budgetKey: string; label: string | null },
+) {
+  const db = env.HOST_ADMIN_DB
+  if (!db) return
+
+  const now = Date.now()
+  await db
+    .prepare(
+      `UPDATE entitlement_budgets
+       SET label = ?2, updated_at = ?3
+       WHERE budget_key = ?1`,
+    )
+    .bind(record.budgetKey, record.label, now)
     .run()
 }
 

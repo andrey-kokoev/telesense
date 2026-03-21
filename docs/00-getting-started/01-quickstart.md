@@ -4,7 +4,8 @@ Get a 1:1 video call running in 5 minutes.
 
 ## Prerequisites
 
-- Node.js 18+ and pnpm
+- Node.js 18+
+- `vp`
 - Cloudflare account with Realtime enabled
 - Webcam and microphone (or use `--use-fake-device-for-media-stream` flag)
 
@@ -26,11 +27,12 @@ vp install
 
 This interactive script will:
 
-- Check prerequisites (wrangler, pnpm)
+- Check prerequisites (`vp`, Wrangler auth, Node)
 - Guide you through creating a Cloudflare Calls app
-- Generate secure tokens automatically
-- Create KV namespaces
-- Set up all required secrets
+- Generate or reuse the service entitlement token
+- Create or reuse the host-admin D1 database
+- Apply the host-admin D1 migration
+- Set all required worker secrets
 
 **Re-running**: The script is idempotent. It will reuse existing tokens and skip already-configured resources. Use `./scripts/setup.sh --force` to regenerate everything.
 
@@ -50,17 +52,23 @@ cp apps/telesense/.dev.vars.example apps/telesense/.dev.vars
 
 # Edit .dev.vars
 CF_CALLS_SECRET=your-token-here
-GENERIC_USER_TOKEN=$(openssl rand -hex 32)
+SERVICE_ENTITLEMENT_TOKEN=$(openssl rand -hex 32)
+DO_NOT_ENFORCE_SERVICE_ENTITLEMENT=true
 
 # Edit wrangler.toml
 # Set: REALTIME_APP_ID = "your-app-id"
+# Replace HOST_ADMIN_DB database_id with your real D1 id
 
 # Set secrets in Cloudflare
-echo "your-token" | wrangler secret put CF_CALLS_SECRET --config apps/telesense/wrangler.toml
-echo "your-user-token" | wrangler secret put GENERIC_USER_TOKEN --config apps/telesense/wrangler.toml
+echo "your-token" | vp exec wrangler secret put CF_CALLS_SECRET --config apps/telesense/wrangler.toml
+echo "your-service-entitlement-token" | vp exec wrangler secret put SERVICE_ENTITLEMENT_TOKEN --config apps/telesense/wrangler.toml
+
+# Create and migrate host-admin D1
+vp exec wrangler d1 create telesense-host-admin
+vp exec wrangler d1 execute telesense-host-admin --file apps/telesense/migrations/0001_host_admin_registry.sql --config apps/telesense/wrangler.toml
 ```
 
-> **Note**: The setup script sets `DO_NOT_ENFORCE_USER_TOKEN=true` in `.dev.vars` for local development. This disables authentication so you can test without sending the `X-User-Token` header. Remove or set to `false` to test auth locally. Production requires the token (this variable is not set in production).
+> **Note**: The setup script sets `DO_NOT_ENFORCE_SERVICE_ENTITLEMENT=true` in `.dev.vars` for local development. This disables service-entitlement enforcement so you can test without sending the `X-Service-Entitlement-Token` header. Remove or set to `false` to test auth locally. Production requires the token.
 
 ## 3. Run Development Server
 

@@ -25,6 +25,7 @@ import {
   findBudgetKeyByBudgetId,
   listBudgetRegistry,
   listMonthlyAllowanceRegistry,
+  updateBudgetRegistryLabel,
   upsertBudgetRegistry,
   upsertMonthlyAllowanceRegistry,
 } from "./host-admin-registry"
@@ -40,7 +41,6 @@ type Env = {
   GLOBAL_MONTHLY_ALLOWANCE_ID?: string
   DO_NOT_ENFORCE_SERVICE_ENTITLEMENT?: string // Dev-only: set 'true' to disable auth
   DEBUG?: string
-  BUDGET_KV?: KVNamespace // Optional: for usage limiting
   HOST_ADMIN_DB?: D1Database
   ASSETS?: Fetcher // Workers Sites static assets
   CALL_ROOMS: DurableObjectNamespace
@@ -538,6 +538,13 @@ async function getKnownMonthlyAllowances(env: Env) {
       updatedAt: Date.now(),
     },
   ]
+}
+
+async function ensureHostAdminRegistrySeeded(env: Env) {
+  if (!env.HOST_ADMIN_DB) return
+
+  await getKnownBudgets(env)
+  await getKnownMonthlyAllowances(env)
 }
 
 async function parseCloudflareResponse(
@@ -1125,6 +1132,32 @@ app.get("/admin/entitlement/budget", async (c) => {
   }
 })
 
+app.post("/admin/entitlement/budget-label", async (c) => {
+  const adminError = requireAdminServiceEntitlement(c)
+  if (adminError) return adminError
+
+  let body: { budgetKey?: string; label?: string | null }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: "Invalid request body", code: "BAD_REQUEST" }, 400)
+  }
+
+  const budgetKey = body.budgetKey?.trim()
+  if (!budgetKey) {
+    return c.json({ error: "budgetKey required", code: "BAD_REQUEST" }, 400)
+  }
+
+  const label = body.label?.trim() || null
+  await updateBudgetRegistryLabel(c.env, { budgetKey, label })
+
+  try {
+    return c.json(await inspectBudget(c.env, budgetKey))
+  } catch {
+    return c.json({ error: "Failed to update budget label" }, 500)
+  }
+})
+
 // Admin: Configure monthly allowance reset policy
 app.post("/admin/entitlement/monthly-allowance", async (c) => {
   const adminError = requireAdminServiceEntitlement(c)
@@ -1251,6 +1284,8 @@ app.get("/admin/host/budgets", async (c) => {
   const adminError = requireAdminServiceEntitlement(c)
   if (adminError) return adminError
 
+  await ensureHostAdminRegistrySeeded(c.env)
+
   return c.json({
     budgets: await getKnownBudgets(c.env),
   })
@@ -1259,6 +1294,8 @@ app.get("/admin/host/budgets", async (c) => {
 app.get("/admin/host/monthly-allowances", async (c) => {
   const adminError = requireAdminServiceEntitlement(c)
   if (adminError) return adminError
+
+  await ensureHostAdminRegistrySeeded(c.env)
 
   return c.json({
     monthlyAllowances: await getKnownMonthlyAllowances(c.env),
@@ -1978,6 +2015,8 @@ app.get("*", async (c) => {
 })
 
 async function runScheduledMonthlyAllowance(env: Env) {
+  await ensureHostAdminRegistrySeeded(env)
+
   const configuredAllowances = await getKnownMonthlyAllowances(env)
   const allowanceIds =
     configuredAllowances.length > 0

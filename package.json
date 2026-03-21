@@ -5,19 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "vp run --filter telesense dev",
-    "dev:meter": "vp run --filter usage-meter dev",
-    "build": "vp run -r build",
+    "build": "vp run --filter telesense build",
     "test": "vp run --filter telesense test",
     "test:e2e": "vp run --filter telesense test:e2e",
     "ship": "./scripts/ship.sh",
     "ship:telesense": "vp run --filter telesense ship",
-    "ship:meter": "vp run --filter usage-meter ship",
     "deploy": "pnpm run ship",
     "deploy:telesense": "vp run --filter telesense ship",
-    "deploy:meter": "vp run --filter usage-meter ship",
-    "typecheck": "vp run -r typecheck",
-    "lint": "vp run -r lint",
-    "clean": "vp run -r clean && rm -rf node_modules",
+    "typecheck": "vp run --filter telesense typecheck",
+    "lint": "vp run --filter telesense lint",
+    "clean": "vp run --filter telesense clean && rm -rf node_modules",
     "prepare": "vp config"
   },
   "devDependencies": {

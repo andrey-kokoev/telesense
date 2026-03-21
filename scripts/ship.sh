@@ -1,20 +1,16 @@
 #!/bin/bash
-# Smart deploy script - skips usage-meter if not configured
+# Deploy telesense
 
 set -e
 
 echo "═══════════════════════════════════════════════════════════"
-echo "  Deploying telesence"
+echo "  Deploying telesense"
 echo "═══════════════════════════════════════════════════════════"
 echo ""
 
-# Colors
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
 NC='\033[0m'
 
-# Build and deploy telesense
 echo "Building telesense client..."
 vp run --filter telesense build
 echo -e "${GREEN}✓ Client built${NC}"
@@ -22,27 +18,9 @@ echo ""
 
 echo "Deploying telesense..."
 vp run --filter telesense ship
-echo -e "${GREEN}✓ telesence deployed${NC}"
+echo -e "${GREEN}✓ telesense deployed${NC}"
 echo ""
 
-# Check if usage-meter is configured
-CF_API_TOKEN_SET=$(cd apps/usage-meter && wrangler secret list 2>/dev/null | grep -c "CF_API_TOKEN" || true)
-
-if [ "$CF_API_TOKEN_SET" -gt 0 ]; then
-    echo "Deploying usage-meter..."
-    vp run --filter usage-meter ship
-    echo -e "${GREEN}✓ Usage-meter deployed${NC}"
-else
-    echo -e "${YELLOW}⚠ Skipping usage-meter (CF_API_TOKEN not set)${NC}"
-    echo -e "${BLUE}  To deploy usage-meter later, run: vp run ship:meter${NC}"
-    echo ""
-    echo "  Or set up with:"
-    echo "    1. Create API token at https://dash.cloudflare.com/profile/api-tokens"
-    echo "    2. echo 'your-token' | wrangler secret put CF_API_TOKEN --config apps/usage-meter/wrangler.toml"
-    echo "    3. vp run deploy:meter"
-fi
-
-echo ""
 echo "═══════════════════════════════════════════════════════════"
 echo "  Deploy Complete!"
 echo "═══════════════════════════════════════════════════════════"

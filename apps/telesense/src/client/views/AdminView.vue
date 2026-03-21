@@ -21,7 +21,26 @@
       {{ lastError }}
     </div>
 
-    <div class="admin-view__grid">
+    <div
+      v-if="adminAccessState !== 'authorized'"
+      class="admin-view__access admin-card"
+      role="status"
+    >
+      <h2 class="admin-card__title">
+        {{
+          adminAccessState === "checking" ? t("admin_access_checking") : t("admin_access_denied")
+        }}
+      </h2>
+      <p class="admin-card__hint">
+        {{
+          adminAccessState === "checking"
+            ? t("admin_access_checking_hint")
+            : t("admin_access_denied_hint")
+        }}
+      </p>
+    </div>
+
+    <div v-else class="admin-view__grid">
       <section class="admin-card">
         <div class="admin-card__header">
           <h2 class="admin-card__title">{{ t("admin_budgets_title") }}</h2>
@@ -52,6 +71,10 @@
         <div v-if="budget" class="admin-budget">
           <div class="admin-card__rows">
             <div class="admin-card__row">
+              <span>{{ t("admin_budget_label") }}</span>
+              <strong>{{ selectedBudgetLabel || "—" }}</strong>
+            </div>
+            <div class="admin-card__row">
               <span>{{ t("admin_budget_key") }}</span>
               <code>{{ budget.budgetKey }}</code>
             </div>
@@ -77,6 +100,23 @@
             <div class="admin-card__header">
               <h3 class="admin-card__subtitle">{{ t("admin_budget_actions_title") }}</h3>
             </div>
+            <form class="admin-card__form" @submit.prevent="saveBudgetLabel">
+              <label class="admin-card__field">
+                <span>{{ t("admin_budget_label") }}</span>
+                <input
+                  v-model="budgetLabelForm"
+                  class="admin-card__input"
+                  type="text"
+                  :placeholder="selectedBudgetKey"
+                  spellcheck="false"
+                />
+              </label>
+              <button class="admin-card__button" :disabled="loadingState === 'saving-label'">
+                {{
+                  loadingState === "saving-label" ? t("admin_saving") : t("admin_budget_save_label")
+                }}
+              </button>
+            </form>
             <button
               class="admin-card__button"
               :disabled="loadingState === 'minting' || !selectedBudgetKey"
@@ -142,6 +182,13 @@
             {{ monthlyAllowance.lifecycle }}
           </span>
         </div>
+
+        <button
+          class="admin-card__button admin-card__button--ghost"
+          @click="startNewMonthlyAllowance"
+        >
+          {{ t("admin_monthly_new") }}
+        </button>
 
         <form class="admin-card__form" @submit.prevent="saveMonthlyAllowance">
           <label class="admin-card__field">
@@ -211,7 +258,8 @@ import { useAppStore } from "../composables/useAppStore"
 import { useI18n } from "../composables/useI18n"
 import { useToast } from "../composables/useToast"
 
-type LoadingState = "idle" | "loading" | "saving-monthly" | "minting" | "rotating"
+type LoadingState = "idle" | "loading" | "saving-label" | "saving-monthly" | "minting" | "rotating"
+type AdminAccessState = "checking" | "authorized" | "unauthorized"
 
 type BudgetListItem = {
   budgetKey: string
@@ -273,6 +321,8 @@ const mintedToken = ref("")
 const mintedRemainingBytes = ref("")
 const lastError = ref("")
 const loadingState = ref<LoadingState>("idle")
+const budgetLabelForm = ref("")
+const adminAccessState = ref<AdminAccessState>("checking")
 
 const monthlyAllowanceForm = reactive({
   allowanceId: "global",
@@ -285,6 +335,9 @@ const monthlyAllowanceForm = reactive({
 const hasAdminToken = computed(() => !!store.serviceEntitlementToken.value)
 const linkedMonthlyAllowances = computed(() =>
   monthlyAllowances.value.filter((item) => item.budgetKey === selectedBudgetKey.value),
+)
+const selectedBudgetLabel = computed(
+  () => budgets.value.find((item) => item.budgetKey === selectedBudgetKey.value)?.label ?? "",
 )
 
 function goBack() {
@@ -334,6 +387,28 @@ async function loadBudgetList() {
   }
 }
 
+async function verifyAdminAccess() {
+  if (!hasAdminToken.value) {
+    adminAccessState.value = "unauthorized"
+    return false
+  }
+
+  adminAccessState.value = "checking"
+  const response = await adminFetch("/admin/host/budgets")
+  if (!response.ok) {
+    adminAccessState.value = "unauthorized"
+    throw new Error(await response.text())
+  }
+
+  const data = (await response.json()) as { budgets: BudgetListItem[] }
+  budgets.value = data.budgets
+  if (!selectedBudgetKey.value && data.budgets.length > 0) {
+    selectedBudgetKey.value = data.budgets[0].budgetKey
+  }
+  adminAccessState.value = "authorized"
+  return true
+}
+
 async function loadMonthlyAllowanceList() {
   const response = await adminFetch("/admin/host/monthly-allowances")
   if (!response.ok) throw new Error(await response.text())
@@ -353,6 +428,7 @@ async function loadBudget() {
   )
   if (!response.ok) throw new Error(await response.text())
   budget.value = (await response.json()) as BudgetResponse
+  budgetLabelForm.value = selectedBudgetLabel.value
 }
 
 async function loadMonthlyAllowance() {
@@ -381,15 +457,12 @@ async function loadMonthlyAllowance() {
 }
 
 async function refreshAll() {
-  if (!hasAdminToken.value) {
-    lastError.value = t("admin_missing_token")
-    return
-  }
-
   loadingState.value = "loading"
   lastError.value = ""
   try {
-    await Promise.all([loadBudgetList(), loadMonthlyAllowanceList()])
+    const authorized = await verifyAdminAccess()
+    if (!authorized) return
+    await loadMonthlyAllowanceList()
     await Promise.all([loadBudget(), loadMonthlyAllowance()])
   } catch (error) {
     lastError.value = error instanceof Error ? error.message : String(error)
@@ -410,6 +483,16 @@ function syncSelectedAllowance() {
   if (!linked.some((item) => item.allowanceId === selectedAllowanceId.value)) {
     selectedAllowanceId.value = linked[0].allowanceId
   }
+}
+
+function startNewMonthlyAllowance() {
+  selectedAllowanceId.value = ""
+  monthlyAllowance.value = null
+  monthlyAllowanceForm.allowanceId = `${selectedBudgetKey.value || "global"}-monthly`
+  monthlyAllowanceForm.budgetKey = selectedBudgetKey.value
+  monthlyAllowanceForm.active = false
+  monthlyAllowanceForm.resetAmountBytes = "0"
+  monthlyAllowanceForm.cronExpr = "0 0 1 * *"
 }
 
 async function selectBudget(budgetKey: string) {
@@ -447,6 +530,33 @@ async function saveMonthlyAllowance() {
     syncSelectedAllowance()
     await Promise.all([loadBudgetList(), loadMonthlyAllowanceList(), loadBudget()])
     show(t("admin_monthly_saved"), "success")
+  } catch (error) {
+    lastError.value = error instanceof Error ? error.message : String(error)
+    show(lastError.value, "error")
+  } finally {
+    loadingState.value = "idle"
+  }
+}
+
+async function saveBudgetLabel() {
+  if (!selectedBudgetKey.value) return
+
+  loadingState.value = "saving-label"
+  lastError.value = ""
+  try {
+    const response = await adminFetch("/admin/entitlement/budget-label", {
+      method: "POST",
+      body: JSON.stringify({
+        budgetKey: selectedBudgetKey.value,
+        label: budgetLabelForm.value,
+      }),
+    })
+    if (!response.ok) {
+      throw new Error(await response.text())
+    }
+    budget.value = (await response.json()) as BudgetResponse
+    await loadBudgetList()
+    show(t("admin_budget_label_saved"), "success")
   } catch (error) {
     lastError.value = error instanceof Error ? error.message : String(error)
     show(lastError.value, "error")
@@ -588,6 +698,11 @@ watch(
 .admin-view__alert--error {
   color: var(--color-danger, #c43d2f);
   background: color-mix(in srgb, var(--color-bg-secondary) 82%, #c43d2f 18%);
+}
+
+.admin-view__access {
+  width: min(48rem, 100%);
+  margin: 0 auto;
 }
 
 .admin-view__grid {

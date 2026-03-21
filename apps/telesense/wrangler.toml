@@ -31,6 +31,16 @@ class_name = "EntitlementBudget"
 name = "MONTHLY_ALLOWANCES"
 class_name = "MonthlyAllowance"
 
+# Host-admin registry database
+# Create and bind this before using deployment-wide host admin:
+#   vp exec wrangler d1 create telesense-host-admin
+# Then replace the placeholder ids below.
+[[d1_databases]]
+binding = "HOST_ADMIN_DB"
+database_name = "telesense-host-admin"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
 # Durable Object migration (required for new DO classes)
 [[migrations]]
 tag = "v1"

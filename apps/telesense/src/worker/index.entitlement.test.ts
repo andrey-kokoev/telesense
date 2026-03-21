@@ -13,6 +13,133 @@ class MemoryStorage {
   }
 }
 
+type BudgetRegistryRow = {
+  budget_key: string
+  budget_id: string
+  label: string | null
+  created_at: number
+  updated_at: number
+}
+
+type MonthlyAllowanceRegistryRow = {
+  allowance_id: string
+  budget_key: string
+  active: number
+  cron_expr: string
+  created_at: number
+  updated_at: number
+}
+
+class MemoryD1PreparedStatement {
+  private bindings: unknown[] = []
+
+  constructor(
+    private db: MemoryD1Database,
+    private query: string,
+  ) {}
+
+  bind(...values: unknown[]) {
+    this.bindings = values
+    return this
+  }
+
+  async run() {
+    this.db.execute(this.query, this.bindings)
+    return { success: true }
+  }
+
+  async all<T>() {
+    return { results: this.db.query<T>(this.query, this.bindings) }
+  }
+
+  async first<T>() {
+    return (this.db.query<T>(this.query, this.bindings)[0] ?? null) as T | null
+  }
+}
+
+class MemoryD1Database {
+  budgets = new Map<string, BudgetRegistryRow>()
+  monthlyAllowances = new Map<string, MonthlyAllowanceRegistryRow>()
+
+  prepare(query: string) {
+    return new MemoryD1PreparedStatement(this, query)
+  }
+
+  execute(query: string, bindings: unknown[]) {
+    if (query.includes("INSERT INTO entitlement_budgets")) {
+      const [budgetKey, budgetId, label, createdAt, updatedAt] = bindings as [
+        string,
+        string,
+        string | null,
+        number,
+        number,
+      ]
+      const existing = this.budgets.get(budgetKey)
+      this.budgets.set(budgetKey, {
+        budget_key: budgetKey,
+        budget_id: budgetId,
+        label: label ?? existing?.label ?? null,
+        created_at: existing?.created_at ?? createdAt,
+        updated_at: updatedAt,
+      })
+      return
+    }
+
+    if (query.includes("INSERT INTO monthly_allowances")) {
+      const [allowanceId, budgetKey, active, cronExpr, createdAt, updatedAt] = bindings as [
+        string,
+        string,
+        number,
+        string,
+        number,
+        number,
+      ]
+      const existing = this.monthlyAllowances.get(allowanceId)
+      this.monthlyAllowances.set(allowanceId, {
+        allowance_id: allowanceId,
+        budget_key: budgetKey,
+        active,
+        cron_expr: cronExpr,
+        created_at: existing?.created_at ?? createdAt,
+        updated_at: updatedAt,
+      })
+    }
+
+    if (query.includes("UPDATE entitlement_budgets")) {
+      const [budgetKey, label, updatedAt] = bindings as [string, string | null, number]
+      const existing = this.budgets.get(budgetKey)
+      if (!existing) return
+      this.budgets.set(budgetKey, {
+        ...existing,
+        label,
+        updated_at: updatedAt,
+      })
+    }
+  }
+
+  query<T>(query: string, bindings: unknown[]) {
+    if (query.includes("FROM entitlement_budgets") && query.includes("WHERE budget_id")) {
+      const [budgetId] = bindings as [string]
+      const match = Array.from(this.budgets.values()).find((row) => row.budget_id === budgetId)
+      return (match ? [{ budget_key: match.budget_key }] : []) as T[]
+    }
+
+    if (query.includes("FROM entitlement_budgets")) {
+      return Array.from(this.budgets.values()).sort(
+        (a, b) => b.updated_at - a.updated_at || b.created_at - a.created_at,
+      ) as T[]
+    }
+
+    if (query.includes("FROM monthly_allowances")) {
+      return Array.from(this.monthlyAllowances.values()).sort(
+        (a, b) => b.updated_at - a.updated_at || b.created_at - a.created_at,
+      ) as T[]
+    }
+
+    return []
+  }
+}
+
 function createBudgetStub() {
   const state = { storage: new MemoryStorage() } as unknown as DurableObjectState
   const budget = new EntitlementBudget(state)
@@ -74,6 +201,7 @@ type TestEnv = {
   GLOBAL_MONTHLY_ALLOWANCE_ID?: string
   DO_NOT_ENFORCE_SERVICE_ENTITLEMENT?: string
   DEBUG?: string
+  HOST_ADMIN_DB?: D1Database
   CALL_ROOMS: DurableObjectNamespace
   ENTITLEMENT_BUDGETS: DurableObjectNamespace
   MONTHLY_ALLOWANCES: DurableObjectNamespace
@@ -84,12 +212,14 @@ describe("entitlement routes", () => {
   let budgetStub: ReturnType<typeof createBudgetStub>
   let monthlyAllowanceStub: ReturnType<typeof createMonthlyAllowanceStub>
   let callRooms: ReturnType<typeof createCallRoomNamespace>
+  let hostAdminDb: MemoryD1Database
   let nextCloudflareSessionId: number
 
   beforeEach(() => {
     budgetStub = createBudgetStub()
     monthlyAllowanceStub = createMonthlyAllowanceStub()
     callRooms = createCallRoomNamespace()
+    hostAdminDb = new MemoryD1Database()
     nextCloudflareSessionId = 1
 
     env = {
@@ -99,6 +229,7 @@ describe("entitlement routes", () => {
       SERVICE_ENTITLEMENT_ALLOWANCE_BYTES: "1000",
       GLOBAL_ENTITLEMENT_BUDGET_ID: "global-budget",
       GLOBAL_MONTHLY_ALLOWANCE_ID: "global-monthly",
+      HOST_ADMIN_DB: hostAdminDb as unknown as D1Database,
       CALL_ROOMS: callRooms.namespace,
       ENTITLEMENT_BUDGETS: createNamespace(budgetStub),
       MONTHLY_ALLOWANCES: createNamespace(monthlyAllowanceStub),
@@ -600,6 +731,7 @@ describe("entitlement routes", () => {
         ],
       }),
     )
+    expect(hostAdminDb.budgets.has("global-budget")).toBe(true)
   })
 
   test("/admin/host/monthly-allowances lists known allowances without D1", async () => {
@@ -640,5 +772,36 @@ describe("entitlement routes", () => {
         ],
       }),
     )
+    expect(hostAdminDb.monthlyAllowances.has("global-monthly")).toBe(true)
+  })
+
+  test("/admin/entitlement/budget-label updates registry label for selected budget", async () => {
+    await app.request(
+      "http://example.test/admin/entitlement/mint",
+      {
+        method: "POST",
+        headers: { "X-Service-Entitlement-Token": "admin-secret" },
+      },
+      env,
+    )
+
+    const response = await app.request(
+      "http://example.test/admin/entitlement/budget-label",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Service-Entitlement-Token": "admin-secret",
+        },
+        body: JSON.stringify({
+          budgetKey: "global-budget",
+          label: "Production Shared Budget",
+        }),
+      },
+      env,
+    )
+
+    expect(response.status).toBe(200)
+    expect(hostAdminDb.budgets.get("global-budget")?.label).toBe("Production Shared Budget")
   })
 })
