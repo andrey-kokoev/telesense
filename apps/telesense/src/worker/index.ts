@@ -441,7 +441,7 @@ async function handleCreateSession(c: AppContext) {
     await callRoom.fetch(
       new Request("http://do.internal/?action=setBudgetId", {
         method: "POST",
-        body: JSON.stringify({ budgetId: tokenBudgetId }),
+        body: JSON.stringify({ budgetId: tokenBudgetId, roomId }),
       }),
     )
   } else {

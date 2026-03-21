@@ -63,6 +63,8 @@ export class CallRoom {
   private sessions: Map<string, Session> = new Map()
   private participants: Map<string, Participant> = new Map()
   private budgetId: string | null = null
+  private roomId: string | null = null
+  private workerBaseUrl: string | null = null
   private initialized: boolean = false
 
   // Metering state
@@ -82,6 +84,7 @@ export class CallRoom {
     const storedSessions = await this.state.storage.get<[string, Session][]>("sessions")
     const storedParticipants = await this.state.storage.get<[string, Participant][]>("participants")
     const storedBudgetId = await this.state.storage.get<string>("budgetId")
+    const storedRoomId = await this.state.storage.get<string>("roomId")
     const storedMetering = await this.state.storage.get<{
       lastMeteredAt: number | null
       graceEndsAt: number | null
@@ -114,6 +117,10 @@ export class CallRoom {
     if (storedBudgetId) {
       this.budgetId = storedBudgetId
       console.log(`[CallRoom] Loaded budgetId: ${storedBudgetId.slice(0, 8)}`)
+
+      if (storedRoomId) {
+        this.roomId = storedRoomId
+      }
     }
 
     if (storedMetering) {
@@ -136,6 +143,11 @@ export class CallRoom {
 
     const url = new URL(request.url)
     const action = url.searchParams.get("action")
+
+    // Capture worker base URL from incoming requests for callbacks
+    if (!this.workerBaseUrl && url.host !== "do.internal") {
+      this.workerBaseUrl = `${url.protocol}//${url.host}`
+    }
 
     console.log(
       `[CallRoom] Received request: action=${action}, sessions=${this.sessions.size}, participants=${this.participants.size}`,
@@ -801,12 +813,17 @@ export class CallRoom {
   }
 
   private async setBudgetId(request: Request): Promise<Response> {
-    const body = (await request.json()) as { budgetId: string }
+    const body = (await request.json()) as { budgetId: string; roomId: string }
     if (!body.budgetId) {
       return new Response(JSON.stringify({ error: "budgetId required" }), { status: 400 })
     }
+    if (!body.roomId) {
+      return new Response(JSON.stringify({ error: "roomId required" }), { status: 400 })
+    }
     this.budgetId = body.budgetId
+    this.roomId = body.roomId
     await this.state.storage.put("budgetId", body.budgetId)
+    await this.state.storage.put("roomId", body.roomId)
     // Start metering when budget is bound
     this.startMetering()
     return new Response(JSON.stringify({ ok: true, budgetId: body.budgetId }), { status: 200 })
@@ -859,8 +876,51 @@ export class CallRoom {
 
     console.log(`[CallRoom] Metering tick: ${estimatedBytes} bytes estimated`)
 
-    // Charge via budget DO (this will be called from worker)
-    // The actual charging happens through an action that the worker calls
+    // Call worker to charge the budget
+    await this.chargeBudget(estimatedBytes)
+  }
+
+  /**
+   * Call worker to charge the budget for estimated usage
+   */
+  private async chargeBudget(bytes: number): Promise<void> {
+    if (!this.roomId || !this.budgetId || !this.workerBaseUrl) return
+
+    try {
+      // Call the worker's metering endpoint to charge the budget
+      const response = await fetch(`${this.workerBaseUrl}/api/rooms/${this.roomId}/meter`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bytes, budgetId: this.budgetId }),
+      })
+
+      if (response.status === 402) {
+        // Budget exhausted - enter grace
+        const data = (await response.json()) as { graceEndsAt: number }
+        this.isInGrace = true
+        this.graceEndsAt = data.graceEndsAt
+        console.log(
+          `[CallRoom] Budget exhausted, entered grace until ${new Date(data.graceEndsAt).toISOString()}`,
+        )
+        await this.persist()
+      } else if (response.ok) {
+        const data = (await response.json()) as {
+          inGrace?: boolean
+          graceEndsAt?: number
+          remainingBytes: number
+        }
+        if (data.inGrace) {
+          this.isInGrace = true
+          this.graceEndsAt = data.graceEndsAt || null
+        }
+        console.log(`[CallRoom] Charged ${bytes} bytes, remaining: ${data.remainingBytes}`)
+      } else {
+        console.error(`[CallRoom] Charge failed: ${response.status}`)
+      }
+    } catch (error) {
+      console.error(`[CallRoom] Charge error:`, error)
+      // Fail open - we'll retry on next tick
+    }
   }
 
   /**
