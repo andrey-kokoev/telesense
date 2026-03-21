@@ -9,15 +9,11 @@
           :title="t('landing_start_room')"
           :digits="createRoomCodeDigits"
           name="create-room-code"
-          :show-inputs="isCreateRoomDraftActive"
-          :button-label="
-            isCreateRoomDraftActive
-              ? t('landing_create_room_with_id', { roomId: createRoomIdInput })
-              : t('landing_create_new_room')
-          "
+          :show-inputs="createRoomFlowState !== 'idle'"
+          :button-label="createRoomButtonLabel"
           button-class="landing__btn--primary"
-          :button-disabled="isCreateRoomDraftActive && createRoomIdInput.length !== 6"
-          :button-icon="isCreateRoomDraftActive ? '✓' : '+'"
+          :button-disabled="isCreateRoomButtonDisabled"
+          :button-icon="createRoomButtonIcon"
           :set-input-ref="setCreateRoomCodeInputRef"
           :is-input-disabled="isCreateRoomCodeInputDisabled"
           @submit="submitCreateRoom"
@@ -36,7 +32,7 @@
           name="room-code"
           button-class="landing__btn--secondary"
           :button-label="t('landing_join')"
-          :button-disabled="roomIdInput.length !== 6"
+          :button-disabled="isJoinRoomButtonDisabled"
           :set-input-ref="setRoomCodeInputRef"
           :is-input-disabled="isRoomCodeInputDisabled"
           @submit="joinExistingRoom"
@@ -54,7 +50,7 @@
           name="room-code"
           button-class="landing__btn--secondary"
           :button-label="t('landing_join')"
-          :button-disabled="roomIdInput.length !== 6"
+          :button-disabled="isJoinRoomButtonDisabled"
           :set-input-ref="setRoomCodeInputRef"
           :is-input-disabled="isRoomCodeInputDisabled"
           @submit="joinExistingRoom"
@@ -185,7 +181,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from "vue"
+import { computed, nextTick, onMounted, ref, watch } from "vue"
 import LandingHero from "../components/LandingHero.vue"
 import LanguageToggle from "../components/LanguageToggle.vue"
 import RecentRoomsSection from "../components/RecentRoomsSection.vue"
@@ -235,8 +231,27 @@ const {
 } = useRoomCodeInput(submitCreateRoom)
 const { roomAvailability, recentScrollEl, setRecentItemRef } =
   useRecentRoomAvailability(recentCalls)
-const isCreateRoomDraftActive = computed(() => createRoomIdInput.value.length > 0)
 const showActiveRecentOnly = ref(false)
+type CreateRoomFlowState = "idle" | "editing" | "submitting"
+type JoinRoomFlowState = "editing" | "submitting"
+
+const createRoomFlowState = ref<CreateRoomFlowState>("idle")
+const joinRoomFlowState = ref<JoinRoomFlowState>("editing")
+
+const createRoomButtonLabel = computed(() =>
+  createRoomFlowState.value === "idle"
+    ? t("landing_create_new_room")
+    : t("landing_create_room_with_id", { roomId: createRoomIdInput.value }),
+)
+const createRoomButtonIcon = computed(() => (createRoomFlowState.value === "idle" ? "+" : "✓"))
+const isCreateRoomButtonDisabled = computed(
+  () =>
+    createRoomFlowState.value === "submitting" ||
+    (createRoomFlowState.value === "editing" && createRoomIdInput.value.length !== 6),
+)
+const isJoinRoomButtonDisabled = computed(
+  () => joinRoomFlowState.value === "submitting" || roomIdInput.value.length !== 6,
+)
 const activeRecentCount = computed(
   () =>
     recentCalls.value.filter(
@@ -264,6 +279,16 @@ onMounted(() => {
   focusRoomCodeInput(0)
 })
 
+watch(createRoomIdInput, (value) => {
+  if (createRoomFlowState.value === "submitting") return
+  createRoomFlowState.value = value.length > 0 ? "editing" : "idle"
+})
+
+watch(roomIdInput, () => {
+  if (joinRoomFlowState.value === "submitting") return
+  joinRoomFlowState.value = "editing"
+})
+
 function generateCallId(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
   let result = ""
@@ -284,22 +309,28 @@ async function createNewRoom() {
 }
 
 async function submitCreateRoom() {
-  if (!isCreateRoomDraftActive.value) {
+  if (createRoomFlowState.value === "submitting") return
+
+  if (createRoomFlowState.value === "idle") {
     const roomId = generateCallId()
     setCreateRoomCodeValue(roomId)
+    createRoomFlowState.value = "editing"
     await nextTick()
     focusCreateRoomCodeInput(0)
     return
   }
 
   if (createRoomIdInput.value.length !== 6) return
+  createRoomFlowState.value = "submitting"
   await createNewRoom()
 }
 
 function joinExistingRoom() {
+  if (joinRoomFlowState.value === "submitting") return
   const id = roomIdInput.value
   if (id.length !== 6) return
 
+  joinRoomFlowState.value = "submitting"
   if (!recentCalls.value.some((room) => room.id === id)) {
     addRecentCall(id)
   }
