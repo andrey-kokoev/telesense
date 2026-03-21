@@ -10,4 +10,4 @@ playwright-report/
 playwright/.cache/
 
 .history
-
+.setup-summary

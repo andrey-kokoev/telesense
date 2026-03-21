@@ -38,6 +38,37 @@
             : t("admin_access_denied_hint")
         }}
       </p>
+      <form class="admin-card__form" @submit.prevent="saveHostAdminToken">
+        <label class="admin-card__field">
+          <span>{{ t("admin_bootstrap_token") }}</span>
+          <input
+            v-model="hostAdminTokenInput"
+            class="admin-card__input"
+            type="password"
+            spellcheck="false"
+            autocomplete="off"
+            :placeholder="t('admin_bootstrap_token_placeholder')"
+            :disabled="adminAccessState === 'checking'"
+          />
+        </label>
+        <div class="admin-view__bootstrap-actions">
+          <button
+            class="admin-card__button"
+            :disabled="!hostAdminTokenInput.trim() || adminAccessState === 'checking'"
+          >
+            {{ t("admin_bootstrap_save") }}
+          </button>
+          <button
+            v-if="hasHostAdminToken"
+            type="button"
+            class="admin-card__button admin-card__button--ghost"
+            :disabled="adminAccessState === 'checking'"
+            @click="clearStoredHostAdminToken"
+          >
+            {{ t("admin_bootstrap_clear") }}
+          </button>
+        </div>
+      </form>
     </div>
 
     <div v-else class="admin-view__grid">
@@ -323,6 +354,7 @@ const lastError = ref("")
 const loadingState = ref<LoadingState>("idle")
 const budgetLabelForm = ref("")
 const adminAccessState = ref<AdminAccessState>("checking")
+const hostAdminTokenInput = ref("")
 
 const monthlyAllowanceForm = reactive({
   allowanceId: "global",
@@ -332,7 +364,7 @@ const monthlyAllowanceForm = reactive({
   cronExpr: "0 0 1 * *",
 })
 
-const hasAdminToken = computed(() => !!store.serviceEntitlementToken.value)
+const hasHostAdminToken = computed(() => !!store.hostAdminToken.value)
 const linkedMonthlyAllowances = computed(() =>
   monthlyAllowances.value.filter((item) => item.budgetKey === selectedBudgetKey.value),
 )
@@ -369,7 +401,7 @@ async function adminFetch(path: string, init: RequestInit = {}) {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      ...store.getServiceEntitlementHeaders(),
+      ...store.getHostAdminHeaders(),
       ...(init.headers && !Array.isArray(init.headers)
         ? (init.headers as Record<string, string>)
         : {}),
@@ -388,7 +420,7 @@ async function loadBudgetList() {
 }
 
 async function verifyAdminAccess() {
-  if (!hasAdminToken.value) {
+  if (!hasHostAdminToken.value) {
     adminAccessState.value = "unauthorized"
     return false
   }
@@ -402,11 +434,49 @@ async function verifyAdminAccess() {
 
   const data = (await response.json()) as { budgets: BudgetListItem[] }
   budgets.value = data.budgets
+  hostAdminTokenInput.value = store.hostAdminToken.value
   if (!selectedBudgetKey.value && data.budgets.length > 0) {
     selectedBudgetKey.value = data.budgets[0].budgetKey
   }
   adminAccessState.value = "authorized"
   return true
+}
+
+async function saveHostAdminToken() {
+  const token = hostAdminTokenInput.value.trim()
+  if (!token) return
+
+  store.setHostAdminToken(token)
+  lastError.value = ""
+
+  try {
+    const authorized = await verifyAdminAccess()
+    if (!authorized) {
+      lastError.value = t("admin_access_denied_hint")
+      show(lastError.value, "error")
+      return
+    }
+    show(t("admin_bootstrap_saved"), "success")
+    await Promise.all([loadMonthlyAllowanceList(), loadBudget(), loadMonthlyAllowance()])
+  } catch (error) {
+    store.clearHostAdminToken()
+    adminAccessState.value = "unauthorized"
+    lastError.value = error instanceof Error ? error.message : String(error)
+    show(lastError.value, "error")
+  }
+}
+
+function clearStoredHostAdminToken() {
+  store.clearHostAdminToken()
+  hostAdminTokenInput.value = ""
+  adminAccessState.value = "unauthorized"
+  budgets.value = []
+  monthlyAllowances.value = []
+  selectedBudgetKey.value = ""
+  selectedAllowanceId.value = ""
+  budget.value = null
+  monthlyAllowance.value = null
+  lastError.value = ""
 }
 
 async function loadMonthlyAllowanceList() {
@@ -625,6 +695,7 @@ async function rotateSecret() {
 }
 
 onMounted(() => {
+  hostAdminTokenInput.value = store.hostAdminToken.value
   void refreshAll()
 })
 
@@ -703,6 +774,12 @@ watch(
 .admin-view__access {
   width: min(48rem, 100%);
   margin: 0 auto;
+}
+
+.admin-view__bootstrap-actions {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
 }
 
 .admin-view__grid {

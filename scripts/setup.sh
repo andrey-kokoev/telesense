@@ -46,6 +46,7 @@ WRANGLER_CONFIG="$APP_DIR/wrangler.toml"
 DEV_VARS="$APP_DIR/.dev.vars"
 ENV_FILE="$APP_DIR/.env"
 MIGRATION_FILE="$APP_DIR/migrations/0001_host_admin_registry.sql"
+SETUP_SUMMARY_FILE="$ROOT_DIR/.setup-summary"
 
 BLUE='\033[0;34m'
 GREEN='\033[0;32m'
@@ -112,6 +113,32 @@ write_env_file() {
   fi
   cat > "$ENV_FILE" <<EOF
 VITE_SERVICE_ENTITLEMENT_TOKEN=$entitlement_token
+EOF
+}
+
+write_setup_summary() {
+  local app_id="$1"
+  local host_admin_db_id="$2"
+  local host_admin_token="$3"
+
+  if [[ "$DRY_RUN" == true ]]; then
+    say "${BLUE}[dry-run] Would write $SETUP_SUMMARY_FILE${NC}"
+    return
+  fi
+
+  cat > "$SETUP_SUMMARY_FILE" <<EOF
+telesense setup summary
+=======================
+
+Calls App ID: $app_id
+HOST_ADMIN_DB: $host_admin_db_id
+
+Host Admin Token
+----------------
+$host_admin_token
+
+Use this token on first host-admin startup at:
+  ?admin=1
 EOF
 }
 
@@ -314,6 +341,11 @@ fi
 say "${GREEN}✓ Updated CF_CALLS_SECRET and SERVICE_ENTITLEMENT_TOKEN in Cloudflare${NC}"
 say ""
 
+say "${BLUE}Writing setup summary...${NC}"
+write_setup_summary "$APP_ID" "$HOST_ADMIN_DB_ID" "$SERVICE_ENTITLEMENT_TOKEN"
+say "${GREEN}✓ Setup summary available at $SETUP_SUMMARY_FILE${NC}"
+say ""
+
 say "${BLUE}Running verification...${NC}"
 run_or_echo vp check
 say "${GREEN}✓ Project check passed${NC}"
@@ -325,11 +357,12 @@ say "═════════════════════════
 say ""
 say "${GREEN}Configured:${NC}"
 say "  Calls App ID: $APP_ID"
-say "  SERVICE_ENTITLEMENT_TOKEN: ${SERVICE_ENTITLEMENT_TOKEN:0:16}..."
+say "  Host Admin Token: $SERVICE_ENTITLEMENT_TOKEN"
 say "  HOST_ADMIN_DB: $HOST_ADMIN_DB_NAME ($HOST_ADMIN_DB_ID)"
 say ""
 say "${GREEN}Notes:${NC}"
 say "  - Host-admin registry seeding happens automatically on first host-admin access or scheduled monthly processing."
+say "  - Full bootstrap details were written to $SETUP_SUMMARY_FILE"
 if [[ "$MODE" == "local-dev" ]]; then
   say "  - Local development keeps DO_NOT_ENFORCE_SERVICE_ENTITLEMENT=true in $DEV_VARS."
 fi
@@ -342,7 +375,7 @@ if [[ "$MODE" == "local-dev" ]]; then
   say "  3. Run E2E tests: vp run test"
 else
   say "  1. Open the deployed app"
-  say "  2. Go to ?admin=1 and verify host-admin access"
+  say "  2. Go to ?admin=1 and paste the Host Admin Token from $SETUP_SUMMARY_FILE"
   say "  3. Configure labels, monthly allowances, and mint service entitlement tokens"
 fi
 say ""

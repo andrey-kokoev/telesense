@@ -20,6 +20,7 @@ interface AppState {
   browserInstanceId: string
   serviceEntitlementToken: string
   serviceEntitlementState: StoredServiceEntitlementState
+  hostAdminToken: string
   recentCalls: RecentCall[]
   roomParticipantCredentials: Record<string, RoomParticipantCredential>
   preferences: {
@@ -40,6 +41,7 @@ const defaultState: AppState = {
   browserInstanceId: generateBrowserInstanceId(),
   serviceEntitlementToken: "",
   serviceEntitlementState: "missing",
+  hostAdminToken: "",
   recentCalls: [],
   roomParticipantCredentials: {},
   preferences: {
@@ -59,6 +61,7 @@ export function useAppStore() {
   const legacyState = state.value as AppState & {
     userId?: string
     serviceEntitlementTokenVerified?: boolean
+    hostToken?: string
   }
   if (!state.value.browserInstanceId && legacyState.userId) {
     state.value.browserInstanceId = legacyState.userId
@@ -94,8 +97,14 @@ export function useAppStore() {
     delete legacyState.serviceEntitlementTokenVerified
   }
 
+  if (!state.value.hostAdminToken && legacyState.hostToken) {
+    state.value.hostAdminToken = legacyState.hostToken
+    delete legacyState.hostToken
+  }
+
   // Auth
   const hasServiceEntitlementToken = computed(() => !!state.value.serviceEntitlementToken)
+  const hasHostAdminToken = computed(() => !!state.value.hostAdminToken)
   const serviceEntitlementTokenVerified = computed(
     () => !!state.value.serviceEntitlementToken && state.value.serviceEntitlementState === "valid",
   )
@@ -116,9 +125,23 @@ export function useAppStore() {
     state.value.serviceEntitlementState = "missing"
   }
 
+  function setHostAdminToken(token: string) {
+    state.value.hostAdminToken = token.trim()
+  }
+
+  function clearHostAdminToken() {
+    state.value.hostAdminToken = ""
+  }
+
   function getServiceEntitlementHeaders(): Record<string, string> {
     return {
       "X-Service-Entitlement-Token": state.value.serviceEntitlementToken,
+    }
+  }
+
+  function getHostAdminHeaders(): Record<string, string> {
+    return {
+      "X-Service-Entitlement-Token": state.value.hostAdminToken,
     }
   }
 
@@ -188,8 +211,10 @@ export function useAppStore() {
     browserInstanceId: computed(() => state.value.browserInstanceId),
     serviceEntitlementToken: computed(() => state.value.serviceEntitlementToken),
     serviceEntitlementState: computed(() => state.value.serviceEntitlementState),
+    hostAdminToken: computed(() => state.value.hostAdminToken),
     serviceEntitlementTokenVerified,
     hasServiceEntitlementToken,
+    hasHostAdminToken,
     recentCalls,
     roomParticipantCredentials,
     preferences,
@@ -198,7 +223,10 @@ export function useAppStore() {
     // Actions
     setServiceEntitlementToken,
     clearServiceEntitlementToken,
+    setHostAdminToken,
+    clearHostAdminToken,
     getServiceEntitlementHeaders,
+    getHostAdminHeaders,
     addRecentCall,
     renameRecentCall,
     removeRecentCall,

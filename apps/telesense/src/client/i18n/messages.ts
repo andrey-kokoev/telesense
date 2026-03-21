@@ -138,7 +138,12 @@ export const messages = {
       "Verifying whether the stored token can access host-admin operations.",
     admin_access_denied: "Host admin access required",
     admin_access_denied_hint:
-      "The stored token is missing or is not authorized for host-admin operations.",
+      "Enter the host admin token generated during setup to unlock host-admin operations.",
+    admin_bootstrap_token: "Host Admin Token",
+    admin_bootstrap_token_placeholder: "Paste host admin token",
+    admin_bootstrap_save: "Unlock Host Admin",
+    admin_bootstrap_saved: "Host admin access unlocked",
+    admin_bootstrap_clear: "Clear Host Admin Token",
     admin_budgets_title: "Budgets",
     admin_budget_title: "Budget",
     admin_budget_actions_title: "Budget actions",
