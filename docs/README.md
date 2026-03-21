@@ -28,13 +28,8 @@ docs/
 ├── 30-development/              # Development guide
 │   └── (create as needed)
 │
-├── 40-security/                 # Security & encryption
-│   └── 01-webrtc-security.md    # DTLS, key exchange, interception
-│
-└── 90-references/               # Historical/technical refs
-    ├── consensus-log.md         # Architectural decisions
-    ├── open-questions.md        # Q&A tracking
-    └── wire-format.md           # Verified payloads
+└── 40-security/                 # Security & encryption
+    └── 01-webrtc-security.md    # DTLS, key exchange, interception
 ```
 
 ## Key Concepts
@@ -59,7 +54,7 @@ This "pull model" means browsers **ask** Cloudflare for subscription Offers.
 
 | ID          | What                  | Example         |
 | ----------- | --------------------- | --------------- |
-| `callId`    | App-level room name   | `"test-call"`   |
+| `roomId`    | App-level room name   | `"ABC123"`      |
 | `sessionId` | Cloudflare connection | `"ea2a61a4..."` |
 | `trackName` | Media stream ID       | `"0aad9523..."` |
 
@@ -76,13 +71,13 @@ This "pull model" means browsers **ask** Cloudflare for subscription Offers.
 
 1. [Quick Start](./00-getting-started/01-quickstart.md)
 2. [How It Works](./00-getting-started/02-how-it-works.md)
-3. Run the tests: `pnpm test`
+3. Run the tests: `vp run test`
 
 **Implementing Features?**
 
 1. [API Reference](./20-protocol/01-api-reference.md)
 2. [Call Lifecycle](./20-protocol/02-lifecycle.md)
-3. Check [Consensus Log](./90-references/consensus-log.md) for constraints
+3. Check [Architecture](./10-architecture/01-overview.md) for system boundaries
 
 **Debugging Issues?**
 
@@ -92,9 +87,9 @@ This "pull model" means browsers **ask** Cloudflare for subscription Offers.
 
 **Understanding Decisions?**
 
-1. [Consensus Log](./90-references/consensus-log.md) - Why we chose this architecture
-2. [Open Questions](./90-references/open-questions.md) - What's still unknown
-3. [Wire Format](./90-references/wire-format.md) - Verified API payloads
+1. [Architecture](./10-architecture/01-overview.md) - Current system structure
+2. [API Reference](./20-protocol/01-api-reference.md) - Current route surface
+3. [How It Works](./00-getting-started/02-how-it-works.md) - Current conceptual model
 
 ## Contributing
 
@@ -102,11 +97,10 @@ Documentation improvements welcome! Guidelines:
 
 - Keep getting-started docs simple
 - Put technical deep-dives in architecture/
-- Update references/ when protocol changes
 - Add diagrams for complex flows
 
 ## See Also
 
 - [Main README](../README.md) - Project overview
-- [E2E Tests](../e2e/) - Automated test suite
+- [E2E Tests](../apps/telesense/e2e/) - Automated test suite
 - [Task History](../.ai/tasks/) - Implementation tasks (completed)

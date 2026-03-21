@@ -1,284 +1,142 @@
 # Call Lifecycle
 
-Complete sequence of API calls for a 1:1 video call.
+Current end-to-end lifecycle for a `telesense` room.
 
-## Overview
+## 1. Room Admission
 
-```
-┌─────────┐     ┌─────────┐     ┌─────────┐
-│ Browser │     │ Worker  │     │Cloudflare│
-│    A    │     │         │     │   SFU   │
-└────┬────┘     └────┬────┘     └────┬────┘
-     │               │               │
-     │  1. Create Session            │
-     │──────────────────────────────►│
-     │               │               │
-     │               │  2. POST /sessions/new
-     │               │──────────────►│
-     │               │               │
-     │               │◄──────────────│
-     │◄──────────────│  3. {sessionId}
-     │               │               │
-     │  4. Publish Tracks            │
-     │──────────────────────────────►│
-     │               │               │
-     │               │  5. POST /tracks/new
-     │               │   {location: "local"}
-     │               │──────────────►│
-     │               │               │
-     │               │◄──────────────│
-     │◄──────────────│  6. {sessionDescription: Answer}
-     │               │               │
-     │  7. ICE Connected             │
-     │────────UDP/SRTP──────────────►│
-     │               │               │
-     │◄─────Media flowing────────────│
-     │               │               │
-     │               │               │
-     │    [Browser B joins]          │
-     │               │               │
-     │               │◄──────────────│
-     │               │  8. B creates session
-     │               │   B publishes tracks
-     │               │               │
-     │  9. Discover                  │
-     │──────────────────────────────►│
-     │               │               │
-     │◄──────────────│  10. [B's tracks]
-     │               │               │
-     │  11. Subscribe                │
-     │──────────────────────────────►│
-     │               │               │
-     │               │  12. POST /tracks/new
-     │               │   {location: "remote"}
-     │               │──────────────►│
-     │               │               │
-     │               │◄──────────────│
-     │◄──────────────│  13. {sessionDescription: Offer}
-     │               │               │
-     │  14. Complete                 │
-     │──────────────────────────────►│
-     │               │               │
-     │               │  15. PUT /renegotiate
-     │               │   {sessionDescription: Answer}
-     │               │──────────────►│
-     │               │               │
-     │  16. Media flows both ways    │
-     │◄─────UDP/SRTP────────►│◄─────│
-     │               │               │
-```
+When a browser enters `/?room=ABC123`:
 
-## Phase 1: Session Setup (Tab A)
+1. client calls `POST /api/rooms/:roomId/session`
+2. sends:
+   - `browserInstanceId`
+   - optional stored `participantSecret`
+   - optional `confirmTakeover`
+3. worker derives deterministic `participantId`
+4. room Durable Object authorizes that participant
+5. if accepted, worker creates a Cloudflare session
 
-### 1.1 Create Session
+If the room does not already exist, a valid `X-Service-Entitlement-Token` is required so the room can bind to a budget.
 
-**Browser A** → **Worker** → **Cloudflare**
+## 2. Local Media Startup
 
-```javascript
-// Browser
-const res = await fetch("/api/calls/test/session", { method: "POST" })
-const { sessionId } = await res.json()
-```
+After session admission:
 
-```http
-# Worker → Cloudflare
-POST https://rtc.live.cloudflare.com/v1/apps/{APP_ID}/sessions/new
-```
+1. browser captures camera/mic
+2. client syncs initial media intent to the room DO
+3. client creates a WebRTC offer
 
-### 1.2 Publish Tracks
+## 3. Publish
 
-**Browser A** creates WebRTC offer, sends to Cloudflare via Worker.
+Client calls `POST /api/rooms/:roomId/publish-offer`.
 
-```javascript
-// Browser
-const pc = new RTCPeerConnection({...})
-const stream = await navigator.mediaDevices.getUserMedia({video: true, audio: true})
-stream.getTracks().forEach(track => pc.addTrack(track, stream))
+Worker:
 
-const offer = await pc.createOffer()
-await pc.setLocalDescription(offer)
+1. resolves the local session through the room DO
+2. forwards the publish request to Cloudflare Realtime
+3. stores published tracks in the room DO
+4. completes pending handoff if this publish replaced an earlier active session
 
-await fetch('/api/calls/test/publish-offer', {
-  method: 'POST',
-  body: JSON.stringify({
-    sessionId,
-    sdpOffer: offer.sdp,
-    tracks: [{ mid: '0', trackName: track.id }]
-  })
-})
-```
+The room is considered fully active only after publish succeeds.
 
-```http
-# Worker → Cloudflare
-POST /v1/apps/{APP_ID}/sessions/{sessionId}/tracks/new
-{
-  "sessionDescription": { "type": "offer", "sdp": "..." },
-  "tracks": [{ "location": "local", "mid": "0", "trackName": "..." }]
-}
-```
+## 4. Discovery
 
-**Response**: Answer SDP from Cloudflare.
+Client polls `GET /api/rooms/:roomId/discover-remote-tracks`.
 
-### 1.3 ICE Connection
+The room DO returns:
 
-WebRTC establishes UDP connection to Cloudflare.
+- currently published remote tracks
+- remote participant media intent
+- remote participant count
 
-```javascript
-pc.oniceconnectionstatechange = () => {
-  if (pc.iceConnectionState === "connected") {
-    // Media flowing to Cloudflare
-  }
-}
-```
+This is the presence source of truth for the UI.
 
-## Phase 2: Session Setup (Tab B)
+## 5. Subscribe
 
-Same as Phase 1, but for Browser B.
+When remote tracks are present:
 
-```javascript
-// Browser B does the same thing
-const res = await fetch("/api/calls/test/session", { method: "POST" })
-const { sessionId: sessionIdB } = await res.json()
-// ... publish tracks ...
-```
+1. client calls `POST /api/rooms/:roomId/subscribe-offer`
+2. worker asks Cloudflare for a remote-track offer
+3. browser sets that remote offer
+4. browser creates an answer
+5. client calls `POST /api/rooms/:roomId/complete-subscribe`
 
-## Phase 3: Discovery (Tab A finds Tab B)
+After that, remote media can flow.
 
-### 3.1 Poll for Remote Tracks
+## 6. Steady State
 
-Browser A polls every 2 seconds:
+While the room is active:
 
-```javascript
-const poll = async () => {
-  const res = await fetch(`/api/calls/test/discover-remote-tracks?sessionId=${sessionIdA}`)
-  const { tracks } = await res.json()
+- `POST /api/rooms/:roomId/heartbeat` maintains participant presence
+- `POST /api/rooms/:roomId/media-state` updates audio/video intent
+- room DO meters estimated usage every 60 seconds
+- budget DO may move the room into grace or hard exhaustion
 
-  if (tracks.length > 0) {
-    // Found B's tracks!
-    await subscribeToTracks(tracks)
-  }
+## 7. Handoff / Multi-Tab Takeover
 
-  setTimeout(poll, 2000)
-}
-```
+The participant lifecycle is:
 
-**Worker logic**:
+- `active`
+- `handoff_pending`
+- `ended`
 
-```typescript
-// Find all tracks from other sessions in same call
-const remoteTracks = []
-for (const [sid, session] of callSessions) {
-  if (sid === selfSessionId) continue
-  remoteTracks.push(...session.publishedTracks)
-}
-```
+If the same browser participant reconnects:
 
-## Phase 4: Subscription (The Magic)
+1. old session remains active
+2. new session becomes pending
+3. once the new session publishes, it becomes active
+4. old session starts returning `SESSION_REPLACED`
 
-### 4.1 Request Offer
+This avoids visible gaps during reconnect.
 
-Browser A asks Cloudflare for an Offer to receive B's tracks.
+## 8. Budget and Grace
 
-```javascript
-await fetch("/api/calls/test/subscribe-offer", {
-  method: "POST",
-  body: JSON.stringify({
-    sessionId: sessionIdA,
-    remoteTracks: [
-      {
-        trackName: "B's-video-track-id",
-        sessionId: "B's-cloudflare-session-id",
-      },
-    ],
-  }),
-})
-```
+Each room binds to one budget when it is first created.
 
-```http
-# Worker → Cloudflare
-POST /v1/apps/{APP_ID}/sessions/{sessionIdA}/tracks/new
-{
-  "tracks": [{
-    "location": "remote",
-    "trackName": "B's-video-track-id",
-    "sessionId": "B's-cloudflare-session-id"
-  }]
-}
-```
+- later joins do not rebind the room to a different budget
+- room metering charges that bound budget
+- the shared budget grants grace to only one room at a time
 
-**Response**: Cloudflare generates and returns **Offer SDP**!
+Budget lifecycle:
 
-### 4.2 Complete Subscription
+- `active`
+- `in_grace`
+- `exhausted`
 
-Browser A creates Answer, sends to Cloudflare.
+Room lifecycle:
 
-```javascript
-const offer = subscribeResponse.sessionDescription // From Cloudflare!
-await pc.setRemoteDescription(offer)
+- `inactive`
+- `active`
+- `in_grace`
+- `terminated`
 
-const answer = await pc.createAnswer()
-await pc.setLocalDescription(answer)
+If a room wins the shared grace claim:
 
-await fetch("/api/calls/test/complete-subscribe", {
-  method: "POST",
-  body: JSON.stringify({
-    sessionId: sessionIdA,
-    sdpAnswer: answer.sdp,
-  }),
-})
-```
+- current participants continue temporarily
+- new joins are rejected
+- room terminates when grace expires
 
-```http
-# Worker → Cloudflare
-PUT /v1/apps/{APP_ID}/sessions/{sessionIdA}/renegotiate
-{
-  "sessionDescription": { "type": "answer", "sdp": "..." }
-}
-```
+If another room already claimed grace:
 
-## Phase 5: Bidirectional Media
+- the room hard-terminates immediately on exhaustion
 
-Now both browsers:
+## 9. Leave / Terminate
 
-- **Send** their camera/mic to Cloudflare
-- **Receive** the other person's video from Cloudflare
+Normal participant exit:
 
-```
-Browser A ──UDP/SRTP──► Cloudflare ──UDP/SRTP──► Browser B
-Browser A ◄──UDP/SRTP── Cloudflare ◄──UDP/SRTP── Browser B
-```
+- client calls `POST /api/rooms/:roomId/leave`
 
-## Timing Summary
+Admin termination:
 
-| Phase                | Typical Duration | Notes                 |
-| -------------------- | ---------------- | --------------------- |
-| Session creation     | 100-500ms        | API round-trip        |
-| Publish offer/answer | 200-800ms        | Cloudflare processing |
-| ICE connection       | 1-5 seconds      | UDP hole punching     |
-| Discovery            | 2-5 seconds      | Polling interval      |
-| Subscription         | 500-1000ms       | 2 API calls           |
-| **Total to media**   | **5-15 seconds** | End-to-end            |
+- host admin calls `POST /api/rooms/:roomId/terminate`
 
-## Error Handling
+## 10. Host Admin Lifecycle
 
-At each phase, handle errors:
+Host admin uses a two-step flow:
 
-```javascript
-try {
-  const res = await fetch("/api/calls/test/session", { method: "POST" })
-  if (!res.ok) {
-    const error = await res.json()
-    // error.code: 'UPSTREAM_ERROR', 'BAD_REQUEST', etc.
-    throw new Error(error.error)
-  }
-} catch (e) {
-  // Network error or exception
-  console.error("Failed to create session:", e)
-}
-```
+1. exchange `X-Host-Admin-Token` at `POST /admin/auth/exchange`
+2. use returned `X-Host-Admin-Session` for admin APIs
 
-## See Also
+Bootstrap token and admin session are intentionally separate:
 
-- [API Reference](./01-api-reference.md) - Endpoint details
-- [Media Flow](../10-architecture/02-media-flow.md) - Packet-level details
-- [Troubleshooting](../00-getting-started/03-troubleshooting.md) - Common issues
+- bootstrap token is setup-time/operator credential
+- host-admin session is the browser’s working admin credential

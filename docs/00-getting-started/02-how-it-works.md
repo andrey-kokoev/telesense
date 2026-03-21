@@ -1,192 +1,119 @@
 # How telesence Works
 
-A high-level guide to understanding the 1:1 video call architecture.
+High-level mental model of the current app.
 
-## The 30-Second Version
+## The Short Version
 
-1. **Browser A** creates a session with Cloudflare
-2. **Browser A** sends its camera/mic data to Cloudflare SFU
-3. **Browser B** joins the same "call" (via `callId`)
-4. **Browser B** asks Cloudflare: "give me an Offer to receive A's tracks"
-5. **Cloudflare** sends an Offer SDP to B
-6. **Browser B** answers, and **media flows** between A and B via Cloudflare
+1. Browser opens a room like `/?room=ABC123`
+2. Client asks the worker for a room session
+3. Worker authorizes a room participant through the `CallRoom` DO
+4. Worker creates a Cloudflare Realtime session
+5. Browser publishes local media
+6. Browser polls for remote tracks
+7. When remote tracks appear, browser subscribes to them
+8. Room DO meters usage against the bound budget
 
-## Key Concepts
+## The Important Split
 
-### The "Call" is Just a Name
+This app separates:
 
-```
-callId: "my-meeting-123"
-```
+- room identity and presence
+- live WebRTC transport
+- service budget authority
+- host-admin authority
 
-- Cloudflare has no concept of "rooms" or "calls"
-- We use `callId` as an app-level tag to group sessions
-- All browsers with the same `callId` can discover each other
+Those are different layers on purpose.
 
-### Sessions vs Tracks
+## Rooms, Participants, Sessions
 
-| Concept        | What                       | Example                            |
-| -------------- | -------------------------- | ---------------------------------- |
-| **Session**    | A connection to Cloudflare | Each browser has one               |
-| **Track**      | A media stream             | Camera = 1 track, Mic = 1 track    |
-| **Track Name** | Browser's track ID         | `"a1b2c3d4-e5f6..."` (random UUID) |
+### Room
 
-### How Remote Subscription Works
+A room is the app-level rendezvous identified by `roomId`.
 
-The hardest part of Cloudflare Realtime: **How do you subscribe to someone else's tracks?**
+### Participant
 
-**Answer: Same endpoint, different `location`**
+A participant is deterministic per:
 
-```http
-# Publishing (sending YOUR camera)
-POST /tracks/new
-{
-  "location": "local",     // ← "I have media to send"
-  "sessionDescription": { "type": "offer", "sdp": "..." }
-}
-# Response: Answer SDP
+- `roomId`
+- `browserInstanceId`
 
-# Subscribing (receiving THEIR camera)
-POST /tracks/new
-{
-  "location": "remote",    // ← "I want to receive"
-  "sessionId": "their-session-id",
-  "trackName": "their-track-id"
-}
-# Response: Offer SDP ← This was the breakthrough!
-```
+That means the same browser can reconnect as the same participant in the same room.
 
-## Architecture Diagram
+### Session
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      BROWSER A (Caller)                      │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
-│  │  getUserMedia│──►│   Encoder   │──►│  WebRTC API │         │
-│  │  (camera)   │  │ (VP8/H264)  │  │  (sendonly) │         │
-│  └─────────────┘  └─────────────┘  └──────┬──────┘         │
-│                                           │                 │
-└───────────────────────────────────────────┼─────────────────┘
-                                            │ SRTP/UDP
-                                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│              CLOUDFLARE SFU (Selective Forwarding)           │
-│                                                              │
-│   ┌─────────────────────────────────────────────────────┐   │
-│   │  Receives RTP packets from A                        │   │
-│   │  Decrypts → Identifies track → Looks up subscribers │   │
-│   │  Clones packets → Sends to B (and others)           │   │
-│   │                                                     │   │
-│   │  NO transcoding  (CPU intensive)                    │   │
-│   │  NO mixing       (that's MCU)                       │   │
-│   │  JUST routing    (selective forwarding)             │   │
-│   └─────────────────────────────────────────────────────┘   │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-                                            │ SRTP/UDP
-                                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│                     BROWSER B (Callee)                       │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
-│  │  WebRTC API │──►│   Decoder   │──►│  <video>    │         │
-│  │  (recvonly) │  │ (VP8/H264)  │  │  (render)   │         │
-│  └─────────────┘  └─────────────┘  └─────────────┘         │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
+A session is one live transport attempt.
 
-## The Signaling Dance
+Sessions are replaceable; participants are the longer-lived concept.
 
-Before media flows, we need to exchange SDP (Session Description Protocol):
+## Why the Room DO Exists
 
-### Step 1: Browser A Creates Session
+`CallRoom` is the authority for:
 
-```http
-POST /sessions/new
-Response: { "sessionId": "abc123..." }
+- participant admission
+- participant handoff between tabs/reconnects
+- published remote tracks
+- presence
+- room metering status
+
+It lets the worker stay stateless while keeping room-level coordination coherent.
+
+## Why the Budget DO Exists
+
+`EntitlementBudget` is the authority for:
+
+- remaining allowance
+- consumed allowance
+- grace and exhaustion
+- service entitlement token secret versions
+
+Rooms do not decide whether budget remains; the budget DO does.
+
+## Why the Monthly Allowance DO Exists
+
+`MonthlyAllowance` is a small policy controller:
+
+- points at one budget
+- knows reset amount
+- knows reset schedule
+- resets the budget when due
+
+Cron is only the trigger; policy lives in the DO.
+
+## Host Admin
+
+Host admin is intentionally separate from normal service use.
+
+Flow:
+
+1. operator goes to `/host-admin`
+2. pastes `HOST_ADMIN_BOOTSTRAP_TOKEN`
+3. browser exchanges it for a host-admin session token
+4. browser uses that session token for admin APIs
+
+So the bootstrap token is not the long-lived browser credential.
+
+## Media Flow
+
+Media does not go through your worker.
+
+The worker only handles signaling and coordination.
+
+Actual media path:
+
+```text
+Browser A <-> Cloudflare Realtime SFU <-> Browser B
 ```
 
-### Step 2: Browser A Publishes (Sends Offer)
+## Presence vs Media
 
-```http
-POST /tracks/new (with location: "local")
-Request: { "sessionDescription": { "type": "offer", "sdp": "..." } }
-Response: { "sessionDescription": { "type": "answer", "sdp": "..." } }
-```
+The app distinguishes:
 
-Now A is sending to Cloudflare.
+- participant still exists, but media is interrupted
+- participant is gone entirely
 
-### Step 3: Browser B Joins
+That is why the UI can show:
 
-Same as A - creates session, publishes its own tracks.
+- connection interrupted
+- participant disconnected
 
-### Step 4: Discovery (App-Level)
-
-```http
-GET /discover-remote-tracks?sessionId=...
-Response: [
-  { "trackName": "...", "sessionId": "A's-session" }
-]
-```
-
-### Step 5: Browser B Subscribes (The Magic)
-
-```http
-POST /tracks/new (with location: "remote")
-Request: { "tracks": [{ "location": "remote", "sessionId": "A's-session", "trackName": "..." }] }
-Response: { "sessionDescription": { "type": "offer", "sdp": "..." } }
-```
-
-**This is the key insight:** Cloudflare generates an Offer for the subscription.
-
-### Step 6: Complete Subscription
-
-```http
-PUT /renegotiate
-Request: { "sessionDescription": { "type": "answer", "sdp": "..." } }
-```
-
-Now B receives from Cloudflare.
-
-## Data Flow (Physical)
-
-See [Media Flow Documentation](../10-architecture/02-media-flow.md) for packet-level details.
-
-Quick summary:
-
-```
-Raw Video (YUV)
-    → Encoder (VP8)
-    → RTP Packets
-    → SRTP Encryption
-    → UDP/DTLS
-    → Cloudflare
-    → UDP/DTLS
-    → SRTP Decrypt
-    → RTP
-    → Decoder
-    → YUV
-    → Screen
-```
-
-## Why This Architecture?
-
-| Decision            | Why                                         |
-| ------------------- | ------------------------------------------- |
-| **Cloudflare SFU**  | No server-side encoding, just routing       |
-| **Pull model**      | Browser asks for Offer, not pushed          |
-| **HTTPS signaling** | Simple, debuggable, no WebSocket complexity |
-| **In-memory state** | Protocol discovery first, durability later  |
-
-## Limitations
-
-- **No recording** (Cloudflare doesn't store)
-- **No chat** (would need separate data channel)
-- **No screen share** (would need additional track handling)
-- **In-memory only** (sessions lost on worker restart)
-
-## Next Steps
-
-- [Quick Start Guide](./01-quickstart.md) - Try it yourself
-- [Architecture Deep Dive](../10-architecture/01-overview.md) - System design
-- [Media Flow](../10-architecture/02-media-flow.md) - Packet-level details
+as different states.

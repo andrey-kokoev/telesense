@@ -40,7 +40,7 @@ tesense/
 │   ├── 00-getting-started/
 │   ├── 10-architecture/
 │   ├── 20-protocol/
-│   └── 90-references/
+│   └── 40-security/
 │
 ├── package.json                   # Root config
 ├── pnpm-workspace.yaml            # Workspace definition

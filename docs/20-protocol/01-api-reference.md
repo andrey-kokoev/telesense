@@ -1,317 +1,217 @@
 # API Reference
 
-Complete reference for all endpoints.
+Current worker API reference for `telesense`.
 
 ## Base URLs
 
-| Environment    | URL                                                |
-| -------------- | -------------------------------------------------- |
-| Cloudflare API | `https://rtc.live.cloudflare.com/v1/apps/{APP_ID}` |
-| Local Worker   | `http://localhost:8787`                            |
-| Local Client   | `http://localhost:5173`                            |
+| Environment             | URL                                                |
+| ----------------------- | -------------------------------------------------- |
+| Local Worker            | `http://localhost:8787`                            |
+| Local Client            | `http://localhost:5173`                            |
+| Cloudflare Realtime API | `https://rtc.live.cloudflare.com/v1/apps/{APP_ID}` |
 
 ## Authentication
 
-### Cloudflare API
+### Service Entitlement
+
+Used when creating a room that does not already exist.
 
 ```http
-Authorization: Bearer {APP_TOKEN}
-Content-Type: application/json
+X-Service-Entitlement-Token: {service_entitlement_token}
 ```
 
-### Worker API
+### Host Admin Bootstrap
 
-No authentication required (CORS-enabled for local dev).
-
-## Endpoints
-
-### POST /api/calls/:callId/session
-
-Create a new session for this call.
-
-**Request**:
+Used only for exchanging into a host-admin session.
 
 ```http
-POST /api/calls/test/session
-Content-Type: application/json
-
-{}  // Empty body
+X-Host-Admin-Token: {host_admin_bootstrap_token}
 ```
 
-**Response** (200 OK):
+### Host Admin Session
+
+Used for all host-admin operations after bootstrap exchange.
+
+```http
+X-Host-Admin-Session: {host_admin_session_token}
+```
+
+## Room APIs
+
+### GET /api/rooms/:roomId/status
+
+Check whether a room currently exists.
+
+### POST /api/rooms/status
+
+Batch room-status lookup.
+
+- capped at `100` room ids per request
+
+### POST /api/rooms/:roomId/session
+
+Create or reconnect a participant session.
+
+Request body:
 
 ```json
 {
-  "sessionId": "f55ce501-025e-4c1a-881a-3479b0499c11",
-  "cloudflareSessionId": "ea2a61a4f979a2d534d1c307be181c78941f0281de4b91a90caf22559763391c"
+  "browserInstanceId": "browser-uuid",
+  "participantSecret": "optional-room-secret",
+  "confirmTakeover": false
 }
 ```
 
-**Errors**:
-
-- `400` - Invalid callId
-- `502` - Upstream Cloudflare error
-
----
-
-### POST /api/calls/:callId/publish-offer
-
-Publish local tracks to Cloudflare.
-
-**Request**:
-
-```http
-POST /api/calls/test/publish-offer
-Content-Type: application/json
-
-{
-  "sessionId": "f55ce501-025e-4c1a-881a-3479b0499c11",
-  "sdpOffer": "v=0\r\no=-...",
-  "tracks": [
-    { "mid": "0", "trackName": "audio-track-id" },
-    { "mid": "1", "trackName": "video-track-id" }
-  ]
-}
-```
-
-**Response** (200 OK):
+Response:
 
 ```json
 {
-  "sessionDescription": {
-    "type": "answer",
-    "sdp": "v=0\r\no=-..."
-  },
-  "tracks": [
-    { "mid": "0", "trackName": "audio-track-id" },
-    { "mid": "1", "trackName": "video-track-id" }
-  ]
+  "sessionId": "local-session-id",
+  "cloudflareSessionId": "cloudflare-session-id",
+  "participantId": "room-scoped-participant-id",
+  "participantSecret": "room-scoped-secret"
 }
 ```
 
-**Errors**:
+### POST /api/rooms/:roomId/publish-offer
 
-- `400` - Invalid request body
-- `404` - Session not found
-- `502` - Upstream error
+Publish local media tracks for a session.
 
----
+### POST /api/rooms/:roomId/subscribe-offer
 
-### POST /api/calls/:callId/subscribe-offer
+Request a subscription offer for remote tracks.
 
-Request an Offer to subscribe to remote tracks. ⭐ Key endpoint for 1:1 calls.
+### POST /api/rooms/:roomId/complete-subscribe
 
-**Request**:
+Complete the subscribe flow by sending the browser’s answer SDP.
+
+### GET /api/rooms/:roomId/discover-remote-tracks
+
+Discover currently published remote tracks and remote participant media state.
+
+### POST /api/rooms/:roomId/heartbeat
+
+Refresh session presence.
+
+### POST /api/rooms/:roomId/media-state
+
+Update declared audio/video intent.
+
+### POST /api/rooms/:roomId/leave
+
+Leave the room and release presence.
+
+### POST /api/rooms/:roomId/terminate
+
+Terminate a room immediately.
+
+- requires `X-Host-Admin-Session`
+
+## Metering APIs
+
+### POST /api/rooms/:roomId/meter
+
+Internal metering charge path used by the room Durable Object.
+
+### GET /api/rooms/:roomId/meter
+
+Get current room metering/grace status.
+
+## Service Entitlement API
+
+### GET /api/auth/verify
+
+Verify a service entitlement token and inspect its bound budget.
+
+Requires:
 
 ```http
-POST /api/calls/test/subscribe-offer
-Content-Type: application/json
-
-{
-  "sessionId": "f55ce501-025e-4c1a-881a-3479b0499c11",
-  "remoteTracks": [
-    {
-      "trackName": "remote-video-track-id",
-      "sessionId": "remote-session-id"
-    }
-  ]
-}
+X-Service-Entitlement-Token: {service_entitlement_token}
 ```
 
-**Response** (200 OK):
+## Host Admin Auth APIs
+
+### POST /admin/auth/exchange
+
+Exchange a host-admin bootstrap token for a host-admin session token.
+
+Requires:
+
+```http
+X-Host-Admin-Token: {host_admin_bootstrap_token}
+```
+
+Response:
 
 ```json
 {
-  "sessionDescription": {
-    "type": "offer",
-    "sdp": "v=0\r\no=-..."
-  },
-  "tracks": [
-    {
-      "sessionId": "remote-session-id",
-      "trackName": "remote-video-track-id",
-      "mid": "0"
-    }
-  ],
-  "requiresImmediateRenegotiation": true
+  "ok": true,
+  "hostAdminSessionToken": "signed-session-token"
 }
 ```
 
-**Note**: This is the **pull model** - browser asks Cloudflare for an Offer.
+### GET /admin/auth/verify
 
----
+Verify a host-admin session token.
 
-### POST /api/calls/:callId/complete-subscribe
-
-Complete subscription by sending Answer.
-
-**Request**:
+Requires:
 
 ```http
-POST /api/calls/test/complete-subscribe
-Content-Type: application/json
-
-{
-  "sessionId": "f55ce501-025e-4c1a-881a-3479b0499c11",
-  "sdpAnswer": "v=0\r\no=-..."
-}
+X-Host-Admin-Session: {host_admin_session_token}
 ```
 
-**Response** (200 OK):
+## Host Admin APIs
 
-```json
-{ "ok": true }
-```
+All endpoints below require `X-Host-Admin-Session`.
 
----
+### GET /admin/host/budgets
 
-### GET /api/calls/:callId/discover-remote-tracks
+Enumerate known budgets from the registry.
 
-Discover tracks published by other participants.
+### GET /admin/host/monthly-allowances
 
-**Request**:
+Enumerate known monthly allowance policies from the registry.
 
-```http
-GET /api/calls/test/discover-remote-tracks?sessionId=f55ce501...
-```
+### POST /admin/entitlement/mint
 
-**Response** (200 OK):
+Mint a new service entitlement token for a selected budget and add allowance.
 
-```json
-{
-  "tracks": [
-    {
-      "trackName": "remote-video-id",
-      "sessionId": "remote-session-id",
-      "mid": "1"
-    }
-  ]
-}
-```
+### POST /admin/entitlement/rotate
 
----
+Rotate a selected budget secret.
 
-### POST /api/calls/:callId/leave
+### GET /admin/entitlement/budget?budgetKey=...
 
-Clean up session.
+Inspect a selected budget.
 
-**Request**:
+### POST /admin/entitlement/budget-label
 
-```http
-POST /api/calls/test/leave
-Content-Type: application/json
+Update a budget label in the host-admin registry.
 
-{
-  "sessionId": "f55ce501-025e-4c1a-881a-3479b0499c11"
-}
-```
+### POST /admin/entitlement/monthly-allowance
 
-**Response** (200 OK):
+Configure a monthly allowance policy.
 
-```json
-{ "ok": true }
-```
+### GET /admin/entitlement/monthly-allowance?allowanceId=...
 
----
+Inspect one monthly allowance policy.
+
+## Health
 
 ### GET /health
 
-Health check endpoint.
+Health check.
 
-**Response** (200 OK):
+## Important Error Codes
 
-```json
-{
-  "status": "healthy",
-  "version": "0.0.1",
-  "callsActive": 1,
-  "sessionsActive": 2
-}
-```
-
-## Cloudflare Direct API
-
-These are called by the Worker, not directly by clients.
-
-### POST /v1/apps/{appId}/sessions/new
-
-Create a Cloudflare session.
-
-**Request**:
-
-```http
-POST /v1/apps/{APP_ID}/sessions/new
-Authorization: Bearer {APP_TOKEN}
-```
-
-**Response**:
-
-```json
-{
-  "sessionId": "ea2a61a4f979a2d534d1c307be181c78941f0281de4b91a90caf22559763391c"
-}
-```
-
-### POST /v1/apps/{appId}/sessions/{sessionId}/tracks/new
-
-Create/modify tracks. Key endpoint with dual behavior:
-
-**For publishing** (location: "local"):
-
-```json
-{
-  "sessionDescription": { "type": "offer", "sdp": "..." },
-  "tracks": [{ "location": "local", "mid": "0", "trackName": "..." }]
-}
-```
-
-**For subscribing** (location: "remote"):
-
-```json
-{
-  "tracks": [{ "location": "remote", "sessionId": "...", "trackName": "..." }]
-}
-```
-
-### PUT /v1/apps/{appId}/sessions/{sessionId}/renegotiate
-
-Complete renegotiation with Answer.
-
-**Request**:
-
-```http
-PUT /v1/apps/{APP_ID}/sessions/{sessionId}/renegotiate
-Authorization: Bearer {APP_TOKEN}
-
-{
-  "sessionDescription": { "type": "answer", "sdp": "..." }
-}
-```
-
-**Response**:
-
-```json
-{}
-```
-
-## Error Codes
-
-| Code                | Meaning                    | HTTP Status |
-| ------------------- | -------------------------- | ----------- |
-| `BAD_REQUEST`       | Invalid input              | 400         |
-| `SESSION_NOT_FOUND` | Session doesn't exist      | 404         |
-| `UPSTREAM_ERROR`    | Cloudflare API failed      | 502         |
-| `INVALID_RESPONSE`  | Unexpected response format | 502         |
-| `INTERNAL_ERROR`    | Server error               | 500         |
-
-## Rate Limits
-
-Cloudflare Realtime limits:
-
-- Concurrent sessions per app: Check Cloudflare docs
-- Requests per second: Standard Cloudflare rate limiting
-
-## See Also
-
-- [Lifecycle](./02-lifecycle.md) - Sequence of API calls
-- [Wire Format](../90-references/wire-format.md) - Payload details
+- `401 SERVICE_ENTITLEMENT_REQUIRED`
+- `403 SERVICE_ENTITLEMENT_INVALID`
+- `402 SERVICE_ENTITLEMENT_EXHAUSTED`
+- `403 PARTICIPANT_AUTH_FAILED`
+- `409 PARTICIPANT_TAKEOVER_REQUIRED`
+- `409 SESSION_REPLACED`
+- `404 SESSION_NOT_FOUND`
+- `401 HOST_ADMIN_REQUIRED`
+- `403 HOST_ADMIN_INVALID`
+- `401 HOST_ADMIN_SESSION_REQUIRED`
+- `403 HOST_ADMIN_SESSION_INVALID`

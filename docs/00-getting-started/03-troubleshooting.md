@@ -34,7 +34,7 @@ vp install
 2. Check browser permissions (click lock icon in address bar)
 3. For headless testing, use fake devices:
    ```bash
-   pnpm test  # Tests use fake media automatically
+   vp run test  # Tests use fake media automatically
    ```
 
 ### "Session failed: 502"
@@ -55,19 +55,19 @@ echo "DEBUG=true" >> .dev.vars
 vp dev
 ```
 
-### "Missing authentication token" / "Invalid authentication token"
+### "Missing service entitlement token" / "Invalid service entitlement token"
 
-**Cause**: `X-User-Token` header missing or incorrect.
+**Cause**: `X-Service-Entitlement-Token` header missing or incorrect when trying to create a new room.
 
 **Solutions**:
 
-1. **Development**: Check `DO_NOT_ENFORCE_USER_TOKEN=true` is in `.dev.vars` to disable auth
-2. **Production**: Ensure client sends correct `X-User-Token` header matching `GENERIC_USER_TOKEN`
+1. **Development**: Check `DO_NOT_ENFORCE_SERVICE_ENTITLEMENT=true` is in `.dev.vars` to disable service-entitlement enforcement locally
+2. **Production**: Ensure client sends a valid `X-Service-Entitlement-Token`
 3. Check browser devtools Network tab for the header value
 
 ```bash
 # Temporarily disable auth for testing (dev only)
-echo "DO_NOT_ENFORCE_USER_TOKEN=true" >> apps/telesense/.dev.vars
+echo "DO_NOT_ENFORCE_SERVICE_ENTITLEMENT=true" >> apps/telesense/.dev.vars
 ```
 
 ### "ICE failed" or "ICE timeout"

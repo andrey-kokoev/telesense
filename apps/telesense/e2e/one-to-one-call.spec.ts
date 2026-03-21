@@ -8,7 +8,7 @@ test.describe("1:1 Video Call", () => {
   let callerPage: Page
   let calleeContext: BrowserContext
   let calleePage: Page
-  const CALL_ID = `e2e-test-${Date.now()}`
+  const ROOM_ID = `E2E${Date.now().toString().slice(-3)}`.slice(0, 6)
 
   test.beforeAll(async ({ browser }) => {
     // Create two separate browser contexts (simulates two users)
@@ -29,7 +29,7 @@ test.describe("1:1 Video Call", () => {
   })
 
   test("caller joins and publishes tracks", async () => {
-    await callerPage.goto(`/?call=${CALL_ID}`)
+    await callerPage.goto(`/?room=${ROOM_ID}`)
 
     // Wait for initialization
     await expect(callerPage.locator("#status")).toContainText("Initializing", { timeout: 10000 })
@@ -64,7 +64,7 @@ test.describe("1:1 Video Call", () => {
 
   test("callee joins and both see each other", async () => {
     // Callee joins the same call
-    await calleePage.goto(`/?call=${CALL_ID}`)
+    await calleePage.goto(`/?room=${ROOM_ID}`)
 
     // Wait for callee initialization
     await expect(calleePage.locator("#status")).toContainText("Local media captured", {
