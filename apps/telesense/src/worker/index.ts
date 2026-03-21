@@ -6,7 +6,11 @@
 // - POST /v1/apps/{appId}/sessions/{sessionId}/tracks/new (pull) → { sessionDescription, tracks }
 // - PUT /v1/apps/{appId}/sessions/{sessionId}/renegotiate → {}
 //
-// See: docs/20260318-001-realtime-wire-contract.md
+// Current local contract:
+// - room/session APIs are exposed under /api/rooms/:roomId/*
+// - participant identity is deterministic per room/browser instance
+// - participant continuity is proven with a room-scoped participantSecret
+// - Cloudflare session ids remain transport-only and are coordinated through CallRoom
 
 import { Context, Hono } from "hono"
 import { logger } from "hono/logger"
