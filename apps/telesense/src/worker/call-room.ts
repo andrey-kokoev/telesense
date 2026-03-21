@@ -32,6 +32,16 @@ type SessionLookup =
   | { kind: "replaced"; session: Session }
   | { kind: "ok"; session: Session; participant: Participant }
 
+type ParticipantLifecycle =
+  | { kind: "ended" }
+  | { kind: "active"; participant: Participant; activeSessionId: string }
+  | {
+      kind: "handoff_pending"
+      participant: Participant
+      activeSessionId: string
+      pendingSessionId: string
+    }
+
 export class CallRoom {
   private static readonly SESSION_TTL_MS = 15000
   private state: DurableObjectState
@@ -164,11 +174,14 @@ export class CallRoom {
     const session = this.sessions.get(internalId)
     if (!session) return { kind: "missing" }
 
-    const participant = this.participants.get(session.participantId)
-    if (!participant) return { kind: "missing" }
+    const lifecycle = this.getParticipantLifecycle(session.participantId)
+    if (lifecycle.kind === "ended") return { kind: "missing" }
 
-    if (participant.activeSessionId === internalId || participant.pendingSessionId === internalId) {
-      return { kind: "ok", session, participant }
+    if (
+      lifecycle.activeSessionId === internalId ||
+      (lifecycle.kind === "handoff_pending" && lifecycle.pendingSessionId === internalId)
+    ) {
+      return { kind: "ok", session, participant: lifecycle.participant }
     }
 
     return { kind: "replaced", session }
@@ -192,19 +205,60 @@ export class CallRoom {
     const participant = this.participants.get(participantId)
     if (!participant) return
 
-    const hasActive = participant.activeSessionId
-      ? this.sessions.has(participant.activeSessionId)
-      : false
-    const hasPending = participant.pendingSessionId
-      ? this.sessions.has(participant.pendingSessionId)
-      : false
-
-    if (!hasActive) participant.activeSessionId = null
-    if (!hasPending) participant.pendingSessionId = null
-
-    if (!participant.activeSessionId && !participant.pendingSessionId) {
+    const lifecycle = this.normalizeParticipantLifecycle(participant)
+    if (lifecycle.kind === "ended") {
       this.participants.delete(participantId)
     }
+  }
+
+  private normalizeParticipantLifecycle(participant: Participant): ParticipantLifecycle {
+    const activeSessionId =
+      participant.activeSessionId && this.sessions.has(participant.activeSessionId)
+        ? participant.activeSessionId
+        : null
+    const pendingSessionId =
+      participant.pendingSessionId && this.sessions.has(participant.pendingSessionId)
+        ? participant.pendingSessionId
+        : null
+
+    participant.activeSessionId = activeSessionId
+    participant.pendingSessionId = pendingSessionId
+
+    if (activeSessionId && pendingSessionId) {
+      return {
+        kind: "handoff_pending",
+        participant,
+        activeSessionId,
+        pendingSessionId,
+      }
+    }
+
+    if (activeSessionId) {
+      return {
+        kind: "active",
+        participant,
+        activeSessionId,
+      }
+    }
+
+    if (pendingSessionId) {
+      participant.activeSessionId = pendingSessionId
+      participant.pendingSessionId = null
+
+      return {
+        kind: "active",
+        participant,
+        activeSessionId: pendingSessionId,
+      }
+    }
+
+    return { kind: "ended" }
+  }
+
+  private getParticipantLifecycle(participantId: string): ParticipantLifecycle {
+    const participant = this.participants.get(participantId)
+    if (!participant) return { kind: "ended" }
+    return this.normalizeParticipantLifecycle(participant)
   }
 
   private async createSession(request: Request): Promise<Response> {
@@ -235,10 +289,11 @@ export class CallRoom {
       )
     }
 
+    const existingLifecycle = existingParticipant
+      ? this.normalizeParticipantLifecycle(existingParticipant)
+      : { kind: "ended" as const }
     const previousActiveSessionId =
-      existingParticipant?.activeSessionId && this.sessions.has(existingParticipant.activeSessionId)
-        ? existingParticipant.activeSessionId
-        : null
+      existingLifecycle.kind === "ended" ? null : existingLifecycle.activeSessionId
 
     const resolvedParticipantSecret =
       existingParticipant?.participantSecret || participantSecret || crypto.randomUUID()
@@ -320,11 +375,11 @@ export class CallRoom {
       )
     }
 
-    if (
-      existingParticipant?.activeSessionId &&
-      this.sessions.has(existingParticipant.activeSessionId) &&
-      !confirmTakeover
-    ) {
+    const existingLifecycle = existingParticipant
+      ? this.normalizeParticipantLifecycle(existingParticipant)
+      : { kind: "ended" as const }
+
+    if (existingLifecycle.kind !== "ended" && !confirmTakeover) {
       return new Response(
         JSON.stringify({
           error: "Participant takeover confirmation required",
@@ -408,8 +463,12 @@ export class CallRoom {
     lookup.session.lastSeenAt = Date.now()
     lookup.participant.lastSeenAt = lookup.session.lastSeenAt
 
-    if (lookup.participant.pendingSessionId === internalId) {
-      const previousActiveSessionId = lookup.participant.activeSessionId
+    const participantLifecycle = this.normalizeParticipantLifecycle(lookup.participant)
+    if (
+      participantLifecycle.kind === "handoff_pending" &&
+      participantLifecycle.pendingSessionId === internalId
+    ) {
+      const previousActiveSessionId = participantLifecycle.activeSessionId
       lookup.participant.activeSessionId = internalId
       lookup.participant.pendingSessionId = null
 
@@ -506,9 +565,11 @@ export class CallRoom {
 
     for (const participant of this.participants.values()) {
       if (participant.participantId === selfLookup.participant.participantId) continue
-      if (!participant.activeSessionId) continue
 
-      const activeSession = this.sessions.get(participant.activeSessionId)
+      const lifecycle = this.normalizeParticipantLifecycle(participant)
+      if (lifecycle.kind === "ended") continue
+
+      const activeSession = this.sessions.get(lifecycle.activeSessionId)
       if (!activeSession) continue
 
       remoteParticipants.push({
@@ -556,10 +617,15 @@ export class CallRoom {
     this.sessions.delete(internalId)
 
     if (participant) {
-      if (participant.activeSessionId === internalId) {
-        participant.activeSessionId = participant.pendingSessionId
+      const lifecycle = this.normalizeParticipantLifecycle(participant)
+      if (lifecycle.kind !== "ended" && lifecycle.activeSessionId === internalId) {
+        participant.activeSessionId =
+          lifecycle.kind === "handoff_pending" ? lifecycle.pendingSessionId : null
         participant.pendingSessionId = null
-      } else if (participant.pendingSessionId === internalId) {
+      } else if (
+        lifecycle.kind === "handoff_pending" &&
+        lifecycle.pendingSessionId === internalId
+      ) {
         participant.pendingSessionId = null
       }
 
@@ -593,6 +659,7 @@ export class CallRoom {
         sessionCount: this.sessions.size,
         participantCount: this.participants.size,
         participants: Array.from(this.participants.values()).map((participant) => ({
+          lifecycle: this.normalizeParticipantLifecycle(participant).kind,
           participantId: participant.participantId.slice(0, 8),
           participantSecret: "[redacted]",
           activeSessionId: participant.activeSessionId?.slice(0, 8) ?? null,
@@ -627,10 +694,15 @@ export class CallRoom {
 
       const participant = this.participants.get(session.participantId)
       if (participant) {
-        if (participant.activeSessionId === sessionId) {
-          participant.activeSessionId = participant.pendingSessionId
+        const lifecycle = this.normalizeParticipantLifecycle(participant)
+        if (lifecycle.kind !== "ended" && lifecycle.activeSessionId === sessionId) {
+          participant.activeSessionId =
+            lifecycle.kind === "handoff_pending" ? lifecycle.pendingSessionId : null
           participant.pendingSessionId = null
-        } else if (participant.pendingSessionId === sessionId) {
+        } else if (
+          lifecycle.kind === "handoff_pending" &&
+          lifecycle.pendingSessionId === sessionId
+        ) {
           participant.pendingSessionId = null
         }
         this.cleanupParticipantIfOrphaned(participant.participantId)
