@@ -64,6 +64,19 @@ export function useAppStore() {
     state.value.browserInstanceId = generateBrowserInstanceId()
   }
 
+  if (!state.value.roomParticipantCredentials) {
+    state.value.roomParticipantCredentials = {}
+  }
+
+  if (!state.value.preferences) {
+    state.value.preferences = { ...defaultState.preferences }
+  } else {
+    state.value.preferences = {
+      ...defaultState.preferences,
+      ...state.value.preferences,
+    }
+  }
+
   // Auth
   const isAuthenticated = computed(() => !!state.value.token && state.value.tokenVerified)
 
