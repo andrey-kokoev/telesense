@@ -210,6 +210,21 @@
 
     <div class="landing__footer">
       <div class="landing__footer-actions">
+        <button class="landing__footer-admin" @click="openAdmin">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M12 3v18" />
+            <path d="M3 12h18" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+          <span>{{ t("landing_admin") }}</span>
+        </button>
         <LanguageToggle />
         <ThemeToggle />
       </div>
@@ -520,6 +535,29 @@ function openAdmin() {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+.landing__footer-admin {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.landing__footer-admin:hover {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+  border-color: var(--color-accent);
 }
 
 .landing__footer-actions :deep(.theme-toggle) {

@@ -41,7 +41,8 @@ vp run health         # Check health endpoint
 Copy `.dev.vars.example` to `.dev.vars` and set:
 
 - `CF_CALLS_SECRET` - From Cloudflare dashboard
-- `SERVICE_ENTITLEMENT_TOKEN` - Admin/master token for mint and rotation routes
+- `SERVICE_ENTITLEMENT_TOKEN` - Worker secret for minting and verifying service entitlement tokens
+- `HOST_ADMIN_BOOTSTRAP_TOKEN` - Browser/bootstrap token for unlocking host-admin operations
 
 Edit `wrangler.toml`:
 
@@ -87,7 +88,7 @@ Multiple tabs are not supported for the same browser participant. Taking over fr
 - `POST /api/rooms/:roomId/meter` - Charge budget for room usage (internal)
 - `GET /api/rooms/:roomId/meter` - Get metering status including grace period
 
-### Admin APIs (require `X-Service-Entitlement-Token` header)
+### Admin APIs (require `X-Host-Admin-Token` header)
 
 - `GET /admin/host/budgets` - Enumerate known budgets for host admin
 - `GET /admin/host/monthly-allowances` - Enumerate known monthly allowance policies for host admin
@@ -121,6 +122,12 @@ Multiple tabs are not supported for the same browser participant. Taking over fr
   - the current session is no longer valid in the Durable Object
 
 ## Service Entitlement System
+
+- `SERVICE_ENTITLEMENT_TOKEN`
+  - server-side secret used for minting and verifying service entitlement tokens
+- `HOST_ADMIN_BOOTSTRAP_TOKEN`
+  - separate host-admin bootstrap credential used by the browser to unlock admin routes
+- the two are intentionally separate so browser admin bootstrap does not share the worker's mint/verify secret
 
 ### Token Format
 

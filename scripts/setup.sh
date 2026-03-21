@@ -92,6 +92,7 @@ NODE
 write_dev_vars() {
   local calls_secret="$1"
   local entitlement_token="$2"
+  local host_admin_bootstrap_token="$3"
   if [[ "$DRY_RUN" == true ]]; then
     say "${BLUE}[dry-run] Would write $DEV_VARS${NC}"
     return
@@ -99,6 +100,7 @@ write_dev_vars() {
   cat > "$DEV_VARS" <<EOF
 CF_CALLS_SECRET=$calls_secret
 SERVICE_ENTITLEMENT_TOKEN=$entitlement_token
+HOST_ADMIN_BOOTSTRAP_TOKEN=$host_admin_bootstrap_token
 
 # Dev-only: disable service entitlement enforcement for local development.
 DO_NOT_ENFORCE_SERVICE_ENTITLEMENT=true
@@ -275,8 +277,17 @@ else
   say "${GREEN}✓ Generated new SERVICE_ENTITLEMENT_TOKEN${NC}"
 fi
 
+say "${BLUE}Configuring host admin bootstrap token...${NC}"
+HOST_ADMIN_BOOTSTRAP_TOKEN="$(read_existing_dev_var HOST_ADMIN_BOOTSTRAP_TOKEN)"
+if [[ -n "$HOST_ADMIN_BOOTSTRAP_TOKEN" && "$FORCE" == false ]]; then
+  say "${GREEN}✓ Reusing existing HOST_ADMIN_BOOTSTRAP_TOKEN${NC}"
+else
+  HOST_ADMIN_BOOTSTRAP_TOKEN="$(openssl rand -hex 32)"
+  say "${GREEN}✓ Generated new HOST_ADMIN_BOOTSTRAP_TOKEN${NC}"
+fi
+
 if [[ "$MODE" == "local-dev" ]]; then
-  write_dev_vars "$APP_SECRET" "$SERVICE_ENTITLEMENT_TOKEN"
+  write_dev_vars "$APP_SECRET" "$SERVICE_ENTITLEMENT_TOKEN" "$HOST_ADMIN_BOOTSTRAP_TOKEN"
   write_env_file "$SERVICE_ENTITLEMENT_TOKEN"
   say "${GREEN}✓ Updated $DEV_VARS and $ENV_FILE${NC}"
 else
@@ -334,15 +345,17 @@ say "${BLUE}Setting Cloudflare worker secrets...${NC}"
 if [[ "$DRY_RUN" == true ]]; then
   say "${BLUE}[dry-run] Would set CF_CALLS_SECRET via wrangler secret put${NC}"
   say "${BLUE}[dry-run] Would set SERVICE_ENTITLEMENT_TOKEN via wrangler secret put${NC}"
+  say "${BLUE}[dry-run] Would set HOST_ADMIN_BOOTSTRAP_TOKEN via wrangler secret put${NC}"
 else
   printf '%s' "$APP_SECRET" | vp exec wrangler secret put CF_CALLS_SECRET --config "$WRANGLER_CONFIG" >/dev/null
   printf '%s' "$SERVICE_ENTITLEMENT_TOKEN" | vp exec wrangler secret put SERVICE_ENTITLEMENT_TOKEN --config "$WRANGLER_CONFIG" >/dev/null
+  printf '%s' "$HOST_ADMIN_BOOTSTRAP_TOKEN" | vp exec wrangler secret put HOST_ADMIN_BOOTSTRAP_TOKEN --config "$WRANGLER_CONFIG" >/dev/null
 fi
-say "${GREEN}✓ Updated CF_CALLS_SECRET and SERVICE_ENTITLEMENT_TOKEN in Cloudflare${NC}"
+say "${GREEN}✓ Updated CF_CALLS_SECRET, SERVICE_ENTITLEMENT_TOKEN, and HOST_ADMIN_BOOTSTRAP_TOKEN in Cloudflare${NC}"
 say ""
 
 say "${BLUE}Writing setup summary...${NC}"
-write_setup_summary "$APP_ID" "$HOST_ADMIN_DB_ID" "$SERVICE_ENTITLEMENT_TOKEN"
+write_setup_summary "$APP_ID" "$HOST_ADMIN_DB_ID" "$HOST_ADMIN_BOOTSTRAP_TOKEN"
 say "${GREEN}✓ Setup summary available at $SETUP_SUMMARY_FILE${NC}"
 say ""
 
@@ -357,7 +370,7 @@ say "═════════════════════════
 say ""
 say "${GREEN}Configured:${NC}"
 say "  Calls App ID: $APP_ID"
-say "  Host Admin Token: $SERVICE_ENTITLEMENT_TOKEN"
+say "  Host Admin Token: $HOST_ADMIN_BOOTSTRAP_TOKEN"
 say "  HOST_ADMIN_DB: $HOST_ADMIN_DB_NAME ($HOST_ADMIN_DB_ID)"
 say ""
 say "${GREEN}Notes:${NC}"

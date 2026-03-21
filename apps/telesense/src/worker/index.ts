@@ -18,6 +18,7 @@ import { CallRoom } from "./call-room"
 import {
   GLOBAL_ENTITLEMENT_BUDGET_NAME,
   GLOBAL_MONTHLY_ALLOWANCE_NAME,
+  HOST_ADMIN_HEADER,
   SERVICE_ENTITLEMENT_HEADER,
 } from "./entitlement-constants"
 import { EntitlementBudget } from "./entitlement-budget"
@@ -36,6 +37,7 @@ type Env = {
   REALTIME_APP_ID: string
   CF_CALLS_SECRET: string
   SERVICE_ENTITLEMENT_TOKEN: string
+  HOST_ADMIN_BOOTSTRAP_TOKEN: string
   SERVICE_ENTITLEMENT_ALLOWANCE_BYTES: string
   GLOBAL_ENTITLEMENT_BUDGET_ID?: string
   GLOBAL_MONTHLY_ALLOWANCE_ID?: string
@@ -232,8 +234,8 @@ function hasValidAdminServiceEntitlementToken(request: Request, env: Env): boole
     return true
   }
 
-  const token = request.headers.get(SERVICE_ENTITLEMENT_HEADER)
-  return !!token && token === env.SERVICE_ENTITLEMENT_TOKEN
+  const token = request.headers.get(HOST_ADMIN_HEADER)
+  return !!token && token === env.HOST_ADMIN_BOOTSTRAP_TOKEN
 }
 
 function serviceEntitlementHeader(c: AppContext): string | undefined {
@@ -254,9 +256,9 @@ function requireAdminServiceEntitlement(c: AppContext): Response | null {
 
   return serviceEntitlementErrorResponse(
     c,
-    "Invalid service entitlement token",
-    serviceEntitlementHeader(c) ? "SERVICE_ENTITLEMENT_INVALID" : "SERVICE_ENTITLEMENT_MISSING",
-    serviceEntitlementHeader(c) ? 403 : 401,
+    "Invalid host admin token",
+    c.req.header(HOST_ADMIN_HEADER) ? "HOST_ADMIN_INVALID" : "HOST_ADMIN_REQUIRED",
+    c.req.header(HOST_ADMIN_HEADER) ? 403 : 401,
   )
 }
 

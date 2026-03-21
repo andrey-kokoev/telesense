@@ -2,8 +2,11 @@
 # Get this from: https://dash.cloudflare.com/?to=/:account/calls
 CF_CALLS_SECRET=your-calls-secret-here
 
-# Admin/master service entitlement token
-SERVICE_ENTITLEMENT_TOKEN=your-admin-service-entitlement-token-here
+# Service entitlement secret used by the worker to mint and verify service entitlement tokens
+SERVICE_ENTITLEMENT_TOKEN=your-service-entitlement-secret-here
+
+# Host admin bootstrap token used to unlock host-admin UI and admin routes
+HOST_ADMIN_BOOTSTRAP_TOKEN=your-host-admin-bootstrap-token-here
 
 # Debug mode - set to 'true' to enable verbose logging
 # DEBUG=true

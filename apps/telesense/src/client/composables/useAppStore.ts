@@ -141,7 +141,7 @@ export function useAppStore() {
 
   function getHostAdminHeaders(): Record<string, string> {
     return {
-      "X-Service-Entitlement-Token": state.value.hostAdminToken,
+      "X-Host-Admin-Token": state.value.hostAdminToken,
     }
   }
 

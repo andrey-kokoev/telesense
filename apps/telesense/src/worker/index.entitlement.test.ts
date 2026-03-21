@@ -196,6 +196,7 @@ type TestEnv = {
   REALTIME_APP_ID: string
   CF_CALLS_SECRET: string
   SERVICE_ENTITLEMENT_TOKEN: string
+  HOST_ADMIN_BOOTSTRAP_TOKEN: string
   SERVICE_ENTITLEMENT_ALLOWANCE_BYTES: string
   GLOBAL_ENTITLEMENT_BUDGET_ID?: string
   GLOBAL_MONTHLY_ALLOWANCE_ID?: string
@@ -226,6 +227,7 @@ describe("entitlement routes", () => {
       REALTIME_APP_ID: "app-id",
       CF_CALLS_SECRET: "cf-secret",
       SERVICE_ENTITLEMENT_TOKEN: "admin-secret",
+      HOST_ADMIN_BOOTSTRAP_TOKEN: "host-admin-secret",
       SERVICE_ENTITLEMENT_ALLOWANCE_BYTES: "1000",
       GLOBAL_ENTITLEMENT_BUDGET_ID: "global-budget",
       GLOBAL_MONTHLY_ALLOWANCE_ID: "global-monthly",
@@ -259,7 +261,7 @@ describe("entitlement routes", () => {
     )
   })
 
-  test("/admin/entitlement/mint requires the admin entitlement token", async () => {
+  test("/admin/entitlement/mint requires the host admin token", async () => {
     const response = await app.request(
       "http://example.test/admin/entitlement/mint",
       {
@@ -270,7 +272,7 @@ describe("entitlement routes", () => {
 
     expect(response.status).toBe(401)
     await expect(response.json()).resolves.toEqual(
-      expect.objectContaining({ code: "SERVICE_ENTITLEMENT_MISSING" }),
+      expect.objectContaining({ code: "HOST_ADMIN_REQUIRED" }),
     )
   })
 
@@ -279,7 +281,7 @@ describe("entitlement routes", () => {
       "http://example.test/admin/entitlement/mint",
       {
         method: "POST",
-        headers: { "X-Service-Entitlement-Token": "admin-secret" },
+        headers: { "X-Host-Admin-Token": "host-admin-secret" },
       },
       env,
     )
@@ -318,7 +320,7 @@ describe("entitlement routes", () => {
       "http://example.test/admin/entitlement/mint",
       {
         method: "POST",
-        headers: { "X-Service-Entitlement-Token": "admin-secret" },
+        headers: { "X-Host-Admin-Token": "host-admin-secret" },
       },
       env,
     )
@@ -343,7 +345,7 @@ describe("entitlement routes", () => {
       "http://example.test/admin/entitlement/mint",
       {
         method: "POST",
-        headers: { "X-Service-Entitlement-Token": "admin-secret" },
+        headers: { "X-Host-Admin-Token": "host-admin-secret" },
       },
       env,
     )
@@ -355,7 +357,7 @@ describe("entitlement routes", () => {
       "http://example.test/admin/entitlement/rotate",
       {
         method: "POST",
-        headers: { "X-Service-Entitlement-Token": "admin-secret" },
+        headers: { "X-Host-Admin-Token": "host-admin-secret" },
       },
       env,
     )
@@ -380,7 +382,7 @@ describe("entitlement routes", () => {
       "http://example.test/admin/entitlement/mint",
       {
         method: "POST",
-        headers: { "X-Service-Entitlement-Token": "admin-secret" },
+        headers: { "X-Host-Admin-Token": "host-admin-secret" },
       },
       env,
     )
@@ -586,7 +588,7 @@ describe("entitlement routes", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Service-Entitlement-Token": "admin-secret",
+          "X-Host-Admin-Token": "host-admin-secret",
         },
         body: JSON.stringify({
           active: true,
@@ -680,7 +682,7 @@ describe("entitlement routes", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Service-Entitlement-Token": "admin-secret",
+          "X-Host-Admin-Token": "host-admin-secret",
         },
         body: JSON.stringify({
           active: true,
@@ -706,7 +708,7 @@ describe("entitlement routes", () => {
       "http://example.test/admin/entitlement/mint",
       {
         method: "POST",
-        headers: { "X-Service-Entitlement-Token": "admin-secret" },
+        headers: { "X-Host-Admin-Token": "host-admin-secret" },
       },
       env,
     )
@@ -715,7 +717,7 @@ describe("entitlement routes", () => {
     const response = await app.request(
       "http://example.test/admin/host/budgets",
       {
-        headers: { "X-Service-Entitlement-Token": "admin-secret" },
+        headers: { "X-Host-Admin-Token": "host-admin-secret" },
       },
       env,
     )
@@ -741,7 +743,7 @@ describe("entitlement routes", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Service-Entitlement-Token": "admin-secret",
+          "X-Host-Admin-Token": "host-admin-secret",
         },
         body: JSON.stringify({
           active: true,
@@ -755,7 +757,7 @@ describe("entitlement routes", () => {
     const response = await app.request(
       "http://example.test/admin/host/monthly-allowances",
       {
-        headers: { "X-Service-Entitlement-Token": "admin-secret" },
+        headers: { "X-Host-Admin-Token": "host-admin-secret" },
       },
       env,
     )
@@ -780,7 +782,7 @@ describe("entitlement routes", () => {
       "http://example.test/admin/entitlement/mint",
       {
         method: "POST",
-        headers: { "X-Service-Entitlement-Token": "admin-secret" },
+        headers: { "X-Host-Admin-Token": "host-admin-secret" },
       },
       env,
     )
@@ -791,7 +793,7 @@ describe("entitlement routes", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Service-Entitlement-Token": "admin-secret",
+          "X-Host-Admin-Token": "host-admin-secret",
         },
         body: JSON.stringify({
           budgetKey: "global-budget",
