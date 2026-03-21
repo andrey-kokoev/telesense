@@ -337,13 +337,11 @@ export class CallRoom {
   }
 
   private async authorizeParticipant(request: Request): Promise<Response> {
-    const { browserInstanceId, participantId, participantSecret, confirmTakeover } =
-      (await request.json()) as {
-        browserInstanceId: string
-        participantId: string
-        participantSecret?: string
-        confirmTakeover?: boolean
-      }
+    const { participantId, participantSecret, confirmTakeover } = (await request.json()) as {
+      participantId: string
+      participantSecret?: string
+      confirmTakeover?: boolean
+    }
 
     const resolvedParticipantId = participantId
     const existingParticipant = this.participants.get(resolvedParticipantId)
@@ -386,7 +384,6 @@ export class CallRoom {
 
     return new Response(
       JSON.stringify({
-        browserInstanceId,
         participantId: resolvedParticipantId,
         participantSecret: resolvedParticipantSecret,
       }),

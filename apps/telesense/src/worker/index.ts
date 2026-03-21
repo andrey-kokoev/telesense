@@ -8,7 +8,7 @@
 //
 // See: docs/20260318-001-realtime-wire-contract.md
 
-import { Hono } from "hono"
+import { Context, Hono } from "hono"
 import { logger } from "hono/logger"
 import { CallRoom } from "./call-room"
 
@@ -148,6 +148,8 @@ interface OkResponse {
   ok: true
 }
 
+type AppContext = Context<{ Bindings: Env }>
+
 function isAuthDisabled(env: Env): boolean {
   return env.DO_NOT_ENFORCE_USER_TOKEN === "true"
 }
@@ -240,6 +242,254 @@ function requireNonEmptyArray<T>(value: unknown, field: string): T[] {
     throw new Error(`Missing or empty required array: ${field}`)
   }
   return value as T[]
+}
+
+async function handleGetRoomStatus(c: AppContext) {
+  const env = c.env
+  const roomId = normalizeRoomId(c.req.param("roomId") || "")
+
+  try {
+    requireNonEmptyString(roomId, "roomId")
+  } catch (e) {
+    return c.json(
+      {
+        error: (e as Error).message,
+        code: "BAD_REQUEST",
+      } as ErrorResponse,
+      400,
+    )
+  }
+
+  const roomStatus = await getRoomStatus(env, roomId)
+
+  return c.json({
+    exists: roomStatus.exists,
+    sessionCount: roomStatus.sessionCount,
+  })
+}
+
+async function handleBatchRoomStatus(c: AppContext) {
+  let body: { roomIds?: string[] }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json(
+      {
+        error: "Invalid request body",
+        code: "BAD_REQUEST",
+      } as ErrorResponse,
+      400,
+    )
+  }
+
+  const roomIds = Array.isArray(body.roomIds)
+    ? body.roomIds
+        .map((roomId) => normalizeRoomId(roomId))
+        .filter(Boolean)
+        .slice(0, 12)
+    : []
+
+  if (roomIds.length === 0) {
+    return c.json(
+      {
+        error: "roomIds is required",
+        code: "BAD_REQUEST",
+      } as ErrorResponse,
+      400,
+    )
+  }
+
+  const ip = c.req.header("CF-Connecting-IP") || "unknown"
+  const rateLimit = checkStatusRateLimit(ip, roomIds.length)
+
+  c.header("X-RateLimit-Limit", String(STATUS_RATE_LIMIT_MAX))
+  c.header("X-RateLimit-Remaining", String(rateLimit.remaining))
+
+  if (!rateLimit.allowed) {
+    return c.json(
+      {
+        error: "Rate limit exceeded",
+        code: "RATE_LIMITED",
+        message: "Too many room status checks. Please wait before retrying.",
+      },
+      429,
+    )
+  }
+
+  const rooms: Record<string, { exists: boolean }> = {}
+  for (const roomId of roomIds) {
+    const roomStatus = await getRoomStatus(c.env, roomId)
+    rooms[roomId] = { exists: roomStatus.exists }
+  }
+
+  return c.json({ rooms })
+}
+
+async function handleCreateSession(c: AppContext) {
+  const env = c.env
+  const roomId = normalizeRoomId(c.req.param("roomId") || "")
+  const debug = isDebugEnabled(env)
+
+  try {
+    requireNonEmptyString(roomId, "roomId")
+  } catch (e) {
+    return c.json(
+      {
+        error: (e as Error).message,
+        code: "BAD_REQUEST",
+      } as ErrorResponse,
+      400,
+    )
+  }
+
+  if (debug) {
+    console.log(`[sessions/new] Creating session for room: ${roomId}`)
+  }
+
+  let body: CreateSessionRequest
+  try {
+    body = await c.req.json()
+    requireNonEmptyString(body.browserInstanceId, "browserInstanceId")
+  } catch (e) {
+    return c.json(
+      {
+        error: (e as Error).message,
+        code: "BAD_REQUEST",
+      } as ErrorResponse,
+      400,
+    )
+  }
+
+  const roomStatus = await getRoomStatus(env, roomId)
+  const callRoom = getCallRoom(env, roomId)
+
+  if (!roomStatus.exists && !hasValidUserToken(c.req.raw, env)) {
+    return c.json(
+      {
+        error: "Room not found",
+        code: c.req.header("X-User-Token") ? "ROOM_NOT_FOUND" : "AUTH_REQUIRED",
+      } as ErrorResponse,
+      c.req.header("X-User-Token") ? 404 : 401,
+    )
+  }
+
+  const authorizeParticipantRes = await callRoom.fetch(
+    new Request("http://do.internal/?action=authorizeParticipant", {
+      method: "POST",
+      body: JSON.stringify({
+        participantId: await deriveParticipantId(roomId, body.browserInstanceId),
+        participantSecret: body.participantSecret,
+        confirmTakeover: body.confirmTakeover,
+      }),
+    }),
+  )
+
+  if (!authorizeParticipantRes.ok) {
+    if (authorizeParticipantRes.status === 409) {
+      return c.json(
+        {
+          error: "Participant takeover confirmation required",
+          code: "PARTICIPANT_TAKEOVER_REQUIRED",
+        } as ErrorResponse,
+        409,
+      )
+    }
+    if (authorizeParticipantRes.status === 403) {
+      return c.json(
+        {
+          error: "Participant authentication failed",
+          code: "PARTICIPANT_AUTH_FAILED",
+        } as ErrorResponse,
+        403,
+      )
+    }
+    return c.json(
+      { error: "Failed to authorize participant", code: "INTERNAL_ERROR" } as ErrorResponse,
+      500,
+    )
+  }
+
+  const authorizedParticipant = (await authorizeParticipantRes.json()) as {
+    participantId: string
+    participantSecret: string
+  }
+
+  const res = await fetch(`${REALTIME_API}/${env.REALTIME_APP_ID}/sessions/new`, {
+    method: "POST",
+    headers: apiHeaders(env),
+  })
+
+  let cfResponse: { sessionId?: string }
+  try {
+    const { data } = await parseCloudflareResponse(res, "sessions/new", debug)
+    cfResponse = data as { sessionId?: string }
+  } catch (e) {
+    return c.json(
+      {
+        error: (e as Error).message,
+        code: "UPSTREAM_ERROR",
+      } as ErrorResponse,
+      502,
+    )
+  }
+
+  const cfSessionId = cfResponse?.sessionId
+  if (!cfSessionId || typeof cfSessionId !== "string") {
+    return c.json(
+      {
+        error: "Unexpected Realtime response shape: missing sessionId",
+        code: "INVALID_RESPONSE",
+      } as ErrorResponse,
+      502,
+    )
+  }
+
+  const internalId = crypto.randomUUID()
+  const createSessionRes = await callRoom.fetch(
+    new Request("http://do.internal/?action=createSession", {
+      method: "POST",
+      body: JSON.stringify({
+        internalId,
+        participantId: authorizedParticipant.participantId,
+        participantSecret: authorizedParticipant.participantSecret,
+        cfSessionId,
+      }),
+    }),
+  )
+
+  if (!createSessionRes.ok) {
+    if (createSessionRes.status === 403) {
+      return c.json(
+        {
+          error: "Participant authentication failed",
+          code: "PARTICIPANT_AUTH_FAILED",
+        } as ErrorResponse,
+        403,
+      )
+    }
+    return c.json(
+      { error: "Failed to register session", code: "INTERNAL_ERROR" } as ErrorResponse,
+      500,
+    )
+  }
+
+  const createSessionData = (await createSessionRes.json()) as {
+    participantId: string
+    participantSecret: string
+  }
+
+  if (debug) {
+    console.log(
+      `[sessions/new] Created: internal=${internalId.slice(0, 8)}, cf=${cfSessionId.slice(0, 8)}`,
+    )
+  }
+
+  return c.json({
+    sessionId: internalId,
+    cloudflareSessionId: cfSessionId,
+    participantId: createSessionData.participantId,
+    participantSecret: createSessionData.participantSecret,
+  } as CreateSessionResponse)
 }
 
 // Hono app
@@ -363,262 +613,11 @@ app.get("/health", (c) => {
 })
 
 // 1. SESSION — VERIFIED
-app.get("/api/rooms/:roomId/status", async (c) => {
-  const env = c.env
-  const roomId = normalizeRoomId(c.req.param("roomId"))
+app.get("/api/rooms/:roomId/status", handleGetRoomStatus)
 
-  try {
-    requireNonEmptyString(roomId, "roomId")
-  } catch (e) {
-    return c.json(
-      {
-        error: (e as Error).message,
-        code: "BAD_REQUEST",
-      } as ErrorResponse,
-      400,
-    )
-  }
+app.post("/api/rooms/status", handleBatchRoomStatus)
 
-  const roomStatus = await getRoomStatus(env, roomId)
-
-  return c.json({
-    exists: roomStatus.exists,
-    sessionCount: roomStatus.sessionCount,
-  })
-})
-
-app.post("/api/rooms/status", async (c) => {
-  let body: { roomIds?: string[] }
-  try {
-    body = await c.req.json()
-  } catch {
-    return c.json(
-      {
-        error: "Invalid request body",
-        code: "BAD_REQUEST",
-      } as ErrorResponse,
-      400,
-    )
-  }
-
-  const roomIds = Array.isArray(body.roomIds)
-    ? body.roomIds
-        .map((roomId) => normalizeRoomId(roomId))
-        .filter(Boolean)
-        .slice(0, 12)
-    : []
-
-  if (roomIds.length === 0) {
-    return c.json(
-      {
-        error: "roomIds is required",
-        code: "BAD_REQUEST",
-      } as ErrorResponse,
-      400,
-    )
-  }
-
-  const ip = c.req.header("CF-Connecting-IP") || "unknown"
-  const rateLimit = checkStatusRateLimit(ip, roomIds.length)
-
-  c.header("X-RateLimit-Limit", String(STATUS_RATE_LIMIT_MAX))
-  c.header("X-RateLimit-Remaining", String(rateLimit.remaining))
-
-  if (!rateLimit.allowed) {
-    return c.json(
-      {
-        error: "Rate limit exceeded",
-        code: "RATE_LIMITED",
-        message: "Too many room status checks. Please wait before retrying.",
-      },
-      429,
-    )
-  }
-
-  const rooms: Record<string, { exists: boolean }> = {}
-
-  for (const roomId of roomIds) {
-    const roomStatus = await getRoomStatus(c.env, roomId)
-    rooms[roomId] = { exists: roomStatus.exists }
-  }
-
-  return c.json({ rooms })
-})
-
-app.post("/api/rooms/:roomId/session", async (c) => {
-  const env = c.env
-  const roomId = normalizeRoomId(c.req.param("roomId"))
-  const debug = isDebugEnabled(env)
-
-  try {
-    requireNonEmptyString(roomId, "roomId")
-  } catch (e) {
-    return c.json(
-      {
-        error: (e as Error).message,
-        code: "BAD_REQUEST",
-      } as ErrorResponse,
-      400,
-    )
-  }
-
-  if (debug) {
-    console.log(`[sessions/new] Creating session for room: ${roomId}`)
-  }
-
-  let body: CreateSessionRequest
-  try {
-    body = await c.req.json()
-    requireNonEmptyString(body.browserInstanceId, "browserInstanceId")
-  } catch (e) {
-    return c.json(
-      {
-        error: (e as Error).message,
-        code: "BAD_REQUEST",
-      } as ErrorResponse,
-      400,
-    )
-  }
-
-  const roomStatus = await getRoomStatus(env, roomId)
-  const callRoom = getCallRoom(env, roomId)
-
-  if (!roomStatus.exists) {
-    if (!hasValidUserToken(c.req.raw, env)) {
-      return c.json(
-        {
-          error: "Room not found",
-          code: c.req.header("X-User-Token") ? "ROOM_NOT_FOUND" : "AUTH_REQUIRED",
-        } as ErrorResponse,
-        c.req.header("X-User-Token") ? 404 : 401,
-      )
-    }
-  }
-
-  const authorizeParticipantRes = await callRoom.fetch(
-    new Request("http://do.internal/?action=authorizeParticipant", {
-      method: "POST",
-      body: JSON.stringify({
-        participantId: await deriveParticipantId(roomId, body.browserInstanceId),
-        browserInstanceId: body.browserInstanceId,
-        participantSecret: body.participantSecret,
-        confirmTakeover: body.confirmTakeover,
-      }),
-    }),
-  )
-
-  if (!authorizeParticipantRes.ok) {
-    if (authorizeParticipantRes.status === 409) {
-      return c.json(
-        {
-          error: "Participant takeover confirmation required",
-          code: "PARTICIPANT_TAKEOVER_REQUIRED",
-        } as ErrorResponse,
-        409,
-      )
-    }
-    if (authorizeParticipantRes.status === 403) {
-      return c.json(
-        {
-          error: "Participant authentication failed",
-          code: "PARTICIPANT_AUTH_FAILED",
-        } as ErrorResponse,
-        403,
-      )
-    }
-    return c.json(
-      { error: "Failed to authorize participant", code: "INTERNAL_ERROR" } as ErrorResponse,
-      500,
-    )
-  }
-
-  const authorizedParticipant = (await authorizeParticipantRes.json()) as {
-    participantId: string
-    participantSecret: string
-  }
-
-  // VERIFIED: Empty body, response is { sessionId: "..." }
-  const res = await fetch(`${REALTIME_API}/${env.REALTIME_APP_ID}/sessions/new`, {
-    method: "POST",
-    headers: apiHeaders(env),
-    // No body - truly empty POST
-  })
-
-  let cfResponse: { sessionId?: string }
-  try {
-    const { data } = await parseCloudflareResponse(res, "sessions/new", debug)
-    cfResponse = data as { sessionId?: string }
-  } catch (e) {
-    return c.json(
-      {
-        error: (e as Error).message,
-        code: "UPSTREAM_ERROR",
-      } as ErrorResponse,
-      502,
-    )
-  }
-
-  // VERIFIED: Response path is sessionId (not result.id)
-  const cfSessionId = cfResponse?.sessionId
-  if (!cfSessionId || typeof cfSessionId !== "string") {
-    return c.json(
-      {
-        error: "Unexpected Realtime response shape: missing sessionId",
-        code: "INVALID_RESPONSE",
-      } as ErrorResponse,
-      502,
-    )
-  }
-
-  const internalId = crypto.randomUUID()
-
-  // Register with Durable Object for cross-device coordination
-  const createSessionRes = await callRoom.fetch(
-    new Request("http://do.internal/?action=createSession", {
-      method: "POST",
-      body: JSON.stringify({
-        internalId,
-        participantId: authorizedParticipant.participantId,
-        participantSecret: authorizedParticipant.participantSecret,
-        cfSessionId,
-      }),
-    }),
-  )
-
-  if (!createSessionRes.ok) {
-    if (createSessionRes.status === 403) {
-      return c.json(
-        {
-          error: "Participant authentication failed",
-          code: "PARTICIPANT_AUTH_FAILED",
-        } as ErrorResponse,
-        403,
-      )
-    }
-    return c.json(
-      { error: "Failed to register session", code: "INTERNAL_ERROR" } as ErrorResponse,
-      500,
-    )
-  }
-
-  const createSessionData = (await createSessionRes.json()) as {
-    participantId: string
-    participantSecret: string
-  }
-
-  if (debug) {
-    console.log(
-      `[sessions/new] Created: internal=${internalId.slice(0, 8)}, cf=${cfSessionId.slice(0, 8)}`,
-    )
-  }
-
-  return c.json({
-    sessionId: internalId,
-    cloudflareSessionId: cfSessionId,
-    participantId: createSessionData.participantId,
-    participantSecret: createSessionData.participantSecret,
-  } as CreateSessionResponse)
-})
+app.post("/api/rooms/:roomId/session", handleCreateSession)
 
 // 2. PUBLISH (Push) — VERIFIED
 app.post("/api/rooms/:roomId/publish-offer", async (c) => {

@@ -3,24 +3,24 @@
     <button
       class="language-toggle"
       :title="`Language: ${locale.toUpperCase()}`"
-      @click="isOpen = true"
+      @click="openLanguageSelector"
     >
       <span class="language-toggle__label">{{ locale.toUpperCase() }}</span>
     </button>
 
-    <div v-if="isOpen" class="language-toggle__backdrop" @click="isOpen = false">
+    <div
+      v-if="selectorState !== 'closed'"
+      class="language-toggle__backdrop"
+      @click="selectorState === 'open' && closeLanguageSelector()"
+    >
       <div class="language-toggle__modal" role="dialog" aria-label="Select language" @click.stop>
         <button
           v-for="option in localeOptions"
           :key="option.code"
           class="language-toggle__option"
           :class="{ 'language-toggle__option--active': option.code === locale }"
-          @click="
-            () => {
-              setLocale(option.code)
-              isOpen = false
-            }
-          "
+          :disabled="selectorState !== 'open'"
+          @click="selectLanguage(option.code)"
         >
           <span class="language-toggle__option-code">{{ option.code.toUpperCase() }}</span>
           <span>{{ option.label }}</span>
@@ -33,10 +33,27 @@
 <script setup lang="ts">
 import { ref } from "vue"
 import { useI18n } from "../composables/useI18n"
-import { localeOptions } from "../i18n/messages"
+import { localeOptions, type Locale } from "../i18n/messages"
 
 const { locale, setLocale } = useI18n()
-const isOpen = ref(false)
+type LanguageSelectorState = "closed" | "open" | "selecting"
+
+const selectorState = ref<LanguageSelectorState>("closed")
+
+function openLanguageSelector() {
+  selectorState.value = "open"
+}
+
+function closeLanguageSelector() {
+  selectorState.value = "closed"
+}
+
+function selectLanguage(nextLocale: Locale) {
+  if (selectorState.value !== "open") return
+  selectorState.value = "selecting"
+  setLocale(nextLocale)
+  selectorState.value = "closed"
+}
 </script>
 
 <style scoped>

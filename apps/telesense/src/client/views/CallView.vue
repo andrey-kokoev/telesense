@@ -23,6 +23,7 @@ type CallDisplayState =
   | "remote_left"
 
 type TakeoverPromptState = "closed" | "prompting" | "resolving"
+type LogsPanelState = "closed" | "open"
 
 const props = defineProps<{ roomId: string }>()
 const { show: showToast } = useToast()
@@ -35,7 +36,7 @@ const swipeBack = useSwipeBack(() => {
 const remoteZoom = usePinchZoom()
 
 const isMobile = ref(false)
-const showLogs = ref(false)
+const logsPanelState = ref<LogsPanelState>("closed")
 const logs = ref<LogEntry[]>([])
 const takeoverPromptState = ref<TakeoverPromptState>("closed")
 const takeoverPromptMessage = ref("")
@@ -45,6 +46,7 @@ let viewportQuery: MediaQueryList | null = null
 
 const isAuthenticated = store.isAuthenticated
 const useMobileLayout = computed(() => isMobile.value)
+const showLogs = computed(() => logsPanelState.value === "open")
 const desktopCallLayout = computed(() => store.preferences.value.desktopCallLayout)
 const mobileCallLayout = computed(() => store.preferences.value.mobileCallLayout)
 
@@ -54,6 +56,10 @@ function setDesktopCallLayout(layout: "side-by-side" | "focus-remote") {
 
 function setMobileCallLayout(layout: "picture-in-picture" | "remote-only") {
   store.setPreference("mobileCallLayout", layout)
+}
+
+function setLogsPanelOpen(nextOpen: boolean) {
+  logsPanelState.value = nextOpen ? "open" : "closed"
 }
 
 function log(msg: string) {
@@ -219,7 +225,7 @@ onBeforeUnmount(() => {
     :remote-zoom-style="remoteZoom.transformStyle.value"
     :set-local-video-el="setLocalVideoEl"
     :set-remote-video-el="setRemoteVideoEl"
-    @update:show-logs="showLogs = $event"
+    @update:show-logs="setLogsPanelOpen($event)"
     @set-mobile-layout="setMobileCallLayout"
     @toggle-audio="toggleAudio"
     @toggle-video="toggleVideo"
@@ -251,7 +257,7 @@ onBeforeUnmount(() => {
     :remote-zoom-style="remoteZoom.transformStyle.value"
     :set-local-video-el="setLocalVideoEl"
     :set-remote-video-el="setRemoteVideoEl"
-    @update:show-logs="showLogs = $event"
+    @update:show-logs="setLogsPanelOpen($event)"
     @set-desktop-layout="setDesktopCallLayout"
     @toggle-audio="toggleAudio"
     @toggle-video="toggleVideo"
