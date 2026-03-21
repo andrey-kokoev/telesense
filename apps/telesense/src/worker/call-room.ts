@@ -1,11 +1,26 @@
 // Durable Object for managing call state across worker instances
 // Enables cross-device session discovery and coordination
 
+// Metering constants
+const METERING_TICK_MS = 60 * 1000 // 60 seconds between metering ticks
+const GRACE_PERIOD_MS = 5 * 60 * 1000 // 5 minutes grace period
+
+// Estimated bitrate per track type (bytes per second)
+const TRACK_BITRATE_ESTIMATES = {
+  audio: 32_000 / 8, // 32 kbps in bytes/sec
+  video: 1_500_000 / 8, // 1.5 Mbps in bytes/sec (high quality)
+  screenshare: 3_000_000 / 8, // 3 Mbps in bytes/sec
+}
+
 export interface Session {
   internalId: string
   participantId: string
   cfSessionId: string
-  publishedTracks: Array<{ trackName: string; mid: string }>
+  publishedTracks: Array<{
+    trackName: string
+    mid: string
+    trackType?: "audio" | "video" | "screenshare"
+  }>
   joinedAt: number
   lastSeenAt: number
 }
@@ -50,6 +65,13 @@ export class CallRoom {
   private budgetId: string | null = null
   private initialized: boolean = false
 
+  // Metering state
+  private meteringTimer: number | null = null
+  private lastMeteredAt: number | null = null
+  private graceEndsAt: number | null = null
+  private isInGrace: boolean = false
+  private shouldTerminateAt: number | null = null
+
   constructor(state: DurableObjectState) {
     this.state = state
   }
@@ -60,6 +82,11 @@ export class CallRoom {
     const storedSessions = await this.state.storage.get<[string, Session][]>("sessions")
     const storedParticipants = await this.state.storage.get<[string, Participant][]>("participants")
     const storedBudgetId = await this.state.storage.get<string>("budgetId")
+    const storedMetering = await this.state.storage.get<{
+      lastMeteredAt: number | null
+      graceEndsAt: number | null
+      isInGrace: boolean
+    }>("metering")
 
     if (storedSessions && Array.isArray(storedSessions)) {
       this.sessions = new Map(storedSessions)
@@ -89,6 +116,17 @@ export class CallRoom {
       console.log(`[CallRoom] Loaded budgetId: ${storedBudgetId.slice(0, 8)}`)
     }
 
+    if (storedMetering) {
+      this.lastMeteredAt = storedMetering.lastMeteredAt
+      this.graceEndsAt = storedMetering.graceEndsAt
+      this.isInGrace = storedMetering.isInGrace
+      console.log(`[CallRoom] Loaded metering state, inGrace: ${this.isInGrace}`)
+    }
+
+    // Resume metering if budget is bound
+    if (this.budgetId) {
+      this.startMetering()
+    }
     this.initialized = true
   }
 
@@ -131,6 +169,10 @@ export class CallRoom {
           return await this.setBudgetId(request)
         case "getBudgetId":
           return this.getBudgetId()
+        case "getMeteringStatus":
+          return this.handleGetMeteringStatus()
+        case "handleChargeResult":
+          return await this.handleChargeResultAction(request)
         default:
           console.error(`[CallRoom] Unknown action: ${action}`)
           return new Response(JSON.stringify({ error: `Unknown action: ${action}` }), {
@@ -361,6 +403,21 @@ export class CallRoom {
   }
 
   private async authorizeParticipant(request: Request): Promise<Response> {
+    // Check if in grace period - reject new joins
+    if (this.shouldRejectNewJoins()) {
+      return new Response(
+        JSON.stringify({
+          error: "Service budget exhausted - new joins temporarily disabled",
+          code: "SERVICE_BUDGET_EXHAUSTED",
+          graceEndsAt: this.graceEndsAt,
+        }),
+        {
+          status: 402,
+          headers: { "Content-Type": "application/json" },
+        },
+      )
+    }
+
     const { participantId, participantSecret, confirmTakeover } = (await request.json()) as {
       participantId: string
       participantSecret?: string
@@ -735,6 +792,12 @@ export class CallRoom {
     if (this.budgetId) {
       await this.state.storage.put("budgetId", this.budgetId)
     }
+    // Persist metering state
+    await this.state.storage.put("metering", {
+      lastMeteredAt: this.lastMeteredAt,
+      graceEndsAt: this.graceEndsAt,
+      isInGrace: this.isInGrace,
+    })
   }
 
   private async setBudgetId(request: Request): Promise<Response> {
@@ -744,10 +807,172 @@ export class CallRoom {
     }
     this.budgetId = body.budgetId
     await this.state.storage.put("budgetId", body.budgetId)
+    // Start metering when budget is bound
+    this.startMetering()
     return new Response(JSON.stringify({ ok: true, budgetId: body.budgetId }), { status: 200 })
   }
 
   private getBudgetId(): Response {
     return new Response(JSON.stringify({ budgetId: this.budgetId }), { status: 200 })
+  }
+
+  // ==================== Metering ====================
+
+  private startMetering() {
+    if (this.meteringTimer) return // Already running
+
+    console.log("[CallRoom] Starting metering timer")
+    void this.performMeteringTick() // Immediate first tick
+    this.meteringTimer = setInterval(() => {
+      void this.performMeteringTick()
+    }, METERING_TICK_MS) as unknown as number
+  }
+
+  private stopMetering() {
+    if (this.meteringTimer) {
+      clearInterval(this.meteringTimer)
+      this.meteringTimer = null
+      console.log("[CallRoom] Stopped metering timer")
+    }
+  }
+
+  private async performMeteringTick() {
+    if (!this.budgetId) return
+
+    const now = Date.now()
+    const elapsedSeconds = this.lastMeteredAt ? (now - this.lastMeteredAt) / 1000 : 60
+    this.lastMeteredAt = now
+
+    // Check if grace period has expired
+    if (this.isInGrace && this.graceEndsAt && now > this.graceEndsAt) {
+      console.log("[CallRoom] Grace period expired, terminating room")
+      await this.terminateRoom()
+      return
+    }
+
+    // Estimate usage
+    const estimatedBytes = this.estimateUsage(elapsedSeconds)
+    if (estimatedBytes <= 0) {
+      console.log("[CallRoom] No active media, skipping charge")
+      return
+    }
+
+    console.log(`[CallRoom] Metering tick: ${estimatedBytes} bytes estimated`)
+
+    // Charge via budget DO (this will be called from worker)
+    // The actual charging happens through an action that the worker calls
+  }
+
+  /**
+   * Estimate usage based on published tracks and subscriber count
+   */
+  private estimateUsage(elapsedSeconds: number): number {
+    let totalBytes = 0
+
+    // Count active sessions (subscribers)
+    const activeSessions = Array.from(this.sessions.values()).filter(
+      (s) => Date.now() - s.lastSeenAt < CallRoom.SESSION_TTL_MS,
+    )
+    const subscriberCount = activeSessions.length
+
+    if (subscriberCount === 0) return 0
+
+    // For each session, estimate egress based on published tracks
+    for (const session of activeSessions) {
+      for (const track of session.publishedTracks) {
+        const bitrate = TRACK_BITRATE_ESTIMATES[track.trackType || "video"]
+        // Egress = bitrate × elapsed time × (subscribers - 1 for the publisher)
+        // Each subscriber receives the track except the publisher
+        const egressSubscribers = Math.max(0, subscriberCount - 1)
+        totalBytes += bitrate * elapsedSeconds * egressSubscribers
+      }
+    }
+
+    return Math.round(totalBytes)
+  }
+
+  /**
+   * Get current metering and grace status
+   */
+  getMeteringStatus(): {
+    budgetId: string | null
+    lastMeteredAt: number | null
+    isInGrace: boolean
+    graceEndsAt: number | null
+    graceRemainingMs: number
+    shouldTerminate: boolean
+  } {
+    const now = Date.now()
+    const shouldTerminate = this.shouldTerminateAt ? now > this.shouldTerminateAt : false
+
+    return {
+      budgetId: this.budgetId,
+      lastMeteredAt: this.lastMeteredAt,
+      isInGrace: this.isInGrace,
+      graceEndsAt: this.graceEndsAt,
+      graceRemainingMs:
+        this.isInGrace && this.graceEndsAt ? Math.max(0, this.graceEndsAt - now) : 0,
+      shouldTerminate,
+    }
+  }
+
+  /**
+   * Enter grace period (called when budget is exhausted)
+   */
+  enterGrace(): void {
+    if (this.isInGrace) return
+
+    this.isInGrace = true
+    this.graceEndsAt = Date.now() + GRACE_PERIOD_MS
+    console.log(
+      `[CallRoom] Entering grace period until ${new Date(this.graceEndsAt).toISOString()}`,
+    )
+  }
+
+  /**
+   * Check if new joins should be rejected (during grace)
+   */
+  shouldRejectNewJoins(): boolean {
+    return this.isInGrace
+  }
+
+  /**
+   * Handle budget charge response
+   */
+  async handleChargeResult(result: {
+    ok: boolean
+    inGrace?: boolean
+    graceEndsAt?: number | null
+  }): Promise<void> {
+    if (!result.ok) {
+      // Budget exhausted - enter grace
+      this.enterGrace()
+    } else if (result.inGrace) {
+      // Already in grace from budget side
+      this.isInGrace = true
+      this.graceEndsAt = result.graceEndsAt || null
+    }
+    await this.persist()
+  }
+
+  /**
+   * HTTP action handler for charge results
+   */
+  private async handleChargeResultAction(request: Request): Promise<Response> {
+    const result = (await request.json()) as {
+      ok: boolean
+      inGrace?: boolean
+      graceEndsAt?: number
+    }
+    await this.handleChargeResult(result)
+    return new Response(JSON.stringify({ ok: true }), { status: 200 })
+  }
+
+  /**
+   * HTTP action handler for metering status
+   */
+  private handleGetMeteringStatus(): Response {
+    const status = this.getMeteringStatus()
+    return new Response(JSON.stringify(status), { status: 200 })
   }
 }

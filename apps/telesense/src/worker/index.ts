@@ -1275,7 +1275,104 @@ app.post("/api/rooms/:roomId/terminate", async (c) => {
   return c.json({ ok: true } as TerminateRoomResponse)
 })
 
-// 9. LEAVE
+// 9. METERING - Charge budget for room usage
+app.post("/api/rooms/:roomId/meter", async (c) => {
+  const env = c.env
+  const roomId = normalizeRoomId(c.req.param("roomId"))
+
+  try {
+    requireNonEmptyString(roomId, "roomId")
+  } catch (e) {
+    return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
+  }
+
+  let body: { bytes: number; budgetId: string }
+  try {
+    body = await c.req.json()
+    if (typeof body.bytes !== "number" || body.bytes <= 0) {
+      throw new Error("Invalid bytes value")
+    }
+    if (!body.budgetId) {
+      throw new Error("budgetId required")
+    }
+  } catch (e) {
+    return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
+  }
+
+  // Charge the budget
+  const budget = getEntitlementBudget(env)
+  const chargeRes = await budget.fetch(
+    new Request("http://do.internal/?action=charge", {
+      method: "POST",
+      body: JSON.stringify({ bytes: body.bytes }),
+    }),
+  )
+
+  const chargeResult = (await chargeRes.json()) as {
+    ok: boolean
+    remainingBytes?: number
+    inGrace?: boolean
+    graceEndsAt?: number
+  }
+
+  // Update room with charge result
+  const callRoom = getCallRoom(env, roomId)
+  await callRoom.fetch(
+    new Request("http://do.internal/?action=handleChargeResult", {
+      method: "POST",
+      body: JSON.stringify(chargeResult),
+    }),
+  )
+
+  if (!chargeRes.ok && chargeRes.status === 402) {
+    return c.json(
+      {
+        error: "Service budget exhausted",
+        code: "SERVICE_BUDGET_EXHAUSTED",
+        graceEndsAt: chargeResult.graceEndsAt,
+      },
+      402,
+    )
+  }
+
+  return c.json({
+    ok: true,
+    remainingBytes: chargeResult.remainingBytes,
+    inGrace: chargeResult.inGrace,
+    graceEndsAt: chargeResult.graceEndsAt,
+  })
+})
+
+// 10. GET METERING STATUS
+app.get("/api/rooms/:roomId/meter", async (c) => {
+  const env = c.env
+  const roomId = normalizeRoomId(c.req.param("roomId"))
+
+  try {
+    requireNonEmptyString(roomId, "roomId")
+  } catch (e) {
+    return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
+  }
+
+  // Get status from budget
+  const budget = getEntitlementBudget(env)
+  const statusRes = await budget.fetch(new Request("http://do.internal/?action=getChargeStatus"))
+  const status = (await statusRes.json()) as {
+    remainingBytes: number
+    graceEndsAt: number | null
+    inGrace: boolean
+    graceRemainingMs: number
+  }
+
+  return c.json({
+    remainingBytes: status.remainingBytes,
+    inGrace: status.inGrace,
+    graceEndsAt: status.graceEndsAt,
+    graceRemainingMinutes: Math.ceil(status.graceRemainingMs / 60000),
+  })
+})
+
+// 11. LEAVE
 app.post("/api/rooms/:roomId/leave", async (c) => {
   const env = c.env
   const roomId = normalizeRoomId(c.req.param("roomId"))
