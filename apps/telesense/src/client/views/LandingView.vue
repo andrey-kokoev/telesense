@@ -67,7 +67,7 @@
           <h2 class="landing__section-title">{{ t("landing_create_rooms") }}</h2>
           <p class="landing__hint">{{ t("landing_enter_token_hint") }}</p>
 
-          <form class="landing__form" @submit.prevent="saveToken">
+          <form class="landing__form" @submit.prevent="saveServiceEntitlementToken">
             <input
               v-model="tokenInput"
               type="password"
@@ -155,7 +155,7 @@
         </svg>
         <span>{{ t("landing_change_token_action") }}</span>
       </button>
-      <button class="landing__token-action" @click="clearToken">
+      <button class="landing__token-action" @click="clearServiceEntitlementToken">
         <svg
           width="14"
           height="14"
@@ -384,7 +384,7 @@ function setRecentScrollRef(el: Element | null) {
   recentScrollEl.value = el instanceof HTMLElement ? el : null
 }
 
-async function verifyToken(candidateToken: string) {
+async function verifyServiceEntitlementToken(candidateToken: string) {
   const res = await fetch("/api/auth/verify", {
     headers: {
       "X-Service-Entitlement-Token": candidateToken,
@@ -394,11 +394,11 @@ async function verifyToken(candidateToken: string) {
   return res.ok
 }
 
-async function saveToken() {
+async function saveServiceEntitlementToken() {
   const token = tokenInput.value.trim()
   if (!token) return
 
-  const isValid = await verifyToken(token)
+  const isValid = await verifyServiceEntitlementToken(token)
   if (!isValid) {
     show(t("landing_invalid_token"), "error")
     return
@@ -409,12 +409,12 @@ async function saveToken() {
   show(t("landing_token_saved"), "success")
 }
 
-async function updateToken() {
-  await saveToken()
+async function updateServiceEntitlementToken() {
+  await saveServiceEntitlementToken()
   showTokenModal.value = false
 }
 
-function clearToken() {
+function clearServiceEntitlementToken() {
   clearStoredToken()
   tokenInput.value = ""
 }

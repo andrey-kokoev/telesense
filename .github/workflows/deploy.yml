@@ -66,11 +66,11 @@ jobs:
           workingDirectory: apps/telesense
           command: deploy
           secrets: |
-            REALTIME_APP_SECRET
-            GENERIC_USER_TOKEN
+            CF_CALLS_SECRET
+            SERVICE_ENTITLEMENT_TOKEN
         env:
-          REALTIME_APP_SECRET: ${{ secrets.REALTIME_APP_SECRET }}
-          GENERIC_USER_TOKEN: ${{ secrets.GENERIC_USER_TOKEN }}
+          CF_CALLS_SECRET: ${{ secrets.CF_CALLS_SECRET }}
+          SERVICE_ENTITLEMENT_TOKEN: ${{ secrets.SERVICE_ENTITLEMENT_TOKEN }}
 
   deploy-usage-meter:
     name: Deploy Usage Meter

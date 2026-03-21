@@ -92,7 +92,7 @@ export function useAppStore() {
     state.value.serviceEntitlementTokenVerified = false
   }
 
-  function getAuthHeaders(): Record<string, string> {
+  function getServiceEntitlementHeaders(): Record<string, string> {
     return {
       "X-Service-Entitlement-Token": state.value.serviceEntitlementToken,
     }
@@ -172,7 +172,7 @@ export function useAppStore() {
     // Actions
     setServiceEntitlementToken,
     clearServiceEntitlementToken,
-    getAuthHeaders,
+    getServiceEntitlementHeaders,
     addRecentCall,
     renameRecentCall,
     removeRecentCall,

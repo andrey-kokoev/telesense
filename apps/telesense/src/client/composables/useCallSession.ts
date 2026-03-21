@@ -104,7 +104,7 @@ export async function decodeCallApiError(response: Response) {
   if (response.status === 403) {
     return {
       kind: "forbidden" as const,
-      message: "Token is not allowed for this room",
+      message: "Service entitlement is not valid for this room",
       code: errorData.code,
     }
   }
@@ -166,7 +166,7 @@ export function useCallSession({
       ...options,
       headers: {
         "Content-Type": "application/json",
-        ...store.getAuthHeaders(),
+        ...store.getServiceEntitlementHeaders(),
         ...extraHeaders,
       },
     })
