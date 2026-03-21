@@ -47,9 +47,7 @@ Edit `wrangler.toml`:
 - `REALTIME_APP_ID` - Your app ID
 - `GLOBAL_ENTITLEMENT_BUDGET_ID` - Shared budget name for current rollout
 - `SERVICE_ENTITLEMENT_ALLOWANCE_BYTES` - Bytes added to the shared budget per minted token
-- `MONTHLY_ALLOWANCE_ACTIVE` - Whether scheduled monthly budget resets are enabled
-- `MONTHLY_ALLOWANCE_RESET_AMOUNT_BYTES` - Target shared-budget value after each scheduled reset
-- `MONTHLY_ALLOWANCE_CRON_EXPR` - Five-field cron expression interpreted by the monthly allowance DO
+- `GLOBAL_MONTHLY_ALLOWANCE_ID` - Shared monthly allowance policy name for current rollout
 
 ## Identity Model
 
@@ -90,6 +88,8 @@ Multiple tabs are not supported for the same browser participant. Taking over fr
 - `POST /admin/entitlement/mint` - Mint a new service entitlement token
 - `POST /admin/entitlement/rotate` - Rotate budget secret (invalidates old tokens)
 - `GET /admin/entitlement/budget` - Get full budget inspection data
+- `POST /admin/entitlement/monthly-allowance` - Configure monthly reset policy
+- `GET /admin/entitlement/monthly-allowance` - Inspect monthly reset policy
 
 ### Health
 
@@ -149,7 +149,8 @@ budgetId.secretVersion.claims.proof
   - `nextResetAt`
   - `lastResetAt`
 - Cron is only the trigger; reset policy lives in the DO
-- When active and due, cron resets the shared budget to `MONTHLY_ALLOWANCE_RESET_AMOUNT_BYTES`
+- Admin routes configure the DO-backed policy state
+- When active and due, cron resets the shared budget to the DO-configured `resetAmountBytes`
 - This is a budget reset policy, not cumulative period accounting
 
 ### Secret Rotation

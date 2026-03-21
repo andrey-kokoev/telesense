@@ -30,9 +30,6 @@ type Env = {
   SERVICE_ENTITLEMENT_TOKEN: string
   SERVICE_ENTITLEMENT_ALLOWANCE_BYTES: string
   GLOBAL_ENTITLEMENT_BUDGET_ID?: string
-  MONTHLY_ALLOWANCE_ACTIVE?: string
-  MONTHLY_ALLOWANCE_RESET_AMOUNT_BYTES?: string
-  MONTHLY_ALLOWANCE_CRON_EXPR?: string
   GLOBAL_MONTHLY_ALLOWANCE_ID?: string
   DO_NOT_ENFORCE_SERVICE_ENTITLEMENT?: string // Dev-only: set 'true' to disable auth
   DEBUG?: string
@@ -57,6 +54,11 @@ function getEntitlementBudget(env: Env): DurableObjectStub {
   const id = env.ENTITLEMENT_BUDGETS.idFromName(
     env.GLOBAL_ENTITLEMENT_BUDGET_ID || GLOBAL_ENTITLEMENT_BUDGET_NAME,
   )
+  return env.ENTITLEMENT_BUDGETS.get(id)
+}
+
+function getEntitlementBudgetById(env: Env, budgetId: string): DurableObjectStub {
+  const id = env.ENTITLEMENT_BUDGETS.idFromName(budgetId)
   return env.ENTITLEMENT_BUDGETS.get(id)
 }
 
@@ -932,6 +934,81 @@ app.get("/admin/entitlement/budget", async (c) => {
   })
 })
 
+// Admin: Configure monthly allowance reset policy
+app.post("/admin/entitlement/monthly-allowance", async (c) => {
+  const adminError = requireAdminServiceEntitlement(c)
+  if (adminError) return adminError
+
+  let body: {
+    active: boolean
+    resetAmountBytes: number
+    cronExpr: string
+  }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: "Invalid request body", code: "BAD_REQUEST" } as ErrorResponse, 400)
+  }
+
+  if (typeof body.active !== "boolean") {
+    return c.json({ error: "active must be boolean", code: "BAD_REQUEST" } as ErrorResponse, 400)
+  }
+  if (!Number.isFinite(body.resetAmountBytes) || body.resetAmountBytes < 0) {
+    return c.json(
+      { error: "resetAmountBytes must be >= 0", code: "BAD_REQUEST" } as ErrorResponse,
+      400,
+    )
+  }
+  if (typeof body.cronExpr !== "string" || !body.cronExpr.trim()) {
+    return c.json(
+      { error: "cronExpr must be non-empty", code: "BAD_REQUEST" } as ErrorResponse,
+      400,
+    )
+  }
+
+  const budget = getEntitlementBudget(c.env)
+  const budgetRes = await budget.fetch(new Request("http://do.internal/?action=getBudget"))
+  if (!budgetRes.ok) {
+    return c.json({ error: "Failed to read entitlement budget" }, 500)
+  }
+  const budgetData = (await budgetRes.json()) as { budgetId: string }
+
+  const monthlyAllowance = getMonthlyAllowance(c.env)
+  const configureRes = await monthlyAllowance.fetch(
+    new Request("http://do.internal/?action=configure", {
+      method: "POST",
+      body: JSON.stringify({
+        budgetId: budgetData.budgetId,
+        resetAmountBytes: body.resetAmountBytes,
+        cronExpr: body.cronExpr.trim(),
+        active: body.active,
+      }),
+    }),
+  )
+  if (!configureRes.ok) {
+    const errorText = await configureRes.text()
+    return c.json({ error: errorText || "Failed to configure monthly allowance" }, 500)
+  }
+
+  return c.json(await configureRes.json())
+})
+
+// Admin: Inspect monthly allowance reset policy
+app.get("/admin/entitlement/monthly-allowance", async (c) => {
+  const adminError = requireAdminServiceEntitlement(c)
+  if (adminError) return adminError
+
+  const monthlyAllowance = getMonthlyAllowance(c.env)
+  const statusRes = await monthlyAllowance.fetch(
+    new Request("http://do.internal/?action=getStatus"),
+  )
+  if (!statusRes.ok) {
+    return c.json({ error: "Failed to get monthly allowance" }, 500)
+  }
+
+  return c.json(await statusRes.json())
+})
+
 // Health check endpoint
 app.get("/health", (c) => {
   return c.json({
@@ -1630,31 +1707,7 @@ app.get("*", async (c) => {
 })
 
 async function runScheduledMonthlyAllowance(env: Env) {
-  const monthlyAllowanceActive = env.MONTHLY_ALLOWANCE_ACTIVE === "true"
-  const resetAmountBytes = Number.parseInt(env.MONTHLY_ALLOWANCE_RESET_AMOUNT_BYTES || "0", 10)
-  const cronExpr = env.MONTHLY_ALLOWANCE_CRON_EXPR || "0 0 1 * *"
-
-  if (!monthlyAllowanceActive) return
-  if (!Number.isFinite(resetAmountBytes) || resetAmountBytes < 0) return
-
-  const budget = getEntitlementBudget(env)
-  const budgetRes = await budget.fetch(new Request("http://do.internal/?action=getBudget"))
-  if (!budgetRes.ok) return
-  const budgetData = (await budgetRes.json()) as { budgetId: string }
-
   const monthlyAllowance = getMonthlyAllowance(env)
-  await monthlyAllowance.fetch(
-    new Request("http://do.internal/?action=configure", {
-      method: "POST",
-      body: JSON.stringify({
-        budgetId: budgetData.budgetId,
-        resetAmountBytes,
-        cronExpr,
-        active: true,
-      }),
-    }),
-  )
-
   const statusRes = await monthlyAllowance.fetch(
     new Request("http://do.internal/?action=getStatus"),
   )
@@ -1667,6 +1720,7 @@ async function runScheduledMonthlyAllowance(env: Env) {
 
   if (status.lifecycle !== "due") return
 
+  const budget = getEntitlementBudgetById(env, status.budgetId)
   const resetRes = await budget.fetch(
     new Request("http://do.internal/?action=setAllowance", {
       method: "POST",

@@ -149,11 +149,21 @@ export class MonthlyAllowance {
       })
     }
 
+    const configChanged =
+      this.budgetId !== body.budgetId ||
+      this.resetAmountBytes !== body.resetAmountBytes ||
+      this.cronExpr !== body.cronExpr ||
+      this.active !== body.active
+
     this.budgetId = body.budgetId
     this.resetAmountBytes = body.resetAmountBytes
     this.cronExpr = body.cronExpr
     this.active = body.active
-    this.nextResetAt = body.active ? computeNextCronOccurrence(body.cronExpr, Date.now()) : null
+    if (!body.active) {
+      this.nextResetAt = null
+    } else if (configChanged || this.nextResetAt === null) {
+      this.nextResetAt = computeNextCronOccurrence(body.cronExpr, Date.now())
+    }
 
     await this.persist()
 

@@ -9,10 +9,8 @@ compatibility_date = "2026-03-18"
 [vars]
 REALTIME_APP_ID = "fb81ae5790a5960bdaacfc844c27366f"
 GLOBAL_ENTITLEMENT_BUDGET_ID = "global"
+GLOBAL_MONTHLY_ALLOWANCE_ID = "global"
 SERVICE_ENTITLEMENT_ALLOWANCE_BYTES = "10737418240" # 10 GiB per minted entitlement token
-MONTHLY_ALLOWANCE_ACTIVE = "false"
-MONTHLY_ALLOWANCE_RESET_AMOUNT_BYTES = "10737418240"
-MONTHLY_ALLOWANCE_CRON_EXPR = "0 0 1 * *"
 
 # Serve static frontend assets from the Worker
 [assets]

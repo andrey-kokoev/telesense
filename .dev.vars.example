@@ -5,12 +5,5 @@ CF_CALLS_SECRET=your-calls-secret-here
 # Admin/master service entitlement token
 SERVICE_ENTITLEMENT_TOKEN=your-admin-service-entitlement-token-here
 
-# Optional monthly allowance reset policy for the shared budget
-# When active, cron will reset the shared entitlement budget to the configured amount
-# based on MONTHLY_ALLOWANCE_CRON_EXPR.
-MONTHLY_ALLOWANCE_ACTIVE=false
-MONTHLY_ALLOWANCE_RESET_AMOUNT_BYTES=10737418240
-MONTHLY_ALLOWANCE_CRON_EXPR="0 0 1 * *"
-
 # Debug mode - set to 'true' to enable verbose logging
 # DEBUG=true

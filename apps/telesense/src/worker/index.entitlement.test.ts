@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test"
-import { app, CallRoom, EntitlementBudget } from "./index"
+import worker, { app, CallRoom, EntitlementBudget, MonthlyAllowance } from "./index"
 
 class MemoryStorage {
   private data = new Map<string, unknown>()
@@ -19,6 +19,15 @@ function createBudgetStub() {
   return {
     budget,
     fetch: (request: Request) => budget.fetch(request),
+  }
+}
+
+function createMonthlyAllowanceStub() {
+  const state = { storage: new MemoryStorage() } as unknown as DurableObjectState
+  const monthlyAllowance = new MonthlyAllowance(state)
+  return {
+    monthlyAllowance,
+    fetch: (request: Request) => monthlyAllowance.fetch(request),
   }
 }
 
@@ -62,20 +71,24 @@ type TestEnv = {
   SERVICE_ENTITLEMENT_TOKEN: string
   SERVICE_ENTITLEMENT_ALLOWANCE_BYTES: string
   GLOBAL_ENTITLEMENT_BUDGET_ID?: string
+  GLOBAL_MONTHLY_ALLOWANCE_ID?: string
   DO_NOT_ENFORCE_SERVICE_ENTITLEMENT?: string
   DEBUG?: string
   CALL_ROOMS: DurableObjectNamespace
   ENTITLEMENT_BUDGETS: DurableObjectNamespace
+  MONTHLY_ALLOWANCES: DurableObjectNamespace
 }
 
 describe("entitlement routes", () => {
   let env: TestEnv
   let budgetStub: ReturnType<typeof createBudgetStub>
+  let monthlyAllowanceStub: ReturnType<typeof createMonthlyAllowanceStub>
   let callRooms: ReturnType<typeof createCallRoomNamespace>
   let nextCloudflareSessionId: number
 
   beforeEach(() => {
     budgetStub = createBudgetStub()
+    monthlyAllowanceStub = createMonthlyAllowanceStub()
     callRooms = createCallRoomNamespace()
     nextCloudflareSessionId = 1
 
@@ -85,8 +98,10 @@ describe("entitlement routes", () => {
       SERVICE_ENTITLEMENT_TOKEN: "admin-secret",
       SERVICE_ENTITLEMENT_ALLOWANCE_BYTES: "1000",
       GLOBAL_ENTITLEMENT_BUDGET_ID: "global-budget",
+      GLOBAL_MONTHLY_ALLOWANCE_ID: "global-monthly",
       CALL_ROOMS: callRooms.namespace,
       ENTITLEMENT_BUDGETS: createNamespace(budgetStub),
+      MONTHLY_ALLOWANCES: createNamespace(monthlyAllowanceStub),
     }
 
     vi.restoreAllMocks()
@@ -390,6 +405,151 @@ describe("entitlement routes", () => {
       expect.objectContaining({
         lifecycle: "terminated",
         participantCount: 0,
+      }),
+    )
+  })
+
+  test("scheduled handler does nothing when monthly allowance is inactive", async () => {
+    await budgetStub.budget.fetch(
+      new Request("http://do.internal/?action=setAllowance", {
+        method: "POST",
+        body: JSON.stringify({ bytes: 123 }),
+      }),
+    )
+
+    await worker.scheduled?.({} as ScheduledEvent, env as never, {} as ExecutionContext)
+
+    const budgetState = await budgetStub.budget.fetch(
+      new Request("http://do.internal/?action=getBudget"),
+    )
+    await expect(budgetState.json()).resolves.toEqual(
+      expect.objectContaining({
+        remainingBytes: 123,
+      }),
+    )
+  })
+
+  test("scheduled handler resets the shared budget when monthly allowance is due", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-03-31T23:59:00.000Z"))
+
+    const configureResponse = await app.request(
+      "http://example.test/admin/entitlement/monthly-allowance",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Service-Entitlement-Token": "admin-secret",
+        },
+        body: JSON.stringify({
+          active: true,
+          resetAmountBytes: 5000,
+          cronExpr: "0 0 1 * *",
+        }),
+      },
+      env,
+    )
+    expect(configureResponse.status).toBe(200)
+
+    await worker.scheduled?.({} as ScheduledEvent, env as never, {} as ExecutionContext)
+
+    await budgetStub.budget.fetch(
+      new Request("http://do.internal/?action=setAllowance", {
+        method: "POST",
+        body: JSON.stringify({ bytes: 25 }),
+      }),
+    )
+
+    vi.advanceTimersByTime(60 * 1000)
+
+    await worker.scheduled?.({} as ScheduledEvent, env as never, {} as ExecutionContext)
+
+    const budgetState = await budgetStub.budget.fetch(
+      new Request("http://do.internal/?action=getBudget"),
+    )
+    await expect(budgetState.json()).resolves.toEqual(
+      expect.objectContaining({
+        remainingBytes: 5000,
+      }),
+    )
+
+    const monthlyStatus = await monthlyAllowanceStub.monthlyAllowance.fetch(
+      new Request("http://do.internal/?action=getStatus"),
+    )
+    await expect(monthlyStatus.json()).resolves.toEqual(
+      expect.objectContaining({
+        active: true,
+        lifecycle: "scheduled",
+        resetAmountBytes: 5000,
+        budgetId: budgetStub.budget.getBudgetId(),
+      }),
+    )
+
+    vi.useRealTimers()
+  })
+
+  test("scheduled handler ignores invalid reset configuration", async () => {
+    await budgetStub.budget.fetch(
+      new Request("http://do.internal/?action=setAllowance", {
+        method: "POST",
+        body: JSON.stringify({ bytes: 321 }),
+      }),
+    )
+
+    await worker.scheduled?.({} as ScheduledEvent, env as never, {} as ExecutionContext)
+
+    const budgetState = await budgetStub.budget.fetch(
+      new Request("http://do.internal/?action=getBudget"),
+    )
+    await expect(budgetState.json()).resolves.toEqual(
+      expect.objectContaining({
+        remainingBytes: 321,
+      }),
+    )
+  })
+
+  test("/admin/entitlement/monthly-allowance requires admin auth", async () => {
+    const response = await app.request(
+      "http://example.test/admin/entitlement/monthly-allowance",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          active: true,
+          resetAmountBytes: 5000,
+          cronExpr: "0 0 1 * *",
+        }),
+      },
+      env,
+    )
+
+    expect(response.status).toBe(401)
+  })
+
+  test("/admin/entitlement/monthly-allowance configures DO-backed policy", async () => {
+    const response = await app.request(
+      "http://example.test/admin/entitlement/monthly-allowance",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Service-Entitlement-Token": "admin-secret",
+        },
+        body: JSON.stringify({
+          active: true,
+          resetAmountBytes: 5000,
+          cronExpr: "0 0 1 * *",
+        }),
+      },
+      env,
+    )
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({
+        active: true,
+        resetAmountBytes: 5000,
+        cronExpr: "0 0 1 * *",
+        lifecycle: "scheduled",
       }),
     )
   })

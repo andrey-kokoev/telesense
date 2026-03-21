@@ -100,4 +100,14 @@ describe("MonthlyAllowance", () => {
 
     vi.useRealTimers()
   })
+
+  test("stays inactive until explicitly configured active", async () => {
+    const status = await requestJson(allowance, "getStatus")
+    expect(status.data).toEqual(
+      expect.objectContaining({
+        active: false,
+        lifecycle: "inactive",
+      }),
+    )
+  })
 })
