@@ -1,9 +1,14 @@
 import { createApp } from "vue"
+import { registerSW } from "virtual:pwa-register"
 import App from "./App.vue"
 import { useTheme } from "./composables/useTheme"
 
 // Initialize theme before mounting
 useTheme()
+
+registerSW({
+  immediate: true,
+})
 
 const app = createApp(App)
 

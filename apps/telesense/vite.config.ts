@@ -1,8 +1,47 @@
 import { defineConfig } from "vite-plus"
 import vue from "@vitejs/plugin-vue"
+import { VitePWA } from "vite-plugin-pwa"
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    VitePWA({
+      registerType: "autoUpdate",
+      injectRegister: false,
+      includeAssets: ["favicon.svg"],
+      manifest: {
+        name: "telesence",
+        short_name: "telesence",
+        description: "Installable lightweight app for secure video calls.",
+        theme_color: "#c96a2f",
+        background_color: "#f6efe6",
+        display: "standalone",
+        start_url: "/",
+        scope: "/",
+        icons: [
+          {
+            src: "/favicon.svg",
+            sizes: "any",
+            type: "image/svg+xml",
+            purpose: "any",
+          },
+        ],
+      },
+      workbox: {
+        globPatterns: ["**/*.{js,css,html,svg,png,webp}"],
+        navigateFallback: "/index.html",
+        runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.mode === "navigate",
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "app-pages",
+            },
+          },
+        ],
+      },
+    }),
+  ],
   root: ".",
   publicDir: "public",
   base: "/",
