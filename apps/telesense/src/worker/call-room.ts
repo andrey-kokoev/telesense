@@ -934,11 +934,10 @@ export class CallRoom {
       } else if (response.ok) {
         const data = (await response.json()) as {
           lifecycle?: RoomLifecycle
-          inGrace?: boolean
           graceEndsAt?: number
           remainingBytes: number
         }
-        if (data.lifecycle === "in_grace" || data.inGrace) {
+        if (data.lifecycle === "in_grace") {
           this.graceEndsAt = data.graceEndsAt || null
         }
         console.log(`[CallRoom] Charged ${bytes} bytes, remaining: ${data.remainingBytes}`)
@@ -986,7 +985,6 @@ export class CallRoom {
     lifecycle: RoomLifecycle
     budgetId: string | null
     lastMeteredAt: number | null
-    isInGrace: boolean
     graceEndsAt: number | null
     graceRemainingMs: number
     shouldTerminate: boolean
@@ -999,7 +997,6 @@ export class CallRoom {
       lifecycle,
       budgetId: this.budgetId,
       lastMeteredAt: this.lastMeteredAt,
-      isInGrace: lifecycle === "in_grace",
       graceEndsAt: this.graceEndsAt,
       graceRemainingMs:
         lifecycle === "in_grace" && this.graceEndsAt ? Math.max(0, this.graceEndsAt - now) : 0,
@@ -1032,7 +1029,6 @@ export class CallRoom {
   async handleChargeResult(result: {
     ok: boolean
     lifecycle?: "active" | "in_grace" | "exhausted"
-    inGrace?: boolean
     graceEndsAt?: number | null
     graceClaimedByRoomId?: string | null
   }): Promise<void> {
@@ -1044,7 +1040,7 @@ export class CallRoom {
         await this.terminateRoom()
         return
       }
-    } else if (result.lifecycle === "in_grace" || result.inGrace) {
+    } else if (result.lifecycle === "in_grace") {
       // Already in grace from budget side
       this.graceEndsAt = result.graceEndsAt || null
     } else if (result.lifecycle === "active") {
@@ -1060,7 +1056,6 @@ export class CallRoom {
     const result = (await request.json()) as {
       ok: boolean
       lifecycle?: "active" | "in_grace" | "exhausted"
-      inGrace?: boolean
       graceEndsAt?: number
     }
     await this.handleChargeResult(result)

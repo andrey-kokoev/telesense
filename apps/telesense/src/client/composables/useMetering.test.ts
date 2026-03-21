@@ -14,7 +14,6 @@ describe("useMetering", () => {
           JSON.stringify({
             remainingBytes: 0,
             lifecycle: "in_grace",
-            inGrace: true,
             graceEndsAt: Date.now() + 5 * 60 * 1000,
             graceRemainingMinutes: 5,
           }),

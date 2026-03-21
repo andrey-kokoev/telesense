@@ -54,7 +54,6 @@ describe("EntitlementBudget", () => {
       expect.objectContaining({
         remainingBytes: 1_000,
         lifecycle: "active",
-        inGrace: false,
         graceEndsAt: null,
         graceClaimedByRoomId: null,
       }),
@@ -77,7 +76,6 @@ describe("EntitlementBudget", () => {
       expect.objectContaining({
         remainingBytes: 0,
         lifecycle: "in_grace",
-        inGrace: true,
         graceClaimedByRoomId: "ROOM1",
       }),
     )
@@ -127,7 +125,6 @@ describe("EntitlementBudget", () => {
     expect(status.data).toEqual(
       expect.objectContaining({
         lifecycle: "exhausted",
-        inGrace: false,
       }),
     )
 

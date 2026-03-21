@@ -79,6 +79,15 @@ export const messages = {
     landing_created_room: "Created room: {roomId}",
     landing_invalid_token: "Invalid token",
     landing_token_saved: "Token saved",
+    landing_service_entitlement_verifying: "Verifying…",
+    landing_service_entitlement_verifying_hint:
+      "Checking this service entitlement before enabling room creation",
+    landing_service_entitlement_saved_exhausted:
+      "Service entitlement saved, but its budget is exhausted",
+    landing_service_entitlement_exhausted_hint:
+      "This service entitlement is saved, but its budget is exhausted. Update it to create new rooms.",
+    landing_room_check_failed: "Could not check room availability",
+    landing_room_unavailable: "Room is no longer available",
     call_room: "room",
     call_copy_room_code: "Copy room code",
     call_click_to_copy: "Click to copy",
@@ -111,6 +120,12 @@ export const messages = {
     call_controls: "Call controls",
     call_video_call: "Video call",
     call_video_feeds: "Video feeds",
+    call_service_budget_grace_toast:
+      "Service budget exhausted. Room will terminate in {minutes} minutes.",
+    call_service_budget_grace_banner:
+      "Service budget exhausted. Room will terminate in {minutes} minutes.",
+    call_metering_status_stale:
+      "Service budget status is temporarily unavailable. Countdown may be stale.",
   },
   ru: {
     landing_secure_video_calls: "Безопасные видеозвонки",

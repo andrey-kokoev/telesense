@@ -890,7 +890,7 @@ app.get("/admin/entitlement/budget", async (c) => {
     }>
     lastChargedAt: number | null
     graceEndsAt: number | null
-    inGrace: boolean
+    lifecycle: "active" | "in_grace" | "exhausted"
   }
 
   return c.json({
@@ -909,7 +909,7 @@ app.get("/admin/entitlement/budget", async (c) => {
       })),
     },
     grace: {
-      inGrace: data.inGrace,
+      lifecycle: data.lifecycle,
       graceEndsAt: data.graceEndsAt,
     },
   })
@@ -1478,7 +1478,6 @@ app.post("/api/rooms/:roomId/meter", async (c) => {
     ok: boolean
     remainingBytes?: number
     lifecycle?: "active" | "in_grace" | "exhausted"
-    inGrace?: boolean
     graceEndsAt?: number
     graceClaimedByRoomId?: string | null
   }
@@ -1509,7 +1508,6 @@ app.post("/api/rooms/:roomId/meter", async (c) => {
     ok: true,
     remainingBytes: chargeResult.remainingBytes,
     lifecycle: chargeResult.lifecycle,
-    inGrace: chargeResult.inGrace,
     graceEndsAt: chargeResult.graceEndsAt,
     graceClaimedByRoomId: chargeResult.graceClaimedByRoomId,
   })
@@ -1534,14 +1532,12 @@ app.get("/api/rooms/:roomId/meter", async (c) => {
     lifecycle: "active" | "in_grace" | "exhausted"
     graceEndsAt: number | null
     graceClaimedByRoomId: string | null
-    inGrace: boolean
     graceRemainingMs: number
   }
 
   return c.json({
     remainingBytes: status.remainingBytes,
     lifecycle: status.lifecycle,
-    inGrace: status.inGrace,
     graceEndsAt: status.graceEndsAt,
     graceClaimedByRoomId: status.graceClaimedByRoomId,
     graceRemainingMinutes: Math.ceil(status.graceRemainingMs / 60000),

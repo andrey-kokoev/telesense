@@ -171,7 +171,6 @@ export class EntitlementBudget {
         graceEndsAt: this.graceEndsAt,
         graceClaimedByRoomId: this.graceClaimedByRoomId,
         lifecycle,
-        inGrace: lifecycle === "in_grace",
       }),
       { status: 200 },
     )
@@ -272,7 +271,6 @@ export class EntitlementBudget {
           graceEndsAt: result.graceEndsAt,
           graceClaimedByRoomId: result.graceClaimedByRoomId,
           lifecycle: result.lifecycle,
-          inGrace: result.lifecycle === "in_grace",
         }),
         { status: 402 }, // PAYMENT_REQUIRED
       )
@@ -284,7 +282,6 @@ export class EntitlementBudget {
         remainingBytes: result.remainingBytes,
         consumedBytes: result.consumedBytes,
         lifecycle: result.lifecycle,
-        inGrace: result.lifecycle === "in_grace",
         graceEndsAt: result.graceEndsAt,
         graceClaimedByRoomId: result.graceClaimedByRoomId,
       }),
@@ -358,7 +355,6 @@ export class EntitlementBudget {
   private handleGetChargeStatus(): Response {
     const now = Date.now()
     const lifecycle = this.getLifecycle(now)
-    const inGrace = lifecycle === "in_grace"
     const graceExpired = lifecycle === "exhausted" && this.graceEndsAt !== null
 
     return new Response(
@@ -370,9 +366,9 @@ export class EntitlementBudget {
         graceEndsAt: this.graceEndsAt,
         graceClaimedByRoomId: this.graceClaimedByRoomId,
         lifecycle,
-        inGrace,
         graceExpired,
-        graceRemainingMs: inGrace && this.graceEndsAt ? Math.max(0, this.graceEndsAt - now) : 0,
+        graceRemainingMs:
+          lifecycle === "in_grace" && this.graceEndsAt ? Math.max(0, this.graceEndsAt - now) : 0,
       }),
       { status: 200 },
     )

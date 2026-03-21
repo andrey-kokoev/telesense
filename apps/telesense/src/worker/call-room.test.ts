@@ -312,7 +312,6 @@ describe("CallRoom", () => {
     expect(metering.data).toEqual(
       expect.objectContaining({
         lifecycle: "in_grace",
-        isInGrace: true,
       }),
     )
 

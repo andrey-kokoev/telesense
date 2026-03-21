@@ -14,10 +14,12 @@ export interface RoomParticipantCredential {
   participantSecret: string
 }
 
+export type StoredServiceEntitlementState = "missing" | "valid" | "exhausted"
+
 interface AppState {
   browserInstanceId: string
   serviceEntitlementToken: string
-  serviceEntitlementTokenVerified: boolean
+  serviceEntitlementState: StoredServiceEntitlementState
   recentCalls: RecentCall[]
   roomParticipantCredentials: Record<string, RoomParticipantCredential>
   preferences: {
@@ -37,7 +39,7 @@ function generateBrowserInstanceId(): string {
 const defaultState: AppState = {
   browserInstanceId: generateBrowserInstanceId(),
   serviceEntitlementToken: "",
-  serviceEntitlementTokenVerified: false,
+  serviceEntitlementState: "missing",
   recentCalls: [],
   roomParticipantCredentials: {},
   preferences: {
@@ -54,7 +56,10 @@ const defaultState: AppState = {
 const state = useStorage<AppState>(STORAGE_KEY, defaultState, localStorage)
 
 export function useAppStore() {
-  const legacyState = state.value as AppState & { userId?: string }
+  const legacyState = state.value as AppState & {
+    userId?: string
+    serviceEntitlementTokenVerified?: boolean
+  }
   if (!state.value.browserInstanceId && legacyState.userId) {
     state.value.browserInstanceId = legacyState.userId
     delete legacyState.userId
@@ -77,19 +82,38 @@ export function useAppStore() {
     }
   }
 
-  // Auth
-  const isAuthenticated = computed(
-    () => !!state.value.serviceEntitlementToken && state.value.serviceEntitlementTokenVerified,
-  )
+  if (!state.value.serviceEntitlementState) {
+    const hasToken = !!state.value.serviceEntitlementToken
+    if (!hasToken) {
+      state.value.serviceEntitlementState = "missing"
+    } else if (legacyState.serviceEntitlementTokenVerified) {
+      state.value.serviceEntitlementState = "valid"
+    } else {
+      state.value.serviceEntitlementState = "exhausted"
+    }
+    delete legacyState.serviceEntitlementTokenVerified
+  }
 
-  function setServiceEntitlementToken(token: string, verified = false) {
+  // Auth
+  const hasServiceEntitlementToken = computed(() => !!state.value.serviceEntitlementToken)
+  const serviceEntitlementTokenVerified = computed(
+    () => !!state.value.serviceEntitlementToken && state.value.serviceEntitlementState === "valid",
+  )
+  const isAuthenticated = computed(() => serviceEntitlementTokenVerified.value)
+
+  function setServiceEntitlementToken(
+    token: string,
+    entitlementState: Exclude<StoredServiceEntitlementState, "missing"> = "valid",
+  ) {
     state.value.serviceEntitlementToken = token.trim()
-    state.value.serviceEntitlementTokenVerified = !!state.value.serviceEntitlementToken && verified
+    state.value.serviceEntitlementState = state.value.serviceEntitlementToken
+      ? entitlementState
+      : "missing"
   }
 
   function clearServiceEntitlementToken() {
     state.value.serviceEntitlementToken = ""
-    state.value.serviceEntitlementTokenVerified = false
+    state.value.serviceEntitlementState = "missing"
   }
 
   function getServiceEntitlementHeaders(): Record<string, string> {
@@ -163,7 +187,9 @@ export function useAppStore() {
     // State (readonly)
     browserInstanceId: computed(() => state.value.browserInstanceId),
     serviceEntitlementToken: computed(() => state.value.serviceEntitlementToken),
-    serviceEntitlementTokenVerified: computed(() => state.value.serviceEntitlementTokenVerified),
+    serviceEntitlementState: computed(() => state.value.serviceEntitlementState),
+    serviceEntitlementTokenVerified,
+    hasServiceEntitlementToken,
     recentCalls,
     roomParticipantCredentials,
     preferences,

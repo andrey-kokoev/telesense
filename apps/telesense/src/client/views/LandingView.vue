@@ -4,7 +4,7 @@
 
     <main class="landing__main">
       <!-- Authenticated User View -->
-      <template v-if="isAuthenticated">
+      <template v-if="serviceEntitlementUiState === 'valid'">
         <RoomCodeSection
           :title="t('landing_start_room')"
           :digits="createRoomCodeDigits"
@@ -42,7 +42,7 @@
         />
       </template>
 
-      <!-- Unauthenticated User View -->
+      <!-- Join and entitlement entry -->
       <template v-else>
         <RoomCodeSection
           :title="t('landing_join_room')"
@@ -65,7 +65,15 @@
 
         <div class="landing__section">
           <h2 class="landing__section-title">{{ t("landing_create_rooms") }}</h2>
-          <p class="landing__hint">{{ t("landing_enter_token_hint") }}</p>
+          <p class="landing__hint">
+            {{
+              hasServiceEntitlementToken
+                ? serviceEntitlementUiState === "verifying"
+                  ? t("landing_service_entitlement_verifying_hint")
+                  : t("landing_service_entitlement_exhausted_hint")
+                : t("landing_enter_token_hint")
+            }}
+          </p>
 
           <form class="landing__form" @submit.prevent="saveServiceEntitlementToken">
             <input
@@ -78,9 +86,13 @@
             <button
               type="submit"
               class="landing__btn landing__btn--primary"
-              :disabled="!tokenInput.trim()"
+              :disabled="!tokenInput.trim() || serviceEntitlementUiState === 'verifying'"
             >
-              {{ t("landing_save_token") }}
+              {{
+                serviceEntitlementUiState === "verifying"
+                  ? t("landing_service_entitlement_verifying")
+                  : t("landing_save_token")
+              }}
             </button>
           </form>
         </div>
@@ -139,8 +151,18 @@
       </div>
     </div>
 
-    <div v-if="isAuthenticated" class="landing__token-status">
-      <span class="landing__token-badge">✓ {{ t("landing_token_set") }}</span>
+    <div v-if="serviceEntitlementUiState !== 'missing'" class="landing__token-status">
+      <span class="landing__token-badge">
+        {{
+          serviceEntitlementUiState === "valid"
+            ? `✓ ${t("landing_token_set")}`
+            : serviceEntitlementUiState === "verifying"
+              ? `… ${t("landing_service_entitlement_verifying")}`
+              : serviceEntitlementUiState === "invalid"
+                ? `! ${t("landing_invalid_token")}`
+                : `! ${t("landing_service_entitlement_saved_exhausted")}`
+        }}
+      </span>
       <button class="landing__token-action" @click="showTokenModal = true">
         <svg
           width="14"
@@ -194,7 +216,8 @@ import { useRoomCodeInput } from "../composables/useRoomCodeInput"
 import { useToast } from "../composables/useToast"
 
 const {
-  isAuthenticated,
+  serviceEntitlementState,
+  hasServiceEntitlementToken,
   setServiceEntitlementToken,
   recentCalls,
   addRecentCall,
@@ -207,6 +230,11 @@ const { t } = useI18n()
 
 const tokenInput = ref("")
 const showTokenModal = ref(false)
+type ServiceEntitlementUiState = "missing" | "verifying" | "valid" | "exhausted" | "invalid"
+const transientServiceEntitlementUiState = ref<Extract<
+  ServiceEntitlementUiState,
+  "verifying" | "invalid"
+> | null>(null)
 const {
   digits: roomCodeDigits,
   value: roomIdInput,
@@ -265,6 +293,12 @@ const displayedRecentCalls = computed(() =>
       )
     : recentCalls.value,
 )
+const serviceEntitlementUiState = computed<ServiceEntitlementUiState>(() => {
+  if (transientServiceEntitlementUiState.value) {
+    return transientServiceEntitlementUiState.value
+  }
+  return serviceEntitlementState.value
+})
 
 onMounted(() => {
   const params = new URLSearchParams(window.location.search)
@@ -346,7 +380,7 @@ function handleRecentItemClick(roomId: string) {
 }
 
 async function openRecentRoom(roomId: string) {
-  if (isAuthenticated.value) {
+  if (serviceEntitlementUiState.value === "valid") {
     goToRoom(roomId)
     return
   }
@@ -354,21 +388,21 @@ async function openRecentRoom(roomId: string) {
   try {
     const res = await fetch(`/api/rooms/${roomId}/status`)
     if (!res.ok) {
-      show("Could not check room availability", "error")
+      show(t("landing_room_check_failed"), "error")
       return
     }
 
     const data = (await res.json()) as { exists?: boolean }
     if (!data.exists) {
       roomAvailability.value[roomId] = "unavailable"
-      show("Room is no longer available", "error")
+      show(t("landing_room_unavailable"), "error")
       return
     }
 
     roomAvailability.value[roomId] = "available"
     goToRoom(roomId)
   } catch {
-    show("Could not check room availability", "error")
+    show(t("landing_room_check_failed"), "error")
   }
 }
 
@@ -403,17 +437,20 @@ async function saveServiceEntitlementToken() {
   const token = tokenInput.value.trim()
   if (!token) return false
 
+  transientServiceEntitlementUiState.value = "verifying"
   const verification = await verifyServiceEntitlementToken(token)
   if (!verification.ok && verification.status !== 402) {
+    transientServiceEntitlementUiState.value = "invalid"
     show(verification.error || t("landing_invalid_token"), "error")
     return false
   }
 
-  setServiceEntitlementToken(token, true)
+  setServiceEntitlementToken(token, verification.ok ? "valid" : "exhausted")
+  transientServiceEntitlementUiState.value = null
   tokenInput.value = ""
 
   if (verification.status === 402) {
-    show(verification.error || "Service entitlement budget exhausted", "error")
+    show(verification.error || t("landing_service_entitlement_saved_exhausted"), "error")
     return true
   }
 
@@ -430,6 +467,7 @@ async function updateServiceEntitlementToken() {
 
 function clearServiceEntitlementToken() {
   clearStoredToken()
+  transientServiceEntitlementUiState.value = null
   tokenInput.value = ""
 }
 </script>

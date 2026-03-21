@@ -3,7 +3,6 @@ import { ref, computed, onUnmounted } from "vue"
 export type MeteringStatus = {
   remainingBytes: number
   lifecycle: "active" | "in_grace" | "exhausted"
-  inGrace: boolean
   graceEndsAt: number | null
   graceRemainingMinutes: number
 }

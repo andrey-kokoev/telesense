@@ -180,11 +180,13 @@ onMounted(() => {
 
 // Watch for grace period entry and show toast
 watch(
-  () => metering.isInGrace.value,
-  (inGrace) => {
-    if (inGrace) {
+  () => metering.lifecycle.value,
+  (lifecycle) => {
+    if (lifecycle === "in_grace") {
       showToast(
-        `Service budget exhausted. Room will terminate in ${metering.graceRemainingMinutes.value} minutes.`,
+        t("call_service_budget_grace_toast", {
+          minutes: metering.graceRemainingMinutes.value,
+        }),
         "error",
       )
     }
@@ -229,11 +231,21 @@ onBeforeUnmount(() => {
   <div v-if="metering.isInGrace.value" class="grace-banner" role="alert">
     <span class="grace-banner__icon">⚠️</span>
     <span class="grace-banner__text">
-      Service budget exhausted. Room will terminate in
-      {{ metering.graceRemainingMinutes.value }} minute{{
-        metering.graceRemainingMinutes.value === 1 ? "" : "s"
-      }}.
+      {{
+        t("call_service_budget_grace_banner", {
+          minutes: metering.graceRemainingMinutes.value,
+        })
+      }}
     </span>
+  </div>
+  <div
+    v-if="metering.error.value"
+    class="grace-banner grace-banner--stale"
+    role="status"
+    aria-live="polite"
+  >
+    <span class="grace-banner__icon">!</span>
+    <span class="grace-banner__text">{{ t("call_metering_status_stale") }}</span>
   </div>
 
   <CallMobileLayout
