@@ -10,6 +10,7 @@ src/
 │   ├── index.ts                # Hono worker routes and Cloudflare API wiring
 │   ├── call-room.ts            # Durable Object for room/session/participant coordination
 │   ├── entitlement-budget.ts   # Durable Object for service entitlement budget
+│   ├── host-admin-registry.ts  # Optional D1-backed registry helpers for host admin discovery
 │   ├── monthly-allowance.ts    # Durable Object for cron-driven budget reset policy
 │   └── tokens.ts               # Stateless token minting and verification
 ├── client/
@@ -48,6 +49,7 @@ Edit `wrangler.toml`:
 - `GLOBAL_ENTITLEMENT_BUDGET_ID` - Shared budget name for current rollout
 - `SERVICE_ENTITLEMENT_ALLOWANCE_BYTES` - Bytes added to the shared budget per minted token
 - `GLOBAL_MONTHLY_ALLOWANCE_ID` - Shared monthly allowance policy name for current rollout
+- Optional: bind `HOST_ADMIN_DB` to a D1 database to enable deployment-wide budget/allowance enumeration in host admin
 
 ## Identity Model
 
@@ -85,11 +87,13 @@ Multiple tabs are not supported for the same browser participant. Taking over fr
 
 ### Admin APIs (require `X-Service-Entitlement-Token` header)
 
-- `POST /admin/entitlement/mint` - Mint a new service entitlement token
-- `POST /admin/entitlement/rotate` - Rotate budget secret (invalidates old tokens)
-- `GET /admin/entitlement/budget` - Get full budget inspection data
-- `POST /admin/entitlement/monthly-allowance` - Configure monthly reset policy
-- `GET /admin/entitlement/monthly-allowance` - Inspect monthly reset policy
+- `GET /admin/host/budgets` - Enumerate known budgets for host admin
+- `GET /admin/host/monthly-allowances` - Enumerate known monthly allowance policies for host admin
+- `POST /admin/entitlement/mint` - Mint a new service entitlement token for a selected budget
+- `POST /admin/entitlement/rotate` - Rotate a selected budget secret (invalidates old tokens)
+- `GET /admin/entitlement/budget?budgetKey=...` - Get full inspection data for a selected budget
+- `POST /admin/entitlement/monthly-allowance` - Configure a selected monthly allowance policy
+- `GET /admin/entitlement/monthly-allowance?allowanceId=...` - Inspect a selected monthly allowance policy
 
 ### Health
 
@@ -125,6 +129,7 @@ budgetId.secretVersion.claims.proof
 ```
 
 - `budgetId` - UUID identifying the budget (shared global budget in current rollout)
+- `budgetKey` - routable Durable Object name for the budget; host admin and room metering use this for routing
 - `secretVersion` - Incrementing integer, starts at 1
 - `claims` - Base64url-encoded JSON: `{ "tokenFormatVersion": 1, "issuedAt": 1234567890 }`
 - `proof` - HMAC-SHA256(secret, `budgetId.secretVersion.claims`)
@@ -142,7 +147,7 @@ budgetId.secretVersion.claims.proof
 
 - One shared `MonthlyAllowance` DO per deployment
 - Stores:
-  - linked `budgetId`
+  - linked `budgetKey`
   - `resetAmountBytes`
   - `cronExpr`
   - `active`
@@ -150,8 +155,16 @@ budgetId.secretVersion.claims.proof
   - `lastResetAt`
 - Cron is only the trigger; reset policy lives in the DO
 - Admin routes configure the DO-backed policy state
-- When active and due, cron resets the shared budget to the DO-configured `resetAmountBytes`
+- When active and due, cron resets the linked budget to the DO-configured `resetAmountBytes`
 - This is a budget reset policy, not cumulative period accounting
+
+### Host Admin Registry
+
+- Host admin can operate in singleton mode without D1
+- If `HOST_ADMIN_DB` is configured, the worker records known:
+  - budgets by `budgetKey -> budgetId`
+  - monthly allowances by `allowanceId -> budgetKey`
+- This registry exists for deployment-wide admin discovery only; budget and allowance authority remains in the DOs
 
 ### Secret Rotation
 

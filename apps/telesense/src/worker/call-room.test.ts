@@ -228,6 +228,7 @@ describe("CallRoom", () => {
       method: "POST",
       body: JSON.stringify({
         budgetId: "budget-a",
+        budgetKey: "budget-key-a",
         roomId: "ROOM1",
       }),
     })
@@ -235,6 +236,7 @@ describe("CallRoom", () => {
 
     const budgetLookup = await requestJson(callRoom, "getBudgetId")
     expect(budgetLookup.data?.budgetId).toBe("budget-a")
+    expect(budgetLookup.data?.budgetKey).toBe("budget-key-a")
 
     const authorizeA = await requestJson(callRoom, "authorizeParticipant", {
       method: "POST",
@@ -270,6 +272,7 @@ describe("CallRoom", () => {
 
     const budgetLookupAfterJoin = await requestJson(callRoom, "getBudgetId")
     expect(budgetLookupAfterJoin.data?.budgetId).toBe("budget-a")
+    expect(budgetLookupAfterJoin.data?.budgetKey).toBe("budget-key-a")
   })
 
   test("enters room grace and rejects new joins when budget grants grace", async () => {
@@ -277,6 +280,7 @@ describe("CallRoom", () => {
       method: "POST",
       body: JSON.stringify({
         budgetId: "budget-a",
+        budgetKey: "budget-key-a",
         roomId: "ROOM1",
       }),
     })
@@ -331,6 +335,7 @@ describe("CallRoom", () => {
       method: "POST",
       body: JSON.stringify({
         budgetId: "budget-a",
+        budgetKey: "budget-key-a",
         roomId: "ROOM1",
       }),
     })

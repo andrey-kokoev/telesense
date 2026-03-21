@@ -3,7 +3,7 @@ type CronField = number[] | null
 export type MonthlyAllowanceLifecycle = "inactive" | "scheduled" | "due"
 
 export type MonthlyAllowanceState = {
-  budgetId: string
+  budgetKey: string
   resetAmountBytes: number
   cronExpr: string
   active: boolean
@@ -65,7 +65,7 @@ export function computeNextCronOccurrence(cronExpr: string, fromMs: number): num
 
 export class MonthlyAllowance {
   private state: DurableObjectState
-  private budgetId = ""
+  private budgetKey = ""
   private resetAmountBytes = 0
   private cronExpr = "0 0 1 * *"
   private active = false
@@ -82,7 +82,7 @@ export class MonthlyAllowance {
 
     const stored = await this.state.storage.get<MonthlyAllowanceState>("monthly-allowance")
     if (stored) {
-      this.budgetId = stored.budgetId
+      this.budgetKey = stored.budgetKey
       this.resetAmountBytes = stored.resetAmountBytes
       this.cronExpr = stored.cronExpr
       this.active = stored.active
@@ -95,7 +95,7 @@ export class MonthlyAllowance {
 
   private async persist() {
     await this.state.storage.put("monthly-allowance", {
-      budgetId: this.budgetId,
+      budgetKey: this.budgetKey,
       resetAmountBytes: this.resetAmountBytes,
       cronExpr: this.cronExpr,
       active: this.active,
@@ -134,14 +134,14 @@ export class MonthlyAllowance {
 
   private async handleConfigure(request: Request) {
     const body = (await request.json()) as {
-      budgetId: string
+      budgetKey: string
       resetAmountBytes: number
       cronExpr: string
       active: boolean
     }
 
-    if (!body.budgetId) {
-      return new Response(JSON.stringify({ error: "budgetId required" }), { status: 400 })
+    if (!body.budgetKey) {
+      return new Response(JSON.stringify({ error: "budgetKey required" }), { status: 400 })
     }
     if (!Number.isFinite(body.resetAmountBytes) || body.resetAmountBytes < 0) {
       return new Response(JSON.stringify({ error: "resetAmountBytes must be >= 0" }), {
@@ -150,12 +150,12 @@ export class MonthlyAllowance {
     }
 
     const configChanged =
-      this.budgetId !== body.budgetId ||
+      this.budgetKey !== body.budgetKey ||
       this.resetAmountBytes !== body.resetAmountBytes ||
       this.cronExpr !== body.cronExpr ||
       this.active !== body.active
 
-    this.budgetId = body.budgetId
+    this.budgetKey = body.budgetKey
     this.resetAmountBytes = body.resetAmountBytes
     this.cronExpr = body.cronExpr
     this.active = body.active
@@ -174,7 +174,7 @@ export class MonthlyAllowance {
     const lifecycle = this.getLifecycle()
     return new Response(
       JSON.stringify({
-        budgetId: this.budgetId,
+        budgetKey: this.budgetKey,
         resetAmountBytes: this.resetAmountBytes,
         cronExpr: this.cronExpr,
         active: this.active,

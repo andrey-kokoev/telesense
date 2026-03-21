@@ -41,6 +41,7 @@ export interface CallState {
   sessions: Map<string, Session>
   participants: Map<string, Participant>
   budgetId: string | null
+  budgetKey: string | null
 }
 
 type SessionLookup =
@@ -66,6 +67,7 @@ export class CallRoom {
   private sessions: Map<string, Session> = new Map()
   private participants: Map<string, Participant> = new Map()
   private budgetId: string | null = null
+  private budgetKey: string | null = null
   private roomId: string | null = null
   private workerBaseUrl: string | null = null
   private initialized: boolean = false
@@ -86,6 +88,7 @@ export class CallRoom {
     const storedSessions = await this.state.storage.get<[string, Session][]>("sessions")
     const storedParticipants = await this.state.storage.get<[string, Participant][]>("participants")
     const storedBudgetId = await this.state.storage.get<string>("budgetId")
+    const storedBudgetKey = await this.state.storage.get<string>("budgetKey")
     const storedRoomId = await this.state.storage.get<string>("roomId")
     const storedMetering = await this.state.storage.get<{
       lastMeteredAt: number | null
@@ -118,10 +121,13 @@ export class CallRoom {
     if (storedBudgetId) {
       this.budgetId = storedBudgetId
       console.log(`[CallRoom] Loaded budgetId: ${storedBudgetId.slice(0, 8)}`)
-
-      if (storedRoomId) {
-        this.roomId = storedRoomId
-      }
+    }
+    if (storedBudgetKey) {
+      this.budgetKey = storedBudgetKey
+      console.log(`[CallRoom] Loaded budgetKey: ${storedBudgetKey}`)
+    }
+    if (storedRoomId) {
+      this.roomId = storedRoomId
     }
 
     if (storedMetering) {
@@ -131,7 +137,7 @@ export class CallRoom {
     }
 
     // Resume metering if budget is bound
-    if (this.budgetId) {
+    if (this.budgetId && this.budgetKey) {
       this.startMetering()
     }
     this.initialized = true
@@ -771,6 +777,8 @@ export class CallRoom {
           lastSeenAt: session.lastSeenAt,
           trackCount: session.publishedTracks.length,
         })),
+        budgetId: this.budgetId,
+        budgetKey: this.budgetKey,
       }),
       {
         headers: { "Content-Type": "application/json" },
@@ -823,6 +831,9 @@ export class CallRoom {
     if (this.budgetId) {
       await this.state.storage.put("budgetId", this.budgetId)
     }
+    if (this.budgetKey) {
+      await this.state.storage.put("budgetKey", this.budgetKey)
+    }
     // Persist metering state
     await this.state.storage.put("metering", {
       lastMeteredAt: this.lastMeteredAt,
@@ -831,24 +842,34 @@ export class CallRoom {
   }
 
   private async setBudgetId(request: Request): Promise<Response> {
-    const body = (await request.json()) as { budgetId: string; roomId: string }
+    const body = (await request.json()) as { budgetId: string; budgetKey: string; roomId: string }
     if (!body.budgetId) {
       return new Response(JSON.stringify({ error: "budgetId required" }), { status: 400 })
+    }
+    if (!body.budgetKey) {
+      return new Response(JSON.stringify({ error: "budgetKey required" }), { status: 400 })
     }
     if (!body.roomId) {
       return new Response(JSON.stringify({ error: "roomId required" }), { status: 400 })
     }
     this.budgetId = body.budgetId
+    this.budgetKey = body.budgetKey
     this.roomId = body.roomId
     await this.state.storage.put("budgetId", body.budgetId)
+    await this.state.storage.put("budgetKey", body.budgetKey)
     await this.state.storage.put("roomId", body.roomId)
     // Start metering when budget is bound
     this.startMetering()
-    return new Response(JSON.stringify({ ok: true, budgetId: body.budgetId }), { status: 200 })
+    return new Response(
+      JSON.stringify({ ok: true, budgetId: body.budgetId, budgetKey: body.budgetKey }),
+      { status: 200 },
+    )
   }
 
   private getBudgetId(): Response {
-    return new Response(JSON.stringify({ budgetId: this.budgetId }), { status: 200 })
+    return new Response(JSON.stringify({ budgetId: this.budgetId, budgetKey: this.budgetKey }), {
+      status: 200,
+    })
   }
 
   // ==================== Metering ====================
@@ -872,7 +893,7 @@ export class CallRoom {
   }
 
   private async performMeteringTick() {
-    if (!this.budgetId) return
+    if (!this.budgetId || !this.budgetKey) return
 
     const now = Date.now()
     const elapsedSeconds = this.lastMeteredAt ? (now - this.lastMeteredAt) / 1000 : 60
@@ -902,14 +923,14 @@ export class CallRoom {
    * Call worker to charge the budget for estimated usage
    */
   private async chargeBudget(bytes: number): Promise<void> {
-    if (!this.roomId || !this.budgetId || !this.workerBaseUrl) return
+    if (!this.roomId || !this.budgetId || !this.budgetKey || !this.workerBaseUrl) return
 
     try {
       // Call the worker's metering endpoint to charge the budget
       const response = await fetch(`${this.workerBaseUrl}/api/rooms/${this.roomId}/meter`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bytes, budgetId: this.budgetId }),
+        body: JSON.stringify({ bytes, budgetId: this.budgetId, budgetKey: this.budgetKey }),
       })
 
       if (response.status === 402) {
@@ -984,6 +1005,7 @@ export class CallRoom {
   getMeteringStatus(): {
     lifecycle: RoomLifecycle
     budgetId: string | null
+    budgetKey: string | null
     lastMeteredAt: number | null
     graceEndsAt: number | null
     graceRemainingMs: number
@@ -996,6 +1018,7 @@ export class CallRoom {
     return {
       lifecycle,
       budgetId: this.budgetId,
+      budgetKey: this.budgetKey,
       lastMeteredAt: this.lastMeteredAt,
       graceEndsAt: this.graceEndsAt,
       graceRemainingMs:

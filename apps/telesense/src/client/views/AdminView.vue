@@ -1,0 +1,734 @@
+<template>
+  <div class="admin-view">
+    <header class="admin-view__header">
+      <button class="admin-view__back" @click="goBack">
+        {{ t("admin_back") }}
+      </button>
+      <div>
+        <h1 class="admin-view__title">{{ t("admin_title") }}</h1>
+        <p class="admin-view__subtitle">{{ t("admin_subtitle") }}</p>
+      </div>
+      <button
+        class="admin-view__refresh"
+        :disabled="loadingState === 'loading'"
+        @click="refreshAll"
+      >
+        {{ loadingState === "loading" ? t("admin_loading") : t("admin_refresh") }}
+      </button>
+    </header>
+
+    <div v-if="lastError" class="admin-view__alert admin-view__alert--error" role="alert">
+      {{ lastError }}
+    </div>
+
+    <div class="admin-view__grid">
+      <section class="admin-card">
+        <div class="admin-card__header">
+          <h2 class="admin-card__title">{{ t("admin_budgets_title") }}</h2>
+          <span class="admin-card__badge">{{ budgets.length }}</span>
+        </div>
+
+        <div v-if="budgets.length" class="admin-list">
+          <button
+            v-for="item in budgets"
+            :key="item.budgetKey"
+            class="admin-list__item"
+            :class="{ 'admin-list__item--active': item.budgetKey === selectedBudgetKey }"
+            @click="selectBudget(item.budgetKey)"
+          >
+            <strong>{{ item.label || item.budgetKey }}</strong>
+            <span>{{ item.budgetId }}</span>
+          </button>
+        </div>
+        <p v-else class="admin-card__empty">{{ t("admin_not_loaded") }}</p>
+      </section>
+
+      <section class="admin-card">
+        <div class="admin-card__header">
+          <h2 class="admin-card__title">{{ t("admin_budget_title") }}</h2>
+          <span v-if="budget" class="admin-card__badge">{{ budget.grace.lifecycle }}</span>
+        </div>
+
+        <div v-if="budget" class="admin-card__rows">
+          <div class="admin-card__row">
+            <span>{{ t("admin_budget_key") }}</span>
+            <code>{{ budget.budgetKey }}</code>
+          </div>
+          <div class="admin-card__row">
+            <span>{{ t("admin_budget_id") }}</span>
+            <code>{{ budget.budgetId }}</code>
+          </div>
+          <div class="admin-card__row">
+            <span>{{ t("admin_budget_remaining") }}</span>
+            <strong>{{ formatBytes(budget.allowance.remainingBytes) }}</strong>
+          </div>
+          <div class="admin-card__row">
+            <span>{{ t("admin_budget_consumed") }}</span>
+            <strong>{{ formatBytes(budget.allowance.consumedBytes) }}</strong>
+          </div>
+          <div class="admin-card__row">
+            <span>{{ t("admin_budget_grace_ends") }}</span>
+            <strong>{{ formatTime(budget.grace.graceEndsAt) }}</strong>
+          </div>
+        </div>
+        <p v-else class="admin-card__empty">{{ t("admin_not_loaded") }}</p>
+      </section>
+
+      <section class="admin-card">
+        <div class="admin-card__header">
+          <h2 class="admin-card__title">{{ t("admin_monthly_list_title") }}</h2>
+          <span class="admin-card__badge">{{ monthlyAllowances.length }}</span>
+        </div>
+
+        <div v-if="monthlyAllowances.length" class="admin-list">
+          <button
+            v-for="item in monthlyAllowances"
+            :key="item.allowanceId"
+            class="admin-list__item"
+            :class="{ 'admin-list__item--active': item.allowanceId === selectedAllowanceId }"
+            @click="selectMonthlyAllowance(item.allowanceId)"
+          >
+            <strong>{{ item.allowanceId }}</strong>
+            <span>{{ item.budgetKey }}</span>
+          </button>
+        </div>
+        <p v-else class="admin-card__empty">{{ t("admin_not_loaded") }}</p>
+      </section>
+
+      <section class="admin-card">
+        <div class="admin-card__header">
+          <h2 class="admin-card__title">{{ t("admin_monthly_title") }}</h2>
+          <span
+            v-if="monthlyAllowance"
+            class="admin-card__badge"
+            :class="{ 'admin-card__badge--inactive': !monthlyAllowance.active }"
+          >
+            {{ monthlyAllowance.lifecycle }}
+          </span>
+        </div>
+
+        <form class="admin-card__form" @submit.prevent="saveMonthlyAllowance">
+          <label class="admin-card__field">
+            <span>{{ t("admin_allowance_id") }}</span>
+            <input
+              v-model="monthlyAllowanceForm.allowanceId"
+              class="admin-card__input"
+              type="text"
+              spellcheck="false"
+            />
+          </label>
+          <label class="admin-card__field">
+            <span>{{ t("admin_budget_key") }}</span>
+            <input
+              v-model="monthlyAllowanceForm.budgetKey"
+              class="admin-card__input"
+              type="text"
+              spellcheck="false"
+            />
+          </label>
+          <label class="admin-card__field admin-card__field--checkbox">
+            <input v-model="monthlyAllowanceForm.active" type="checkbox" />
+            <span>{{ t("admin_monthly_active") }}</span>
+          </label>
+          <label class="admin-card__field">
+            <span>{{ t("admin_monthly_reset_amount") }}</span>
+            <input
+              v-model="monthlyAllowanceForm.resetAmountBytes"
+              class="admin-card__input"
+              type="number"
+              min="0"
+              step="1"
+            />
+          </label>
+          <label class="admin-card__field">
+            <span>{{ t("admin_monthly_cron_expr") }}</span>
+            <input
+              v-model="monthlyAllowanceForm.cronExpr"
+              class="admin-card__input"
+              type="text"
+              spellcheck="false"
+            />
+          </label>
+          <div v-if="monthlyAllowance" class="admin-card__rows admin-card__rows--compact">
+            <div class="admin-card__row">
+              <span>{{ t("admin_monthly_next_reset") }}</span>
+              <strong>{{ formatTime(monthlyAllowance.nextResetAt) }}</strong>
+            </div>
+            <div class="admin-card__row">
+              <span>{{ t("admin_monthly_last_reset") }}</span>
+              <strong>{{ formatTime(monthlyAllowance.lastResetAt) }}</strong>
+            </div>
+          </div>
+          <button class="admin-card__button" :disabled="loadingState === 'saving-monthly'">
+            {{ loadingState === "saving-monthly" ? t("admin_saving") : t("admin_monthly_save") }}
+          </button>
+        </form>
+      </section>
+
+      <section class="admin-card">
+        <div class="admin-card__header">
+          <h2 class="admin-card__title">{{ t("admin_mint_title") }}</h2>
+        </div>
+
+        <div class="admin-card__rows admin-card__rows--compact">
+          <div class="admin-card__row">
+            <span>{{ t("admin_budget_key") }}</span>
+            <code>{{ selectedBudgetKey || "—" }}</code>
+          </div>
+        </div>
+
+        <button
+          class="admin-card__button"
+          :disabled="loadingState === 'minting' || !selectedBudgetKey"
+          @click="mintToken"
+        >
+          {{ loadingState === "minting" ? t("admin_minting") : t("admin_mint_button") }}
+        </button>
+
+        <p class="admin-card__hint">{{ t("admin_mint_hint") }}</p>
+
+        <div v-if="mintedToken" class="admin-card__minted">
+          <textarea class="admin-card__textarea" readonly :value="mintedToken"></textarea>
+          <div class="admin-card__row">
+            <span>{{ t("admin_budget_remaining") }}</span>
+            <strong>{{ mintedRemainingBytes }}</strong>
+          </div>
+          <button class="admin-card__button admin-card__button--ghost" @click="copyMintedToken">
+            {{ t("admin_copy_token") }}
+          </button>
+        </div>
+      </section>
+
+      <section class="admin-card">
+        <div class="admin-card__header">
+          <h2 class="admin-card__title">{{ t("admin_secret_title") }}</h2>
+        </div>
+
+        <div class="admin-card__rows admin-card__rows--compact">
+          <div class="admin-card__row">
+            <span>{{ t("admin_budget_key") }}</span>
+            <code>{{ selectedBudgetKey || "—" }}</code>
+          </div>
+        </div>
+
+        <p class="admin-card__hint">{{ t("admin_secret_hint") }}</p>
+        <button
+          class="admin-card__button admin-card__button--warn"
+          :disabled="loadingState === 'rotating' || !selectedBudgetKey"
+          @click="rotateSecret"
+        >
+          {{ loadingState === "rotating" ? t("admin_rotating") : t("admin_rotate_button") }}
+        </button>
+      </section>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref } from "vue"
+import { useAppStore } from "../composables/useAppStore"
+import { useI18n } from "../composables/useI18n"
+import { useToast } from "../composables/useToast"
+
+type LoadingState = "idle" | "loading" | "saving-monthly" | "minting" | "rotating"
+
+type BudgetListItem = {
+  budgetKey: string
+  budgetId: string
+  label: string | null
+  createdAt: number
+  updatedAt: number
+}
+
+type MonthlyAllowanceListItem = {
+  allowanceId: string
+  budgetKey: string
+  active: boolean
+  cronExpr: string
+  createdAt: number
+  updatedAt: number
+}
+
+type BudgetResponse = {
+  budgetKey: string
+  budgetId: string
+  allowance: {
+    remainingBytes: number
+    consumedBytes: number
+  }
+  grace: {
+    lifecycle: "active" | "in_grace" | "exhausted"
+    graceEndsAt: number | null
+  }
+}
+
+type MonthlyAllowanceResponse = {
+  allowanceId: string
+  budgetKey: string
+  resetAmountBytes: number
+  cronExpr: string
+  active: boolean
+  nextResetAt: number | null
+  lastResetAt: number | null
+  lifecycle: "inactive" | "scheduled" | "due"
+}
+
+type MintResponse = {
+  serviceEntitlementToken: string
+  remainingBytes: number
+}
+
+const store = useAppStore()
+const { t } = useI18n()
+const { show } = useToast()
+
+const budgets = ref<BudgetListItem[]>([])
+const monthlyAllowances = ref<MonthlyAllowanceListItem[]>([])
+const selectedBudgetKey = ref("")
+const selectedAllowanceId = ref("")
+const budget = ref<BudgetResponse | null>(null)
+const monthlyAllowance = ref<MonthlyAllowanceResponse | null>(null)
+const mintedToken = ref("")
+const mintedRemainingBytes = ref("")
+const lastError = ref("")
+const loadingState = ref<LoadingState>("idle")
+
+const monthlyAllowanceForm = reactive({
+  allowanceId: "global",
+  budgetKey: "",
+  active: false,
+  resetAmountBytes: "0",
+  cronExpr: "0 0 1 * *",
+})
+
+const hasAdminToken = computed(() => !!store.serviceEntitlementToken.value)
+
+function goBack() {
+  window.location.search = ""
+}
+
+function formatBytes(bytes: number | null | undefined) {
+  if (typeof bytes !== "number") return "—"
+
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"]
+  let value = bytes
+  let unitIndex = 0
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex++
+  }
+
+  return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`
+}
+
+function formatTime(timestamp: number | null | undefined) {
+  if (!timestamp) return "—"
+  return new Date(timestamp).toLocaleString()
+}
+
+async function adminFetch(path: string, init: RequestInit = {}) {
+  return fetch(path, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...store.getServiceEntitlementHeaders(),
+      ...(init.headers && !Array.isArray(init.headers)
+        ? (init.headers as Record<string, string>)
+        : {}),
+    },
+  })
+}
+
+async function loadBudgetList() {
+  const response = await adminFetch("/admin/host/budgets")
+  if (!response.ok) throw new Error(await response.text())
+  const data = (await response.json()) as { budgets: BudgetListItem[] }
+  budgets.value = data.budgets
+  if (!selectedBudgetKey.value && data.budgets.length > 0) {
+    selectedBudgetKey.value = data.budgets[0].budgetKey
+  }
+}
+
+async function loadMonthlyAllowanceList() {
+  const response = await adminFetch("/admin/host/monthly-allowances")
+  if (!response.ok) throw new Error(await response.text())
+  const data = (await response.json()) as { monthlyAllowances: MonthlyAllowanceListItem[] }
+  monthlyAllowances.value = data.monthlyAllowances
+  if (!selectedAllowanceId.value && data.monthlyAllowances.length > 0) {
+    selectedAllowanceId.value = data.monthlyAllowances[0].allowanceId
+  }
+}
+
+async function loadBudget() {
+  if (!selectedBudgetKey.value) {
+    budget.value = null
+    return
+  }
+
+  const response = await adminFetch(
+    `/admin/entitlement/budget?budgetKey=${encodeURIComponent(selectedBudgetKey.value)}`,
+  )
+  if (!response.ok) throw new Error(await response.text())
+  budget.value = (await response.json()) as BudgetResponse
+}
+
+async function loadMonthlyAllowance() {
+  if (!selectedAllowanceId.value) {
+    monthlyAllowance.value = null
+    return
+  }
+
+  const response = await adminFetch(
+    `/admin/entitlement/monthly-allowance?allowanceId=${encodeURIComponent(selectedAllowanceId.value)}`,
+  )
+  if (!response.ok) throw new Error(await response.text())
+
+  const data = (await response.json()) as MonthlyAllowanceResponse
+  monthlyAllowance.value = data
+  monthlyAllowanceForm.allowanceId = data.allowanceId
+  monthlyAllowanceForm.budgetKey = data.budgetKey
+  monthlyAllowanceForm.active = data.active
+  monthlyAllowanceForm.resetAmountBytes = String(data.resetAmountBytes)
+  monthlyAllowanceForm.cronExpr = data.cronExpr
+}
+
+async function refreshAll() {
+  if (!hasAdminToken.value) {
+    lastError.value = t("admin_missing_token")
+    return
+  }
+
+  loadingState.value = "loading"
+  lastError.value = ""
+  try {
+    await Promise.all([loadBudgetList(), loadMonthlyAllowanceList()])
+    await Promise.all([loadBudget(), loadMonthlyAllowance()])
+  } catch (error) {
+    lastError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    loadingState.value = "idle"
+  }
+}
+
+async function selectBudget(budgetKey: string) {
+  selectedBudgetKey.value = budgetKey
+  await loadBudget()
+}
+
+async function selectMonthlyAllowance(allowanceId: string) {
+  selectedAllowanceId.value = allowanceId
+  await loadMonthlyAllowance()
+}
+
+async function saveMonthlyAllowance() {
+  loadingState.value = "saving-monthly"
+  lastError.value = ""
+  try {
+    const response = await adminFetch("/admin/entitlement/monthly-allowance", {
+      method: "POST",
+      body: JSON.stringify({
+        allowanceId: monthlyAllowanceForm.allowanceId.trim(),
+        budgetKey: monthlyAllowanceForm.budgetKey.trim(),
+        active: monthlyAllowanceForm.active,
+        resetAmountBytes: Number.parseInt(monthlyAllowanceForm.resetAmountBytes, 10),
+        cronExpr: monthlyAllowanceForm.cronExpr.trim(),
+      }),
+    })
+    if (!response.ok) {
+      throw new Error(await response.text())
+    }
+    const data = (await response.json()) as MonthlyAllowanceResponse
+    monthlyAllowance.value = data
+    selectedAllowanceId.value = data.allowanceId
+    selectedBudgetKey.value = data.budgetKey
+    await Promise.all([loadBudgetList(), loadMonthlyAllowanceList(), loadBudget()])
+    show(t("admin_monthly_saved"), "success")
+  } catch (error) {
+    lastError.value = error instanceof Error ? error.message : String(error)
+    show(lastError.value, "error")
+  } finally {
+    loadingState.value = "idle"
+  }
+}
+
+async function mintToken() {
+  if (!selectedBudgetKey.value) return
+
+  loadingState.value = "minting"
+  lastError.value = ""
+  try {
+    const response = await adminFetch("/admin/entitlement/mint", {
+      method: "POST",
+      body: JSON.stringify({ budgetKey: selectedBudgetKey.value }),
+    })
+    if (!response.ok) {
+      throw new Error(await response.text())
+    }
+    const data = (await response.json()) as MintResponse
+    mintedToken.value = data.serviceEntitlementToken
+    mintedRemainingBytes.value = formatBytes(data.remainingBytes)
+    await Promise.all([loadBudgetList(), loadBudget()])
+    show(t("admin_token_minted"), "success")
+  } catch (error) {
+    lastError.value = error instanceof Error ? error.message : String(error)
+    show(lastError.value, "error")
+  } finally {
+    loadingState.value = "idle"
+  }
+}
+
+async function copyMintedToken() {
+  if (!mintedToken.value) return
+  try {
+    await navigator.clipboard.writeText(mintedToken.value)
+    show(t("admin_token_copied"), "success")
+  } catch {
+    show(t("admin_token_copy_failed"), "error")
+  }
+}
+
+async function rotateSecret() {
+  if (!selectedBudgetKey.value) return
+
+  loadingState.value = "rotating"
+  lastError.value = ""
+  try {
+    const response = await adminFetch("/admin/entitlement/rotate", {
+      method: "POST",
+      body: JSON.stringify({ budgetKey: selectedBudgetKey.value }),
+    })
+    if (!response.ok) {
+      throw new Error(await response.text())
+    }
+    await Promise.all([loadBudgetList(), loadBudget()])
+    show(t("admin_secret_rotated"), "success")
+  } catch (error) {
+    lastError.value = error instanceof Error ? error.message : String(error)
+    show(lastError.value, "error")
+  } finally {
+    loadingState.value = "idle"
+  }
+}
+
+onMounted(() => {
+  void refreshAll()
+})
+</script>
+
+<style scoped>
+.admin-view {
+  min-height: 100vh;
+  padding: var(--space-6) var(--space-4) var(--space-8);
+  background: var(--color-bg-primary);
+}
+
+.admin-view__header {
+  width: min(72rem, 100%);
+  margin: 0 auto var(--space-6);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.admin-view__back,
+.admin-view__refresh,
+.admin-card__button,
+.admin-list__item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.admin-view__refresh:disabled,
+.admin-card__button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.admin-view__title {
+  margin: 0;
+  font-size: 1.75rem;
+  color: var(--color-text-primary);
+}
+
+.admin-view__subtitle {
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-secondary);
+}
+
+.admin-view__alert {
+  width: min(72rem, 100%);
+  margin: 0 auto var(--space-6);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+}
+
+.admin-view__alert--error {
+  color: var(--color-danger, #c43d2f);
+  background: color-mix(in srgb, var(--color-bg-secondary) 82%, #c43d2f 18%);
+}
+
+.admin-view__grid {
+  width: min(72rem, 100%);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: var(--space-4);
+}
+
+.admin-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-bg-secondary);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.12),
+    0 8px 24px rgb(0 0 0 / 0.08);
+}
+
+.admin-card__header {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.admin-card__title {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--color-text-primary);
+}
+
+.admin-card__badge {
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.admin-card__badge--inactive {
+  opacity: 0.7;
+}
+
+.admin-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.admin-list__item {
+  justify-content: space-between;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.admin-list__item span {
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  word-break: break-all;
+}
+
+.admin-list__item--active {
+  border-color: var(--color-accent, #d96b1d);
+  background: color-mix(in srgb, var(--color-bg-secondary) 82%, #d96b1d 18%);
+}
+
+.admin-card__rows {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.admin-card__rows--compact {
+  margin-top: var(--space-2);
+}
+
+.admin-card__row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  align-items: center;
+  color: var(--color-text-secondary);
+}
+
+.admin-card__row strong,
+.admin-card__row code {
+  color: var(--color-text-primary);
+}
+
+.admin-card__row code {
+  font-size: 0.75rem;
+  word-break: break-all;
+}
+
+.admin-card__form {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.admin-card__field {
+  display: grid;
+  gap: var(--space-2);
+  color: var(--color-text-secondary);
+}
+
+.admin-card__field--checkbox {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.admin-card__input,
+.admin-card__textarea {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font: inherit;
+  padding: var(--space-3);
+}
+
+.admin-card__textarea {
+  min-height: 7rem;
+  resize: vertical;
+}
+
+.admin-card__button--ghost {
+  background: transparent;
+}
+
+.admin-card__button--warn {
+  border-color: color-mix(in srgb, var(--color-border) 65%, #c43d2f 35%);
+}
+
+.admin-card__hint,
+.admin-card__empty {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+
+.admin-card__minted {
+  display: grid;
+  gap: var(--space-3);
+}
+
+@media (max-width: 720px) {
+  .admin-view__header {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

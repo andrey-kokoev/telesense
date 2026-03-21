@@ -309,13 +309,21 @@ describe("entitlement routes", () => {
     await roomA.fetch(
       new Request("http://do.internal/?action=setBudgetId", {
         method: "POST",
-        body: JSON.stringify({ budgetId: budget.getBudgetId(), roomId: "ROOMA" }),
+        body: JSON.stringify({
+          budgetId: budget.getBudgetId(),
+          budgetKey: "global-budget",
+          roomId: "ROOMA",
+        }),
       }),
     )
     await roomB.fetch(
       new Request("http://do.internal/?action=setBudgetId", {
         method: "POST",
-        body: JSON.stringify({ budgetId: budget.getBudgetId(), roomId: "ROOMB" }),
+        body: JSON.stringify({
+          budgetId: budget.getBudgetId(),
+          budgetKey: "global-budget",
+          roomId: "ROOMB",
+        }),
       }),
     )
 
@@ -362,7 +370,11 @@ describe("entitlement routes", () => {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bytes: 200, budgetId: budget.getBudgetId() }),
+        body: JSON.stringify({
+          bytes: 200,
+          budgetId: budget.getBudgetId(),
+          budgetKey: "global-budget",
+        }),
       },
       env,
     )
@@ -379,7 +391,11 @@ describe("entitlement routes", () => {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bytes: 50, budgetId: budget.getBudgetId() }),
+        body: JSON.stringify({
+          bytes: 50,
+          budgetId: budget.getBudgetId(),
+          budgetKey: "global-budget",
+        }),
       },
       env,
     )
@@ -481,7 +497,7 @@ describe("entitlement routes", () => {
         active: true,
         lifecycle: "scheduled",
         resetAmountBytes: 5000,
-        budgetId: budgetStub.budget.getBudgetId(),
+        budgetKey: "global-budget",
       }),
     )
 
@@ -550,6 +566,78 @@ describe("entitlement routes", () => {
         resetAmountBytes: 5000,
         cronExpr: "0 0 1 * *",
         lifecycle: "scheduled",
+      }),
+    )
+  })
+
+  test("/admin/host/budgets lists known budgets without D1", async () => {
+    const mintResponse = await app.request(
+      "http://example.test/admin/entitlement/mint",
+      {
+        method: "POST",
+        headers: { "X-Service-Entitlement-Token": "admin-secret" },
+      },
+      env,
+    )
+    const minted = (await mintResponse.json()) as { budgetId: string }
+
+    const response = await app.request(
+      "http://example.test/admin/host/budgets",
+      {
+        headers: { "X-Service-Entitlement-Token": "admin-secret" },
+      },
+      env,
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({
+        budgets: [
+          expect.objectContaining({
+            budgetKey: "global-budget",
+            budgetId: minted.budgetId,
+          }),
+        ],
+      }),
+    )
+  })
+
+  test("/admin/host/monthly-allowances lists known allowances without D1", async () => {
+    await app.request(
+      "http://example.test/admin/entitlement/monthly-allowance",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Service-Entitlement-Token": "admin-secret",
+        },
+        body: JSON.stringify({
+          active: true,
+          resetAmountBytes: 5000,
+          cronExpr: "0 0 1 * *",
+        }),
+      },
+      env,
+    )
+
+    const response = await app.request(
+      "http://example.test/admin/host/monthly-allowances",
+      {
+        headers: { "X-Service-Entitlement-Token": "admin-secret" },
+      },
+      env,
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({
+        monthlyAllowances: [
+          expect.objectContaining({
+            allowanceId: "global-monthly",
+            budgetKey: "global-budget",
+            active: true,
+          }),
+        ],
       }),
     )
   })

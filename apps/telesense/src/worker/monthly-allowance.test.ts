@@ -46,7 +46,7 @@ describe("MonthlyAllowance", () => {
     const configured = await requestJson(allowance, "configure", {
       method: "POST",
       body: JSON.stringify({
-        budgetId: "budget-a",
+        budgetKey: "budget-a",
         resetAmountBytes: 123,
         cronExpr: "0 0 1 * *",
         active: true,
@@ -56,7 +56,7 @@ describe("MonthlyAllowance", () => {
     expect(configured.response.status).toBe(200)
     expect(configured.data).toEqual(
       expect.objectContaining({
-        budgetId: "budget-a",
+        budgetKey: "budget-a",
         resetAmountBytes: 123,
         lifecycle: "scheduled",
       }),
@@ -72,7 +72,7 @@ describe("MonthlyAllowance", () => {
     await requestJson(allowance, "configure", {
       method: "POST",
       body: JSON.stringify({
-        budgetId: "budget-a",
+        budgetKey: "budget-a",
         resetAmountBytes: 123,
         cronExpr: "0 0 1 * *",
         active: true,
