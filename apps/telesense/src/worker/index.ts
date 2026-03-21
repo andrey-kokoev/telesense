@@ -740,6 +740,103 @@ app.post("/admin/entitlement/mint", async (c) => {
   })
 })
 
+// Admin: Rotate budget secret
+app.post("/admin/entitlement/rotate", async (c) => {
+  const env = c.env
+
+  // Require master SERVICE_ENTITLEMENT_TOKEN for admin access
+  const providedToken = c.req.header("X-Service-Entitlement-Token")
+  if (!providedToken || providedToken !== env.SERVICE_ENTITLEMENT_TOKEN) {
+    return c.json(
+      {
+        error: "Unauthorized",
+        code: "SERVICE_ENTITLEMENT_INVALID",
+      },
+      403,
+    )
+  }
+
+  const budget = getEntitlementBudget(env)
+
+  // Rotate the secret
+  const rotateRes = await budget.fetch(
+    new Request("http://do.internal/?action=rotateSecret", { method: "POST" }),
+  )
+
+  if (!rotateRes.ok) {
+    return c.json({ error: "Failed to rotate secret" }, 500)
+  }
+
+  const result = (await rotateRes.json()) as { version: number }
+
+  return c.json({
+    ok: true,
+    secretVersion: result.version,
+    note: "Old tokens are now invalid. New tokens must use the current secret version.",
+  })
+})
+
+// Admin: Get budget inspection data
+app.get("/admin/entitlement/budget", async (c) => {
+  const env = c.env
+
+  // Require master SERVICE_ENTITLEMENT_TOKEN for admin access
+  const providedToken = c.req.header("X-Service-Entitlement-Token")
+  if (!providedToken || providedToken !== env.SERVICE_ENTITLEMENT_TOKEN) {
+    return c.json(
+      {
+        error: "Unauthorized",
+        code: "SERVICE_ENTITLEMENT_INVALID",
+      },
+      403,
+    )
+  }
+
+  const budget = getEntitlementBudget(env)
+  const budgetRes = await budget.fetch(new Request("http://do.internal/?action=getBudget"))
+
+  if (!budgetRes.ok) {
+    return c.json({ error: "Failed to get budget data" }, 500)
+  }
+
+  const data = (await budgetRes.json()) as {
+    budgetId: string
+    remainingBytes: number
+    consumedBytes: number
+    currentSecretVersion: number
+    secretVersions: Array<{
+      version: number
+      createdAt: number
+      retiredAt?: number
+      hasSecret: boolean
+    }>
+    lastChargedAt: number | null
+    graceEndsAt: number | null
+    inGrace: boolean
+  }
+
+  return c.json({
+    budgetId: data.budgetId,
+    allowance: {
+      remainingBytes: data.remainingBytes,
+      consumedBytes: data.consumedBytes,
+    },
+    secret: {
+      currentVersion: data.currentSecretVersion,
+      versionHistory: data.secretVersions.map((sv) => ({
+        version: sv.version,
+        createdAt: sv.createdAt,
+        retiredAt: sv.retiredAt,
+        hasSecretMaterial: sv.hasSecret,
+      })),
+    },
+    grace: {
+      inGrace: data.inGrace,
+      graceEndsAt: data.graceEndsAt,
+    },
+  })
+})
+
 // Health check endpoint
 app.get("/health", (c) => {
   return c.json({

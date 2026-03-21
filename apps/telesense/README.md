@@ -8,7 +8,9 @@ The main video-calling application.
 src/
 ├── worker/
 │   ├── index.ts                # Hono worker routes and Cloudflare API wiring
-│   └── call-room.ts            # Durable Object for room/session/participant coordination
+│   ├── call-room.ts            # Durable Object for room/session/participant coordination
+│   ├── entitlement-budget.ts   # Durable Object for service entitlement budget
+│   └── tokens.ts               # Stateless token minting and verification
 ├── client/
 │   ├── main.ts                 # Browser entry
 │   ├── views/                  # Landing and call views
@@ -58,6 +60,8 @@ Multiple tabs are not supported for the same browser participant. Taking over fr
 
 ## API Endpoints
 
+### Room APIs
+
 - `GET /api/rooms/:roomId/status` - Check whether a room currently exists
 - `POST /api/rooms/status` - Batch room availability checks, capped at 12 room IDs
 - `POST /api/rooms/:roomId/session` - Create or reconnect a participant session
@@ -69,6 +73,20 @@ Multiple tabs are not supported for the same browser participant. Taking over fr
 - `POST /api/rooms/:roomId/heartbeat` - Keep the session alive
 - `POST /api/rooms/:roomId/leave` - Clean up session presence
 - `POST /api/rooms/:roomId/terminate` - End the room
+
+### Metering APIs
+
+- `POST /api/rooms/:roomId/meter` - Charge budget for room usage (internal)
+- `GET /api/rooms/:roomId/meter` - Get metering status including grace period
+
+### Admin APIs (require `X-Service-Entitlement-Token` header)
+
+- `POST /admin/entitlement/mint` - Mint a new service entitlement token
+- `POST /admin/entitlement/rotate` - Rotate budget secret (invalidates old tokens)
+- `GET /admin/entitlement/budget` - Get full budget inspection data
+
+### Health
+
 - `GET /health` - Health check
 
 ## Important Error Semantics
@@ -77,6 +95,8 @@ Multiple tabs are not supported for the same browser participant. Taking over fr
   - room does not currently exist and a valid service entitlement token is required to create it
 - `403 SERVICE_ENTITLEMENT_INVALID`
   - the provided service entitlement token is invalid or expired
+- `402 SERVICE_BUDGET_EXHAUSTED`
+  - the service entitlement budget is exhausted; room enters grace period
 - `404 ROOM_NOT_FOUND`
   - room does not currently exist and a token was provided but is not allowed to create it
 - `403 PARTICIPANT_AUTH_FAILED`
@@ -87,6 +107,36 @@ Multiple tabs are not supported for the same browser participant. Taking over fr
   - this session was superseded by a newer one for the same participant
 - `404 SESSION_NOT_FOUND`
   - the current session is no longer valid in the Durable Object
+
+## Service Entitlement System
+
+### Token Format
+
+Service entitlement tokens are stateless and self-routing:
+
+```
+budgetId.secretVersion.claims.proof
+```
+
+- `budgetId` - UUID identifying the budget (shared global budget in current rollout)
+- `secretVersion` - Incrementing integer, starts at 1
+- `claims` - Base64url-encoded JSON: `{ "tokenFormatVersion": 1, "issuedAt": 1234567890 }`
+- `proof` - HMAC-SHA256(secret, `budgetId.secretVersion.claims`)
+
+### Budget Model
+
+- One shared global budget per deployment
+- Budget tracks `remainingBytes` and `consumedBytes`
+- 60-second metering ticks estimate egress usage
+- Grace period (5 minutes) when budget exhausted
+- New joins rejected during grace; room terminates at grace end
+
+### Secret Rotation
+
+- Only current secret version is valid after rotation
+- Old tokens fail immediately after rotation
+- Secret-version metadata history is preserved
+- Rotation is admin-only via `POST /admin/entitlement/rotate`
 
 ## Architecture Notes
 
