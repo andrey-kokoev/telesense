@@ -63,6 +63,8 @@ Update documentation for:
 
 ✅ **COMPLETE** — 2026-03-21
 
+> **Note**: See [001e-entitlement-rollout-review.md](./20260321-001e-entitlement-rollout-review.md) for reconciliation rationale.
+
 All deliverables implemented:
 
 - Secret rotation endpoint at /admin/entitlement/rotate

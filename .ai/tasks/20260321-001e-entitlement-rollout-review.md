@@ -7,6 +7,8 @@
 
 Review the entitlement rollout tasks against the current codebase and reconcile status drift.
 
+**Authoritative Note**: This task file supersedes the Status sections in 001a, 001b, 001c, and 001d. Those files have been updated to ✅ COMPLETE with cross-references back to this file. This file is the source of truth for final task status.
+
 This task does not introduce new architecture. It documents:
 
 - what is already implemented

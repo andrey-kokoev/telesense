@@ -49,6 +49,8 @@ Rename the current generic creator/auth token surface to `serviceEntitlementToke
 
 ✅ **COMPLETE** — 2026-03-21
 
+> **Note**: See [001e-entitlement-rollout-review.md](./20260321-001e-entitlement-rollout-review.md) for reconciliation rationale.
+
 All renaming completed:
 
 - Environment variables renamed
