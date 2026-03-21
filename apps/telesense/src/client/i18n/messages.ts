@@ -92,6 +92,7 @@ export const messages = {
     call_remote: "Remote",
     call_muted_badge: "Muted",
     call_waiting_for_participant: "Waiting for participant...",
+    call_connection_interrupted: "Connection interrupted",
     call_participant_disconnected: "Participant disconnected",
     call_participant_camera_off: "Participant camera off",
     call_mute: "Mute",

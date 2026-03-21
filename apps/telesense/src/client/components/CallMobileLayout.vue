@@ -22,6 +22,7 @@ const props = defineProps<{
   hasLocalStream: boolean
   isWaitingForRemote: boolean
   isRemoteDisconnected: boolean
+  isRemoteMediaInterrupted: boolean
   mobileLayout: "picture-in-picture" | "remote-only"
   remoteZoomStyle: CSSProperties
   setLocalVideoEl: (el: Element | null) => void
@@ -204,17 +205,25 @@ async function copyRoomCode() {
           :style="remoteZoomStyle"
           :class="{
             'call-mobile__video--hidden':
-              isWaitingForRemote || isRemoteVideoOff || isRemoteDisconnected,
+              isWaitingForRemote ||
+              isRemoteVideoOff ||
+              isRemoteDisconnected ||
+              isRemoteMediaInterrupted,
           }"
         ></video>
         <span class="video-label">{{ t("call_remote") }}</span>
         <span v-if="isRemoteAudioMuted" class="video-status-badge">{{
           t("call_muted_badge")
         }}</span>
-        <TvNoiseSurface v-if="isWaitingForRemote || isRemoteDisconnected">
+        <TvNoiseSurface
+          v-if="isWaitingForRemote || isRemoteDisconnected || isRemoteMediaInterrupted"
+        >
           <div v-if="isWaitingForRemote" class="connecting-overlay">
             <div class="spinner call-spinner"></div>
             <span>{{ t("call_waiting_for_participant") }}</span>
+          </div>
+          <div v-else-if="isRemoteMediaInterrupted" class="connecting-overlay">
+            <span>{{ t("call_connection_interrupted") }}</span>
           </div>
           <div v-else class="connecting-overlay">
             <span>{{ t("call_participant_disconnected") }}</span>

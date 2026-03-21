@@ -91,6 +91,7 @@ const {
   isStartingCall,
   hadRemoteParticipant,
   isRemoteDisconnected,
+  isRemoteMediaInterrupted,
   syncMediaState,
   endRoom,
   leave,
@@ -178,6 +179,7 @@ onBeforeUnmount(() => {
     :has-local-stream="!!localStream"
     :is-waiting-for-remote="isWaitingForRemote"
     :is-remote-disconnected="isRemoteDisconnected"
+    :is-remote-media-interrupted="isRemoteMediaInterrupted"
     :mobile-layout="mobileCallLayout"
     :remote-zoom-style="remoteZoom.transformStyle.value"
     :set-local-video-el="setLocalVideoEl"
@@ -211,6 +213,7 @@ onBeforeUnmount(() => {
     :has-local-stream="!!localStream"
     :is-waiting-for-remote="isWaitingForRemote"
     :is-remote-disconnected="isRemoteDisconnected"
+    :is-remote-media-interrupted="isRemoteMediaInterrupted"
     :desktop-layout="desktopCallLayout"
     :remote-zoom-style="remoteZoom.transformStyle.value"
     :set-local-video-el="setLocalVideoEl"

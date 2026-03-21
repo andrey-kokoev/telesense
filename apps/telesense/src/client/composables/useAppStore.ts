@@ -10,10 +10,17 @@ export interface RecentCall {
   name?: string
 }
 
+export interface RoomParticipantCredential {
+  participantId: string
+  participantSecret: string
+}
+
 interface AppState {
+  browserInstanceId: string
   token: string
   tokenVerified: boolean
   recentCalls: RecentCall[]
+  roomParticipantCredentials: Record<string, RoomParticipantCredential>
   preferences: {
     showLogs: boolean
     audioEnabled: boolean
@@ -24,10 +31,16 @@ interface AppState {
   }
 }
 
+function generateBrowserInstanceId(): string {
+  return crypto.randomUUID()
+}
+
 const defaultState: AppState = {
+  browserInstanceId: generateBrowserInstanceId(),
   token: "",
   tokenVerified: false,
   recentCalls: [],
+  roomParticipantCredentials: {},
   preferences: {
     showLogs: false,
     audioEnabled: true,
@@ -42,6 +55,16 @@ const defaultState: AppState = {
 const state = useStorage<AppState>(STORAGE_KEY, defaultState, localStorage)
 
 export function useAppStore() {
+  const legacyState = state.value as AppState & { userId?: string }
+  if (!state.value.browserInstanceId && legacyState.userId) {
+    state.value.browserInstanceId = legacyState.userId
+    delete legacyState.userId
+  }
+
+  if (!state.value.browserInstanceId) {
+    state.value.browserInstanceId = generateBrowserInstanceId()
+  }
+
   // Auth
   const isAuthenticated = computed(() => !!state.value.token && state.value.tokenVerified)
 
@@ -63,6 +86,7 @@ export function useAppStore() {
 
   // Recent calls
   const recentCalls = computed(() => state.value.recentCalls)
+  const roomParticipantCredentials = computed(() => state.value.roomParticipantCredentials)
 
   function addRecentCall(roomId: string, name?: string) {
     const normalizedId = roomId.toUpperCase()
@@ -92,6 +116,18 @@ export function useAppStore() {
     state.value.recentCalls = []
   }
 
+  function getRoomParticipantCredential(roomId: string): RoomParticipantCredential | null {
+    return state.value.roomParticipantCredentials[roomId.toUpperCase()] ?? null
+  }
+
+  function setRoomParticipantCredential(roomId: string, credential: RoomParticipantCredential) {
+    state.value.roomParticipantCredentials[roomId.toUpperCase()] = credential
+  }
+
+  function clearRoomParticipantCredential(roomId: string) {
+    delete state.value.roomParticipantCredentials[roomId.toUpperCase()]
+  }
+
   // Preferences
   const preferences = computed(() => state.value.preferences)
 
@@ -109,9 +145,11 @@ export function useAppStore() {
 
   return {
     // State (readonly)
+    browserInstanceId: computed(() => state.value.browserInstanceId),
     token: computed(() => state.value.token),
     tokenVerified: computed(() => state.value.tokenVerified),
     recentCalls,
+    roomParticipantCredentials,
     preferences,
     isAuthenticated,
 
@@ -123,6 +161,9 @@ export function useAppStore() {
     renameRecentCall,
     removeRecentCall,
     clearRecentCalls,
+    getRoomParticipantCredential,
+    setRoomParticipantCredential,
+    clearRoomParticipantCredential,
     setPreference,
     resetState,
   }

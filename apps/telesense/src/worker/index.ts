@@ -36,6 +36,15 @@ function getCallRoom(env: Env, roomId: string): DurableObjectStub {
 interface CreateSessionResponse {
   sessionId: string
   cloudflareSessionId: string
+  participantId: string
+  participantSecret: string
+}
+
+interface CreateSessionRequest {
+  browserInstanceId: string
+  participantId?: string
+  participantSecret?: string
+  confirmTakeover?: boolean
 }
 
 interface PublishOfferRequest {
@@ -450,6 +459,20 @@ app.post("/api/rooms/:roomId/session", async (c) => {
     console.log(`[sessions/new] Creating session for room: ${roomId}`)
   }
 
+  let body: CreateSessionRequest
+  try {
+    body = await c.req.json()
+    requireNonEmptyString(body.browserInstanceId, "browserInstanceId")
+  } catch (e) {
+    return c.json(
+      {
+        error: (e as Error).message,
+        code: "BAD_REQUEST",
+      } as ErrorResponse,
+      400,
+    )
+  }
+
   const roomStatus = await getRoomStatus(env, roomId)
   const callRoom = getCallRoom(env, roomId)
 
@@ -463,6 +486,48 @@ app.post("/api/rooms/:roomId/session", async (c) => {
         c.req.header("X-User-Token") ? 404 : 401,
       )
     }
+  }
+
+  const authorizeParticipantRes = await callRoom.fetch(
+    new Request("http://do.internal/?action=authorizeParticipant", {
+      method: "POST",
+      body: JSON.stringify({
+        browserInstanceId: body.browserInstanceId,
+        participantId: body.participantId,
+        participantSecret: body.participantSecret,
+        confirmTakeover: body.confirmTakeover,
+      }),
+    }),
+  )
+
+  if (!authorizeParticipantRes.ok) {
+    if (authorizeParticipantRes.status === 409) {
+      return c.json(
+        {
+          error: "Participant takeover confirmation required",
+          code: "PARTICIPANT_TAKEOVER_REQUIRED",
+        } as ErrorResponse,
+        409,
+      )
+    }
+    if (authorizeParticipantRes.status === 403) {
+      return c.json(
+        {
+          error: "Participant authentication failed",
+          code: "PARTICIPANT_AUTH_FAILED",
+        } as ErrorResponse,
+        403,
+      )
+    }
+    return c.json(
+      { error: "Failed to authorize participant", code: "INTERNAL_ERROR" } as ErrorResponse,
+      500,
+    )
+  }
+
+  const authorizedParticipant = (await authorizeParticipantRes.json()) as {
+    participantId: string
+    participantSecret: string
   }
 
   // VERIFIED: Empty body, response is { sessionId: "..." }
@@ -501,12 +566,38 @@ app.post("/api/rooms/:roomId/session", async (c) => {
   const internalId = crypto.randomUUID()
 
   // Register with Durable Object for cross-device coordination
-  await callRoom.fetch(
+  const createSessionRes = await callRoom.fetch(
     new Request("http://do.internal/?action=createSession", {
       method: "POST",
-      body: JSON.stringify({ internalId, cfSessionId }),
+      body: JSON.stringify({
+        internalId,
+        participantId: authorizedParticipant.participantId,
+        participantSecret: authorizedParticipant.participantSecret,
+        cfSessionId,
+      }),
     }),
   )
+
+  if (!createSessionRes.ok) {
+    if (createSessionRes.status === 403) {
+      return c.json(
+        {
+          error: "Participant authentication failed",
+          code: "PARTICIPANT_AUTH_FAILED",
+        } as ErrorResponse,
+        403,
+      )
+    }
+    return c.json(
+      { error: "Failed to register session", code: "INTERNAL_ERROR" } as ErrorResponse,
+      500,
+    )
+  }
+
+  const createSessionData = (await createSessionRes.json()) as {
+    participantId: string
+    participantSecret: string
+  }
 
   if (debug) {
     console.log(
@@ -517,6 +608,8 @@ app.post("/api/rooms/:roomId/session", async (c) => {
   return c.json({
     sessionId: internalId,
     cloudflareSessionId: cfSessionId,
+    participantId: createSessionData.participantId,
+    participantSecret: createSessionData.participantSecret,
   } as CreateSessionResponse)
 })
 
@@ -552,6 +645,9 @@ app.post("/api/rooms/:roomId/publish-offer", async (c) => {
     )
 
     if (!sessionRes.ok) {
+      if (sessionRes.status === 409) {
+        return c.json({ error: "Session replaced", code: "SESSION_REPLACED" } as ErrorResponse, 409)
+      }
       const errorText = await sessionRes.text()
       console.error(`[publish] DO lookup failed: ${sessionRes.status}`, errorText)
       if (sessionRes.status === 404) {
@@ -624,7 +720,7 @@ app.post("/api/rooms/:roomId/publish-offer", async (c) => {
   }
 
   // Store published tracks in Durable Object for remote discovery
-  await callRoom.fetch(
+  const publishStateRes = await callRoom.fetch(
     new Request("http://do.internal/?action=publishTracks", {
       method: "POST",
       body: JSON.stringify({
@@ -633,6 +729,19 @@ app.post("/api/rooms/:roomId/publish-offer", async (c) => {
       }),
     }),
   )
+
+  if (!publishStateRes.ok) {
+    if (publishStateRes.status === 409) {
+      return c.json({ error: "Session replaced", code: "SESSION_REPLACED" } as ErrorResponse, 409)
+    }
+    if (publishStateRes.status === 404) {
+      return c.json({ error: "Session not found", code: "SESSION_NOT_FOUND" } as ErrorResponse, 404)
+    }
+    return c.json(
+      { error: "Failed to store published tracks", code: "INTERNAL_ERROR" } as ErrorResponse,
+      500,
+    )
+  }
 
   if (debug) {
     console.log(
@@ -675,6 +784,9 @@ app.post("/api/rooms/:roomId/subscribe-offer", async (c) => {
   )
 
   if (!sessionRes.ok) {
+    if (sessionRes.status === 409) {
+      return c.json({ error: "Session replaced", code: "SESSION_REPLACED" } as ErrorResponse, 409)
+    }
     if (sessionRes.status === 404) {
       return c.json({ error: "Session not found", code: "SESSION_NOT_FOUND" } as ErrorResponse, 404)
     }
@@ -784,6 +896,9 @@ app.post("/api/rooms/:roomId/complete-subscribe", async (c) => {
   )
 
   if (!sessionRes.ok) {
+    if (sessionRes.status === 409) {
+      return c.json({ error: "Session replaced", code: "SESSION_REPLACED" } as ErrorResponse, 409)
+    }
     if (sessionRes.status === 404) {
       return c.json({ error: "Session not found", code: "SESSION_NOT_FOUND" } as ErrorResponse, 404)
     }
@@ -868,6 +983,12 @@ app.get("/api/rooms/:roomId/discover-remote-tracks", async (c) => {
   )
 
   if (!tracksRes.ok) {
+    if (tracksRes.status === 409) {
+      return c.json({ error: "Session replaced", code: "SESSION_REPLACED" } as ErrorResponse, 409)
+    }
+    if (tracksRes.status === 404) {
+      return c.json({ error: "Session not found", code: "SESSION_NOT_FOUND" } as ErrorResponse, 404)
+    }
     return c.json({
       tracks: [],
       remoteParticipantCount: 0,
@@ -914,6 +1035,9 @@ app.post("/api/rooms/:roomId/heartbeat", async (c) => {
   )
 
   if (!heartbeatRes.ok) {
+    if (heartbeatRes.status === 409) {
+      return c.json({ error: "Session replaced", code: "SESSION_REPLACED" } as ErrorResponse, 409)
+    }
     if (heartbeatRes.status === 404) {
       return c.json({ error: "Session not found", code: "SESSION_NOT_FOUND" } as ErrorResponse, 404)
     }
@@ -958,6 +1082,9 @@ app.post("/api/rooms/:roomId/media-state", async (c) => {
   )
 
   if (!stateRes.ok) {
+    if (stateRes.status === 409) {
+      return c.json({ error: "Session replaced", code: "SESSION_REPLACED" } as ErrorResponse, 409)
+    }
     if (stateRes.status === 404) {
       return c.json({ error: "Session not found", code: "SESSION_NOT_FOUND" } as ErrorResponse, 404)
     }

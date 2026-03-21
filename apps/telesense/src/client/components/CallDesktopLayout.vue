@@ -23,6 +23,7 @@ const props = defineProps<{
   hasLocalStream: boolean
   isWaitingForRemote: boolean
   isRemoteDisconnected: boolean
+  isRemoteMediaInterrupted: boolean
   desktopLayout: "side-by-side" | "focus-remote"
   remoteZoomStyle: CSSProperties
   setLocalVideoEl: (el: Element | null) => void
@@ -174,17 +175,25 @@ async function copyRoomCode() {
             :style="remoteZoomStyle"
             :class="{
               'call-desktop__video--hidden':
-                isWaitingForRemote || isRemoteVideoOff || isRemoteDisconnected,
+                isWaitingForRemote ||
+                isRemoteVideoOff ||
+                isRemoteDisconnected ||
+                isRemoteMediaInterrupted,
             }"
           ></video>
           <span class="video-label">{{ t("call_remote") }}</span>
           <span v-if="isRemoteAudioMuted" class="video-status-badge">{{
             t("call_muted_badge")
           }}</span>
-          <TvNoiseSurface v-if="isWaitingForRemote || isRemoteDisconnected">
+          <TvNoiseSurface
+            v-if="isWaitingForRemote || isRemoteDisconnected || isRemoteMediaInterrupted"
+          >
             <div v-if="isWaitingForRemote" class="connecting-overlay">
               <div class="spinner call-spinner"></div>
               <span>{{ t("call_waiting_for_participant") }}</span>
+            </div>
+            <div v-else-if="isRemoteMediaInterrupted" class="connecting-overlay">
+              <span>{{ t("call_connection_interrupted") }}</span>
             </div>
             <div v-else class="connecting-overlay">
               <span>{{ t("call_participant_disconnected") }}</span>
@@ -273,8 +282,14 @@ async function copyRoomCode() {
           </div>
         </div>
       </div>
+    </footer>
 
-      <div v-if="showLogs" class="call-desktop__sidebar">
+    <div
+      v-if="showLogs"
+      class="call-desktop__logs-modal-backdrop"
+      @click="emit('update:showLogs', false)"
+    >
+      <div class="call-desktop__sidebar" @click.stop>
         <button class="call-desktop__sidebar-close" @click="emit('update:showLogs', false)">
           {{ t("call_close_logs") }}
         </button>
@@ -287,7 +302,7 @@ async function copyRoomCode() {
           <span>{{ entry.message }}</span>
         </div>
       </div>
-    </footer>
+    </div>
   </div>
 </template>
 
@@ -295,11 +310,14 @@ async function copyRoomCode() {
 
 <style scoped>
 .call-desktop {
-  min-height: 100vh;
+  position: fixed;
+  inset: 0;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   gap: 1rem;
   padding: 1.25rem;
+  overflow: hidden;
 }
 
 .call-desktop__header {
@@ -322,9 +340,7 @@ async function copyRoomCode() {
 }
 
 .call-desktop__footer {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
+  flex: 0 0 auto;
 }
 
 .call-desktop__footer-row {
@@ -389,9 +405,11 @@ async function copyRoomCode() {
 .call-desktop__body {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
 .call-desktop__videos {
+  height: 100%;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
@@ -432,10 +450,24 @@ async function copyRoomCode() {
 }
 
 .call-desktop__sidebar {
+  width: min(38rem, calc(100vw - 4rem));
+  max-height: min(70vh, 36rem);
   border-radius: 1rem;
   padding: 1rem;
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
+  overflow: auto;
+}
+
+.call-desktop__logs-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: rgb(0 0 0 / 0.24);
 }
 </style>

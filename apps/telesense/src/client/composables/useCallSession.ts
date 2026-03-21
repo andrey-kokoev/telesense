@@ -4,6 +4,8 @@ import { useAppStore } from "./useAppStore"
 interface SessionResponse {
   sessionId: string
   cloudflareSessionId: string
+  participantId: string
+  participantSecret: string
 }
 
 interface PublishResponse {
@@ -57,12 +59,15 @@ export function useCallSession({
   onLeave: () => void
   onLeaveWithError: (message: string) => void
 }) {
+  const SESSION_REPLACED_MESSAGE = "Call moved to another tab. Multiple tabs are not supported"
+  const ROOM_ENDED_MESSAGE = "Room ended"
   const pcRef = ref<RTCPeerConnection | null>(null)
   const isRemoteAudioMuted = ref(false)
   const isRemoteVideoOff = ref(false)
   const isStartingCall = ref(true)
   const hadRemoteParticipant = ref(false)
   const isRemoteDisconnected = ref(false)
+  const isRemoteMediaInterrupted = ref(false)
   const currentSessionId = ref<string | null>(null)
   const pollTimeoutId = ref<number | null>(null)
   const heartbeatIntervalId = ref<number | null>(null)
@@ -70,14 +75,23 @@ export function useCallSession({
   const beforeUnloadListener = ref<(() => void) | null>(null)
 
   async function apiCall(url: string, options: RequestInit = {}) {
+    const extraHeaders =
+      options.headers && !Array.isArray(options.headers)
+        ? (options.headers as Record<string, string>)
+        : {}
+
     return fetch(url, {
       ...options,
       headers: {
         "Content-Type": "application/json",
         ...store.getAuthHeaders(),
-        ...options.headers,
+        ...extraHeaders,
       },
     })
+  }
+
+  function errorToMessage(error: unknown) {
+    return error instanceof Error ? error.message : String(error)
   }
 
   async function cleanupCallPresence() {
@@ -107,12 +121,109 @@ export function useCallSession({
     onLeaveWithError(message)
   }
 
-  function handleRemoteDisconnect(reason: string) {
+  async function decodeApiError(response: Response) {
+    const errorData = (await response.json().catch(() => ({}))) as {
+      code?: string
+      error?: string
+    }
+
+    if (response.status === 409 && errorData.code === "SESSION_REPLACED") {
+      return {
+        kind: "session-replaced" as const,
+        message: SESSION_REPLACED_MESSAGE,
+        code: errorData.code,
+      }
+    }
+
+    if (response.status === 404 && errorData.code === "SESSION_NOT_FOUND") {
+      return {
+        kind: "session-missing" as const,
+        message: ROOM_ENDED_MESSAGE,
+        code: errorData.code,
+      }
+    }
+
+    if (response.status === 403 && errorData.code === "PARTICIPANT_AUTH_FAILED") {
+      return {
+        kind: "participant-auth-failed" as const,
+        message: "This room is already active in another browser",
+        code: errorData.code,
+      }
+    }
+
+    if (response.status === 409 && errorData.code === "PARTICIPANT_TAKEOVER_REQUIRED") {
+      return {
+        kind: "participant-takeover-required" as const,
+        message: "This room is already open in another tab. Taking over will disconnect it.",
+        code: errorData.code,
+      }
+    }
+
+    if (response.status === 401) {
+      return {
+        kind: "auth-required" as const,
+        message: "Room requires a valid token",
+        code: errorData.code,
+      }
+    }
+
+    if (response.status === 403) {
+      return {
+        kind: "forbidden" as const,
+        message: "Token is not allowed for this room",
+        code: errorData.code,
+      }
+    }
+
+    if (response.status === 404) {
+      return {
+        kind: "not-found" as const,
+        message: "Room not found",
+        code: errorData.code,
+      }
+    }
+
+    return {
+      kind: "unknown" as const,
+      message: errorData.error || `Request failed: ${response.status}`,
+      code: errorData.code,
+    }
+  }
+
+  async function throwIfTerminalSessionError(
+    response: Response,
+    context: "publish" | "subscribe" | "complete-subscribe" | "media-state",
+  ) {
+    const decoded = await decodeApiError(response)
+    if (decoded.kind === "session-replaced" || decoded.kind === "session-missing") {
+      log(
+        `🛑 ${decoded.kind === "session-replaced" ? "Session replaced" : "Session missing"} during ${context}`,
+      )
+      leaveWithError(decoded.message)
+      throw new Error(decoded.code || decoded.kind)
+    }
+  }
+
+  function handleRemotePresenceDisconnect(reason: string) {
     if (!hadRemoteParticipant.value || isRemoteDisconnected.value) return
     log(`🔌 Remote participant disconnected (${reason})`)
     media.clearRemoteVideo()
     isRemoteDisconnected.value = true
+    isRemoteMediaInterrupted.value = false
     showToast("Remote participant disconnected", "error")
+  }
+
+  function handleRemoteMediaInterrupted(reason: string) {
+    if (
+      !hadRemoteParticipant.value ||
+      isRemoteDisconnected.value ||
+      isRemoteMediaInterrupted.value
+    ) {
+      return
+    }
+    log(`⚠️ Remote media interrupted (${reason})`)
+    isRemoteMediaInterrupted.value = true
+    showToast("Remote media interrupted", "error")
   }
 
   function stopPolling() {
@@ -135,8 +246,9 @@ export function useCallSession({
       body: JSON.stringify({ sessionId }),
     })
     if (!res.ok) {
-      const error = new Error(`Heartbeat failed: ${res.status}`)
-      ;(error as Error & { status?: number }).status = res.status
+      const decoded = await decodeApiError(res)
+      const error = new Error(decoded.message)
+      ;(error as Error & { kind?: string }).kind = decoded.kind
       throw error
     }
   }
@@ -147,12 +259,17 @@ export function useCallSession({
       try {
         await sendHeartbeat(sessionId)
       } catch (e) {
-        if ((e as Error & { status?: number }).status === 404) {
-          log("🛑 Room ended")
-          leaveWithError("Room ended")
+        if ((e as Error & { kind?: string }).kind === "session-replaced") {
+          log("🛑 Session replaced by a newer connection")
+          leaveWithError(SESSION_REPLACED_MESSAGE)
           return
         }
-        log(`⚠️ Presence heartbeat failed: ${e}`)
+        if ((e as Error & { kind?: string }).kind === "session-missing") {
+          log("🛑 Room ended")
+          leaveWithError(ROOM_ENDED_MESSAGE)
+          return
+        }
+        log(`⚠️ Presence heartbeat failed: ${errorToMessage(e)}`)
       }
     }
     void beat()
@@ -166,7 +283,7 @@ export function useCallSession({
     if (!sessionId) return
 
     try {
-      await apiCall(`/api/rooms/${roomId}/media-state`, {
+      const res = await apiCall(`/api/rooms/${roomId}/media-state`, {
         method: "POST",
         body: JSON.stringify({
           sessionId,
@@ -174,6 +291,8 @@ export function useCallSession({
           videoEnabled: !media.isVideoOff.value,
         }),
       })
+
+      await throwIfTerminalSessionError(res, "media-state")
     } catch {
       // best-effort sync
     }
@@ -202,6 +321,8 @@ export function useCallSession({
         }),
       })
 
+      await throwIfTerminalSessionError(subscribeRes, "subscribe")
+
       if (!subscribeRes.ok) {
         const errorData = (await subscribeRes.json().catch(() => ({}))) as {
           error?: string
@@ -229,6 +350,8 @@ export function useCallSession({
         }),
       })
 
+      await throwIfTerminalSessionError(completeRes, "complete-subscribe")
+
       if (!completeRes.ok) {
         const errorData = (await completeRes.json().catch(() => ({}))) as { error?: string }
         log(`❌ Complete subscribe failed: ${completeRes.status}`)
@@ -239,7 +362,7 @@ export function useCallSession({
       log("✅ Connected to remote participant!")
       showToast("Remote participant connected!", "success")
     } catch (e) {
-      log(`❌ Subscribe error: ${e}`)
+      log(`❌ Subscribe error: ${errorToMessage(e)}`)
     }
   }
 
@@ -251,7 +374,17 @@ export function useCallSession({
         const res = await apiCall(
           `/api/rooms/${roomId}/discover-remote-tracks?sessionId=${sessionId}`,
         )
-        if (!res.ok) return
+        if (!res.ok) {
+          const decoded = await decodeApiError(res)
+          if (decoded.kind === "session-replaced" || decoded.kind === "session-missing") {
+            log(
+              `🛑 ${decoded.kind === "session-replaced" ? "Session replaced" : "Session missing"} during discovery`,
+            )
+            leaveWithError(decoded.message)
+            return
+          }
+          return
+        }
         const data = (await res.json()) as DiscoverResponse
         const discoveredTrackNames = new Set(data.tracks.map((track) => track.trackName))
         isRemoteAudioMuted.value =
@@ -260,13 +393,16 @@ export function useCallSession({
         isRemoteVideoOff.value =
           data.remoteParticipants.length > 0 &&
           data.remoteParticipants.every((participant) => !participant.videoEnabled)
+        if (data.remoteParticipantCount > 0) {
+          isRemoteDisconnected.value = false
+          isRemoteMediaInterrupted.value = false
+        }
 
         if (hadRemoteParticipant.value && data.remoteParticipantCount === 0) {
           checkedTracks.clear()
-          handleRemoteDisconnect("remote participant left room")
+          handleRemotePresenceDisconnect("remote participant left room")
         } else if (hadRemoteParticipant.value && discoveredTrackNames.size === 0) {
-          checkedTracks.clear()
-          handleRemoteDisconnect("remote tracks disappeared")
+          handleRemoteMediaInterrupted("remote tracks disappeared")
         }
 
         const newTracks = data.tracks.filter((track) => !checkedTracks.has(track.trackName))
@@ -333,6 +469,7 @@ export function useCallSession({
       log("📡 Remote video received!")
       hadRemoteParticipant.value = true
       isRemoteDisconnected.value = false
+      isRemoteMediaInterrupted.value = false
 
       let stream = media.remoteVid.value?.srcObject as MediaStream | null
       if (!stream) {
@@ -351,7 +488,7 @@ export function useCallSession({
           ?.getTracks()
           .some((track) => track.readyState === "live")
         if (!hasLiveTracks) {
-          handleRemoteDisconnect("track ended")
+          handleRemoteMediaInterrupted("track ended")
         }
       })
     }
@@ -359,33 +496,52 @@ export function useCallSession({
     pc.oniceconnectionstatechange = () => {
       log(`🧊 Connection: ${pc.iceConnectionState}`)
       if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
-        handleRemoteDisconnect(pc.iceConnectionState)
+        handleRemoteMediaInterrupted(pc.iceConnectionState)
       }
     }
 
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
-        handleRemoteDisconnect(pc.connectionState)
+        handleRemoteMediaInterrupted(pc.connectionState)
       }
     }
 
     try {
       log("🔑 Creating session...")
-      const sessionRes = await apiCall(`/api/rooms/${roomId}/session`, { method: "POST" })
+      const participantCredential = store.getRoomParticipantCredential(roomId)
+      const createSession = async (confirmTakeover = false) =>
+        apiCall(`/api/rooms/${roomId}/session`, {
+          method: "POST",
+          body: JSON.stringify({
+            browserInstanceId: store.browserInstanceId.value,
+            participantId: participantCredential?.participantId,
+            participantSecret: participantCredential?.participantSecret,
+            confirmTakeover,
+          }),
+        })
+
+      let sessionRes = await createSession()
       if (!sessionRes.ok) {
-        if (sessionRes.status === 401) {
-          throw new Error("Room requires a valid token")
+        const decoded = await decodeApiError(sessionRes)
+        if (decoded.kind === "participant-takeover-required") {
+          const confirmed = window.confirm(decoded.message)
+          if (!confirmed) {
+            leave()
+            return
+          }
+          sessionRes = await createSession(true)
         }
-        if (sessionRes.status === 403) {
-          throw new Error("Token is not allowed for this room")
-        }
-        if (sessionRes.status === 404) {
-          throw new Error("Room not found")
-        }
-        throw new Error(`Session failed: ${sessionRes.status}`)
+      }
+      if (!sessionRes.ok) {
+        const decoded = await decodeApiError(sessionRes)
+        throw new Error(decoded.message)
       }
 
       const sessionData = (await sessionRes.json()) as SessionResponse
+      store.setRoomParticipantCredential(roomId, {
+        participantId: sessionData.participantId,
+        participantSecret: sessionData.participantSecret,
+      })
       const sessionId = sessionData.sessionId
       currentSessionId.value = sessionId
       log("✅ Session ready")
@@ -403,7 +559,7 @@ export function useCallSession({
         }
         log("✅ Camera connected")
       } catch (e) {
-        log(`❌ Camera error: ${e}`)
+        log(`❌ Camera error: ${errorToMessage(e)}`)
         await cleanupCallPresence()
         leaveWithError("Camera access denied")
         return
@@ -432,6 +588,9 @@ export function useCallSession({
           })),
         }),
       })
+
+      await throwIfTerminalSessionError(publishRes, "publish")
+
       if (!publishRes.ok) {
         throw new Error(`Publish failed: ${publishRes.status}`)
       }
@@ -482,7 +641,7 @@ export function useCallSession({
       await cleanupCallPresence()
       media.clearRemoteVideo()
       media.stopLocalMedia()
-      log(`❌ Error: ${e}`)
+      log(`❌ Error: ${errorToMessage(e)}`)
       leaveWithError(e instanceof Error ? e.message : "Connection failed")
     }
   })
@@ -512,6 +671,7 @@ export function useCallSession({
     isStartingCall,
     hadRemoteParticipant,
     isRemoteDisconnected,
+    isRemoteMediaInterrupted,
     syncMediaState,
     endRoom,
     leave,
