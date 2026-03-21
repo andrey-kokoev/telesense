@@ -122,7 +122,15 @@ This phase stops at admission-time enforcement. It does not meter active calls y
 
 ## Status
 
-🟡 **PLANNED** — 2026-03-21
+✅ **COMPLETE** — 2026-03-21
+
+All deliverables implemented:
+
+- EntitlementBudget DO exists
+- Stateless token helpers (mint/verify with HMAC-SHA256)
+- Admin mint endpoint at /admin/entitlement/mint
+- Room-to-budget binding on activation
+- Entry-time budget depletion check
 
 ## Next Step
 

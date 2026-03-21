@@ -47,7 +47,16 @@ Rename the current generic creator/auth token surface to `serviceEntitlementToke
 
 ## Status
 
-🟡 **PLANNED** — 2026-03-21
+✅ **COMPLETE** — 2026-03-21
+
+All renaming completed:
+
+- Environment variables renamed
+- HTTP headers renamed
+- Error codes renamed
+- Client state renamed
+- Function names renamed
+- Documentation updated
 
 ## Next Step
 

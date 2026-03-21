@@ -61,4 +61,12 @@ Update documentation for:
 
 ## Status
 
-🟡 **PLANNED** — 2026-03-21
+✅ **COMPLETE** — 2026-03-21
+
+All deliverables implemented:
+
+- Secret rotation endpoint at /admin/entitlement/rotate
+- Budget inspection endpoint at /admin/entitlement/budget
+- Version metadata history preserved
+- Old tokens invalidated on rotation
+- Documentation updated with token format and rotation behavior

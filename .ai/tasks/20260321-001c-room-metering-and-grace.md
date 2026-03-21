@@ -88,7 +88,17 @@ Participants should see:
 
 ## Status
 
-🟡 **PLANNED** — 2026-03-21
+✅ **COMPLETE** — 2026-03-21
+
+All deliverables implemented:
+
+- 60-second metering ticks in CallRoom
+- Usage estimation based on tracks × subscribers
+- Budget charging with grace period entry
+- New joins rejected during grace (402)
+- Room termination at grace expiry
+- Client grace banner with countdown
+- Toast notification on grace entry
 
 ## Next Step
 
