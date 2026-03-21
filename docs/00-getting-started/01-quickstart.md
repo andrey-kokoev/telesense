@@ -29,10 +29,13 @@ This interactive script will:
 
 - Check prerequisites (`vp`, Wrangler auth, Node)
 - Guide you through creating a Cloudflare Calls app
-- Generate or reuse the service entitlement token
+- Generate or reuse:
+  - the worker `SERVICE_ENTITLEMENT_TOKEN`
+  - the `HOST_ADMIN_BOOTSTRAP_TOKEN`
 - Create or reuse the host-admin D1 database
 - Apply the host-admin D1 migration
 - Set all required worker secrets
+- Write a local `.setup-summary` with the host-admin bootstrap token for first `/host-admin` login
 
 **Re-running**: The script is idempotent. It will reuse existing tokens and skip already-configured resources. Use `./scripts/setup.sh --force` to regenerate everything.
 
@@ -53,6 +56,7 @@ cp apps/telesense/.dev.vars.example apps/telesense/.dev.vars
 # Edit .dev.vars
 CF_CALLS_SECRET=your-token-here
 SERVICE_ENTITLEMENT_TOKEN=$(openssl rand -hex 32)
+HOST_ADMIN_BOOTSTRAP_TOKEN=$(openssl rand -hex 32)
 DO_NOT_ENFORCE_SERVICE_ENTITLEMENT=true
 
 # Edit wrangler.toml
@@ -62,6 +66,7 @@ DO_NOT_ENFORCE_SERVICE_ENTITLEMENT=true
 # Set secrets in Cloudflare
 echo "your-token" | vp exec wrangler secret put CF_CALLS_SECRET --config apps/telesense/wrangler.toml
 echo "your-service-entitlement-token" | vp exec wrangler secret put SERVICE_ENTITLEMENT_TOKEN --config apps/telesense/wrangler.toml
+echo "your-host-admin-bootstrap-token" | vp exec wrangler secret put HOST_ADMIN_BOOTSTRAP_TOKEN --config apps/telesense/wrangler.toml
 
 # Create and migrate host-admin D1
 vp exec wrangler d1 create telesense-host-admin
@@ -83,13 +88,23 @@ This starts:
 
 ## 4. Test the Call
 
-1. Open http://localhost:5173/?call=test in **Tab 1**
+1. Open http://localhost:5173/?room=ABC123 in **Tab 1**
 2. Allow camera/mic when prompted
 3. Open same URL in **Tab 2**
 4. Allow camera/mic
 5. Wait 5-10 seconds
 
 **Expected**: Both tabs show local + remote video.
+
+## 4a. First Host Admin Login
+
+After setup, use the host-admin bootstrap token once:
+
+1. Open http://localhost:5173/host-admin
+2. Paste the `Host Admin Token` from `.setup-summary`
+3. The app exchanges it for a host-admin session token stored in local storage
+
+After that, host-admin uses the session token, not the bootstrap token directly.
 
 ## 5. Run Automated Tests
 

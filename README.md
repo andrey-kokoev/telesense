@@ -10,7 +10,7 @@ Cloudflare Realtime SFU implementation with verified protocol.
 # Install dependencies
 vp install
 
-# Run automated setup (Calls app, entitlement token, D1 host-admin registry, secrets)
+# Run automated setup (Calls app, host-admin bootstrap token, D1 host-admin registry, secrets)
 ./scripts/setup.sh
 
 # Or manual setup: cp apps/telesense/.dev.vars.example apps/telesense/.dev.vars

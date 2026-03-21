@@ -91,7 +91,7 @@ echo "DO_NOT_ENFORCE_USER_TOKEN=true" >> apps/telesense/.dev.vars
 
 **Check**:
 
-1. Both tabs use same `callId` (check URL: `?call=test`)
+1. Both tabs use same `roomId` (check URL: `?room=ABC123`)
 2. Check browser console for errors
 3. Check network tab for `/discover-remote-tracks` calls
 4. Wait longer (discovery polls every 2 seconds)
