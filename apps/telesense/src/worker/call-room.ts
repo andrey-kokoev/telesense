@@ -257,6 +257,18 @@ export class CallRoom {
     return this.normalizeParticipantLifecycle(participant)
   }
 
+  private countLiveSessions() {
+    let count = 0
+
+    for (const participant of this.participants.values()) {
+      const lifecycle = this.normalizeParticipantLifecycle(participant)
+      if (lifecycle.kind === "ended") continue
+      count += lifecycle.kind === "handoff_pending" ? 2 : 1
+    }
+
+    return count
+  }
+
   private async createSession(request: Request): Promise<Response> {
     const { internalId, participantId, participantSecret, cfSessionId } =
       (await request.json()) as {
@@ -397,7 +409,7 @@ export class CallRoom {
     return new Response(
       JSON.stringify({
         roomCreated: this.participants.size > 0,
-        sessionCount: this.sessions.size,
+        sessionCount: this.countLiveSessions(),
         participantCount: this.participants.size,
       }),
       {
@@ -459,7 +471,6 @@ export class CallRoom {
       lookup.participant.pendingSessionId = null
 
       if (previousActiveSessionId && previousActiveSessionId !== internalId) {
-        this.sessions.delete(previousActiveSessionId)
         console.log(
           `[CallRoom] Completed participant handoff: ${previousActiveSessionId.slice(0, 8)} -> ${internalId.slice(0, 8)}`,
         )

@@ -6,6 +6,10 @@ export default defineConfig({
   root: ".",
   publicDir: "public",
   base: "/",
+  test: {
+    include: ["src/**/*.test.ts"],
+    environment: "node",
+  },
 
   // Vite 8: Improved CSS handling with Lightning CSS
   css: {

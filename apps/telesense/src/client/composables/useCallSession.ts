@@ -49,6 +49,78 @@ type SessionLifecycle =
   | "leaving"
   | "failed"
 
+const SESSION_REPLACED_MESSAGE = "Call moved to another tab. Multiple tabs are not supported"
+const ROOM_ENDED_MESSAGE = "Room ended"
+
+export async function decodeCallApiError(response: Response) {
+  const errorData = (await response.json().catch(() => ({}))) as {
+    code?: string
+    error?: string
+  }
+
+  if (response.status === 409 && errorData.code === "SESSION_REPLACED") {
+    return {
+      kind: "session-replaced" as const,
+      message: SESSION_REPLACED_MESSAGE,
+      code: errorData.code,
+    }
+  }
+
+  if (response.status === 404 && errorData.code === "SESSION_NOT_FOUND") {
+    return {
+      kind: "session-missing" as const,
+      message: ROOM_ENDED_MESSAGE,
+      code: errorData.code,
+    }
+  }
+
+  if (response.status === 403 && errorData.code === "PARTICIPANT_AUTH_FAILED") {
+    return {
+      kind: "participant-auth-failed" as const,
+      message: "This room is already active in another browser",
+      code: errorData.code,
+    }
+  }
+
+  if (response.status === 409 && errorData.code === "PARTICIPANT_TAKEOVER_REQUIRED") {
+    return {
+      kind: "participant-takeover-required" as const,
+      message: "This room is already open in another tab. Taking over will disconnect it.",
+      code: errorData.code,
+    }
+  }
+
+  if (response.status === 401) {
+    return {
+      kind: "auth-required" as const,
+      message: "Room requires a valid token",
+      code: errorData.code,
+    }
+  }
+
+  if (response.status === 403) {
+    return {
+      kind: "forbidden" as const,
+      message: "Token is not allowed for this room",
+      code: errorData.code,
+    }
+  }
+
+  if (response.status === 404) {
+    return {
+      kind: "not-found" as const,
+      message: "Room not found",
+      code: errorData.code,
+    }
+  }
+
+  return {
+    kind: "unknown" as const,
+    message: errorData.error || `Request failed: ${response.status}`,
+    code: errorData.code,
+  }
+}
+
 export function useCallSession({
   roomId,
   store,
@@ -68,8 +140,6 @@ export function useCallSession({
   onLeaveWithError: (message: string) => void
   onConfirmTakeover: (message: string) => Promise<boolean>
 }) {
-  const SESSION_REPLACED_MESSAGE = "Call moved to another tab. Multiple tabs are not supported"
-  const ROOM_ENDED_MESSAGE = "Room ended"
   const pcRef = ref<RTCPeerConnection | null>(null)
   const isRemoteAudioMuted = ref(false)
   const isRemoteVideoOff = ref(false)
@@ -133,72 +203,7 @@ export function useCallSession({
   }
 
   async function decodeApiError(response: Response) {
-    const errorData = (await response.json().catch(() => ({}))) as {
-      code?: string
-      error?: string
-    }
-
-    if (response.status === 409 && errorData.code === "SESSION_REPLACED") {
-      return {
-        kind: "session-replaced" as const,
-        message: SESSION_REPLACED_MESSAGE,
-        code: errorData.code,
-      }
-    }
-
-    if (response.status === 404 && errorData.code === "SESSION_NOT_FOUND") {
-      return {
-        kind: "session-missing" as const,
-        message: ROOM_ENDED_MESSAGE,
-        code: errorData.code,
-      }
-    }
-
-    if (response.status === 403 && errorData.code === "PARTICIPANT_AUTH_FAILED") {
-      return {
-        kind: "participant-auth-failed" as const,
-        message: "This room is already active in another browser",
-        code: errorData.code,
-      }
-    }
-
-    if (response.status === 409 && errorData.code === "PARTICIPANT_TAKEOVER_REQUIRED") {
-      return {
-        kind: "participant-takeover-required" as const,
-        message: "This room is already open in another tab. Taking over will disconnect it.",
-        code: errorData.code,
-      }
-    }
-
-    if (response.status === 401) {
-      return {
-        kind: "auth-required" as const,
-        message: "Room requires a valid token",
-        code: errorData.code,
-      }
-    }
-
-    if (response.status === 403) {
-      return {
-        kind: "forbidden" as const,
-        message: "Token is not allowed for this room",
-        code: errorData.code,
-      }
-    }
-
-    if (response.status === 404) {
-      return {
-        kind: "not-found" as const,
-        message: "Room not found",
-        code: errorData.code,
-      }
-    }
-
-    return {
-      kind: "unknown" as const,
-      message: errorData.error || `Request failed: ${response.status}`,
-      code: errorData.code,
-    }
+    return decodeCallApiError(response)
   }
 
   async function throwIfTerminalSessionError(
