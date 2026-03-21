@@ -4,7 +4,6 @@ import { useAppStore } from "./useAppStore"
 interface SessionResponse {
   sessionId: string
   cloudflareSessionId: string
-  participantId: string
   participantSecret: string
 }
 
@@ -50,6 +49,7 @@ export function useCallSession({
   media,
   onLeave,
   onLeaveWithError,
+  onConfirmTakeover,
 }: {
   roomId: string
   store: ReturnType<typeof useAppStore>
@@ -58,6 +58,7 @@ export function useCallSession({
   media: MediaState
   onLeave: () => void
   onLeaveWithError: (message: string) => void
+  onConfirmTakeover: (message: string) => Promise<boolean>
 }) {
   const SESSION_REPLACED_MESSAGE = "Call moved to another tab. Multiple tabs are not supported"
   const ROOM_ENDED_MESSAGE = "Room ended"
@@ -514,7 +515,6 @@ export function useCallSession({
           method: "POST",
           body: JSON.stringify({
             browserInstanceId: store.browserInstanceId.value,
-            participantId: participantCredential?.participantId,
             participantSecret: participantCredential?.participantSecret,
             confirmTakeover,
           }),
@@ -524,7 +524,7 @@ export function useCallSession({
       if (!sessionRes.ok) {
         const decoded = await decodeApiError(sessionRes)
         if (decoded.kind === "participant-takeover-required") {
-          const confirmed = window.confirm(decoded.message)
+          const confirmed = await onConfirmTakeover(decoded.message)
           if (!confirmed) {
             leave()
             return
@@ -539,7 +539,6 @@ export function useCallSession({
 
       const sessionData = (await sessionRes.json()) as SessionResponse
       store.setRoomParticipantCredential(roomId, {
-        participantId: sessionData.participantId,
         participantSecret: sessionData.participantSecret,
       })
       const sessionId = sessionData.sessionId

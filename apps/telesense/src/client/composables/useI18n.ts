@@ -12,7 +12,8 @@ export function useI18n() {
   }
 
   function t(key: MessageKey, params?: Record<string, string | number>) {
-    let text: string = messages[locale.value]?.[key] ?? messages.en[key]
+    const localeMessages = messages[locale.value] as Partial<Record<MessageKey, string>> | undefined
+    let text: string = localeMessages?.[key] ?? messages.en[key]
     if (!params) return text
 
     for (const [name, value] of Object.entries(params)) {

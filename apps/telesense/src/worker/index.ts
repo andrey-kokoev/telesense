@@ -42,9 +42,16 @@ interface CreateSessionResponse {
 
 interface CreateSessionRequest {
   browserInstanceId: string
-  participantId?: string
   participantSecret?: string
   confirmTakeover?: boolean
+}
+
+async function deriveParticipantId(roomId: string, browserInstanceId: string): Promise<string> {
+  const data = new TextEncoder().encode(`${roomId}:${browserInstanceId}`)
+  const digest = await crypto.subtle.digest("SHA-256", data)
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
 }
 
 interface PublishOfferRequest {
@@ -492,8 +499,8 @@ app.post("/api/rooms/:roomId/session", async (c) => {
     new Request("http://do.internal/?action=authorizeParticipant", {
       method: "POST",
       body: JSON.stringify({
+        participantId: await deriveParticipantId(roomId, body.browserInstanceId),
         browserInstanceId: body.browserInstanceId,
-        participantId: body.participantId,
         participantSecret: body.participantSecret,
         confirmTakeover: body.confirmTakeover,
       }),

@@ -5,6 +5,7 @@ import CallMobileLayout from "../components/CallMobileLayout.vue"
 import { useAppStore } from "../composables/useAppStore"
 import { useCallMedia } from "../composables/useCallMedia"
 import { useCallSession } from "../composables/useCallSession"
+import { useI18n } from "../composables/useI18n"
 import { usePinchZoom } from "../composables/usePinchZoom"
 import { useSwipeBack } from "../composables/useSwipeBack"
 import { useToast } from "../composables/useToast"
@@ -17,6 +18,7 @@ interface LogEntry {
 const props = defineProps<{ roomId: string }>()
 const { show: showToast } = useToast()
 const store = useAppStore()
+const { t } = useI18n()
 
 const swipeBack = useSwipeBack(() => {
   leave()
@@ -26,6 +28,7 @@ const remoteZoom = usePinchZoom()
 const isMobile = ref(false)
 const showLogs = ref(false)
 const logs = ref<LogEntry[]>([])
+const takeoverPrompt = ref<{ message: string; resolve: (value: boolean) => void } | null>(null)
 const mediaQueryListener = ref<((event: MediaQueryListEvent) => void) | null>(null)
 let viewportQuery: MediaQueryList | null = null
 
@@ -58,6 +61,17 @@ function leaveWithErrorToLanding(message: string) {
   const params = new URLSearchParams()
   params.set("error", message)
   window.location.search = params.toString()
+}
+
+function confirmTakeover(message: string) {
+  return new Promise<boolean>((resolve) => {
+    takeoverPrompt.value = { message, resolve }
+  })
+}
+
+function resolveTakeoverPrompt(value: boolean) {
+  takeoverPrompt.value?.resolve(value)
+  takeoverPrompt.value = null
 }
 
 let syncMediaStateImpl: () => Promise<void> | void = () => {}
@@ -114,6 +128,7 @@ const {
   },
   onLeave: leaveToLanding,
   onLeaveWithError: leaveWithErrorToLanding,
+  onConfirmTakeover: confirmTakeover,
 })
 syncMediaStateImpl = syncMediaState
 
@@ -232,4 +247,89 @@ onBeforeUnmount(() => {
     @remote-touch-end="remoteZoom.onTouchEnd"
     @remote-double-tap="remoteZoom.onDoubleTap"
   />
+  <div
+    v-if="takeoverPrompt"
+    class="call-view__modal-backdrop"
+    @click.self="resolveTakeoverPrompt(false)"
+  >
+    <div class="call-view__modal">
+      <h3 class="call-view__modal-title">{{ t("call_takeover_title") }}</h3>
+      <p class="call-view__modal-copy">{{ takeoverPrompt.message }}</p>
+      <div class="call-view__modal-actions">
+        <button
+          class="call-view__modal-button call-view__modal-button--secondary"
+          @click="resolveTakeoverPrompt(false)"
+        >
+          {{ t("landing_cancel") }}
+        </button>
+        <button
+          class="call-view__modal-button call-view__modal-button--primary"
+          @click="resolveTakeoverPrompt(true)"
+        >
+          {{ t("call_take_over") }}
+        </button>
+      </div>
+    </div>
+  </div>
 </template>
+
+<style scoped>
+.call-view__modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  background: color-mix(in srgb, var(--color-bg-primary) 48%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.call-view__modal {
+  width: min(100%, 28rem);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-elevated);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-5);
+}
+
+.call-view__modal-title {
+  margin: 0 0 var(--space-2);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.call-view__modal-copy {
+  margin: 0;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.call-view__modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.call-view__modal-button {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.7rem 1rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.call-view__modal-button--secondary {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+}
+
+.call-view__modal-button--primary {
+  background: var(--ui-primary);
+  border-color: var(--ui-primary);
+  color: var(--color-accent-foreground);
+}
+</style>

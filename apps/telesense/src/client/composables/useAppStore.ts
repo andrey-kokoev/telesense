@@ -11,7 +11,6 @@ export interface RecentCall {
 }
 
 export interface RoomParticipantCredential {
-  participantId: string
   participantSecret: string
 }
 
@@ -117,7 +116,9 @@ export function useAppStore() {
   }
 
   function getRoomParticipantCredential(roomId: string): RoomParticipantCredential | null {
-    return state.value.roomParticipantCredentials[roomId.toUpperCase()] ?? null
+    const credential = state.value.roomParticipantCredentials[roomId.toUpperCase()]
+    if (!credential) return null
+    return { participantSecret: credential.participantSecret }
   }
 
   function setRoomParticipantCredential(roomId: string, credential: RoomParticipantCredential) {

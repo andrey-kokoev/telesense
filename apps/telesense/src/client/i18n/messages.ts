@@ -95,6 +95,8 @@ export const messages = {
     call_connection_interrupted: "Connection interrupted",
     call_participant_disconnected: "Participant disconnected",
     call_participant_camera_off: "Participant camera off",
+    call_takeover_title: "Take over call?",
+    call_take_over: "Take Over",
     call_mute: "Mute",
     call_unmute: "Unmute",
     call_camera_on: "Camera On",

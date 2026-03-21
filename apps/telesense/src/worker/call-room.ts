@@ -296,12 +296,12 @@ export class CallRoom {
     const { browserInstanceId, participantId, participantSecret, confirmTakeover } =
       (await request.json()) as {
         browserInstanceId: string
-        participantId?: string
+        participantId: string
         participantSecret?: string
         confirmTakeover?: boolean
       }
 
-    const resolvedParticipantId = participantId || crypto.randomUUID()
+    const resolvedParticipantId = participantId
     const existingParticipant = this.participants.get(resolvedParticipantId)
     if (
       existingParticipant &&

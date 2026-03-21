@@ -9,6 +9,8 @@ export function useCallMedia({
   showToast: (message: string, type?: "success" | "error" | "info") => void
   syncMediaState: () => Promise<void> | void
 }) {
+  const errorToMessage = (error: unknown) =>
+    error instanceof Error ? error.message : String(error)
   const localVid = ref<HTMLVideoElement>()
   const remoteVid = ref<HTMLVideoElement>()
   const remoteStream = ref<MediaStream | null>(null)
@@ -96,7 +98,7 @@ export function useCallMedia({
       await syncMediaState()
       log("🖥️ Screen sharing started")
     } catch (e) {
-      log(`❌ Screen share error: ${e}`)
+      log(`❌ Screen share error: ${errorToMessage(e)}`)
       showToast("Could not start screen share", "error")
     }
   }
@@ -156,7 +158,7 @@ export function useCallMedia({
         await videoEl.requestFullscreen()
       }
     } catch (err) {
-      log(`Fullscreen error: ${err}`)
+      log(`Fullscreen error: ${errorToMessage(err)}`)
     }
   }
 
