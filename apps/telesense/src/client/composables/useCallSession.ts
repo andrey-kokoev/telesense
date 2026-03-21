@@ -41,6 +41,14 @@ type MediaState = {
   stopLocalMedia: () => void
 }
 
+type SessionLifecycle =
+  | "creating_session"
+  | "acquiring_media"
+  | "publishing"
+  | "ready"
+  | "leaving"
+  | "failed"
+
 export function useCallSession({
   roomId,
   store,
@@ -65,7 +73,7 @@ export function useCallSession({
   const pcRef = ref<RTCPeerConnection | null>(null)
   const isRemoteAudioMuted = ref(false)
   const isRemoteVideoOff = ref(false)
-  const isStartingCall = ref(true)
+  const sessionLifecycle = ref<SessionLifecycle>("creating_session")
   const hadRemoteParticipant = ref(false)
   const isRemoteDisconnected = ref(false)
   const isRemoteMediaInterrupted = ref(false)
@@ -113,11 +121,13 @@ export function useCallSession({
   }
 
   function leave() {
+    sessionLifecycle.value = "leaving"
     void cleanupCallPresence()
     onLeave()
   }
 
   function leaveWithError(message: string) {
+    sessionLifecycle.value = "failed"
     void cleanupCallPresence()
     onLeaveWithError(message)
   }
@@ -509,6 +519,7 @@ export function useCallSession({
 
     try {
       log("🔑 Creating session...")
+      sessionLifecycle.value = "creating_session"
       const participantCredential = store.getRoomParticipantCredential(roomId)
       const createSession = async (confirmTakeover = false) =>
         apiCall(`/api/rooms/${roomId}/session`, {
@@ -547,6 +558,7 @@ export function useCallSession({
       startHeartbeat(sessionId)
 
       log("📹 Requesting camera access...")
+      sessionLifecycle.value = "acquiring_media"
       try {
         media.localStream.value = await navigator.mediaDevices.getUserMedia({
           video: true,
@@ -576,6 +588,7 @@ export function useCallSession({
       await pc.setLocalDescription(offer)
 
       log("📤 Publishing...")
+      sessionLifecycle.value = "publishing"
       const publishRes = await apiCall(`/api/rooms/${roomId}/publish-offer`, {
         method: "POST",
         body: JSON.stringify({
@@ -615,7 +628,7 @@ export function useCallSession({
 
       log("🟢 Ready for calls!")
       showToast("Ready for calls!", "success")
-      isStartingCall.value = false
+      sessionLifecycle.value = "ready"
       log("👀 Waiting for remote participant...")
       void pollAndSubscribe(pc, sessionId)
 
@@ -636,7 +649,7 @@ export function useCallSession({
       pcRef.value = null
       media.publishedVideoSender.value = null
       pc.close()
-      isStartingCall.value = false
+      sessionLifecycle.value = "failed"
       await cleanupCallPresence()
       media.clearRemoteVideo()
       media.stopLocalMedia()
@@ -665,9 +678,9 @@ export function useCallSession({
   })
 
   return {
+    sessionLifecycle,
     isRemoteAudioMuted,
     isRemoteVideoOff,
-    isStartingCall,
     hadRemoteParticipant,
     isRemoteDisconnected,
     isRemoteMediaInterrupted,

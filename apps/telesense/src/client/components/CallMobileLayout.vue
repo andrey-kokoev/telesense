@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { CSSProperties } from "vue"
-import { onBeforeUnmount, onMounted, ref } from "vue"
+import { computed, onBeforeUnmount, onMounted, ref } from "vue"
 import { Icon } from "@iconify/vue"
 import LanguageToggle from "./LanguageToggle.vue"
 import ThemeToggle from "./ThemeToggle.vue"
@@ -20,9 +20,12 @@ const props = defineProps<{
   isRemoteAudioMuted: boolean
   isRemoteVideoOff: boolean
   hasLocalStream: boolean
-  isWaitingForRemote: boolean
-  isRemoteDisconnected: boolean
-  isRemoteMediaInterrupted: boolean
+  remoteDisplayState:
+    | "starting"
+    | "waiting_for_remote"
+    | "connected"
+    | "remote_media_interrupted"
+    | "remote_left"
   mobileLayout: "picture-in-picture" | "remote-only"
   remoteZoomStyle: CSSProperties
   setLocalVideoEl: (el: Element | null) => void
@@ -49,6 +52,14 @@ const emit = defineEmits<{
 
 const showMenu = ref(false)
 const menuWrap = ref<HTMLElement | null>(null)
+const isWaitingForRemote = computed(
+  () =>
+    props.remoteDisplayState === "starting" || props.remoteDisplayState === "waiting_for_remote",
+)
+const isRemoteDisconnected = computed(() => props.remoteDisplayState === "remote_left")
+const isRemoteMediaInterrupted = computed(
+  () => props.remoteDisplayState === "remote_media_interrupted",
+)
 const localVideoCorner = ref<"top-left" | "top-right" | "bottom-left" | "bottom-right">(
   "bottom-right",
 )

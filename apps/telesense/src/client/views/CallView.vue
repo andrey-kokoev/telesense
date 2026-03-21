@@ -15,6 +15,13 @@ interface LogEntry {
   message: string
 }
 
+type CallDisplayState =
+  | "starting"
+  | "waiting_for_remote"
+  | "connected"
+  | "remote_media_interrupted"
+  | "remote_left"
+
 const props = defineProps<{ roomId: string }>()
 const { show: showToast } = useToast()
 const store = useAppStore()
@@ -100,9 +107,9 @@ const {
   syncMediaState: () => syncMediaStateImpl(),
 })
 const {
+  sessionLifecycle,
   isRemoteAudioMuted,
   isRemoteVideoOff,
-  isStartingCall,
   hadRemoteParticipant,
   isRemoteDisconnected,
   isRemoteMediaInterrupted,
@@ -132,9 +139,13 @@ const {
 })
 syncMediaStateImpl = syncMediaState
 
-const isWaitingForRemote = computed(
-  () => !isRemoteDisconnected.value && (isStartingCall.value || !hadRemoteParticipant.value),
-)
+const remoteDisplayState = computed<CallDisplayState>(() => {
+  if (sessionLifecycle.value !== "ready") return "starting"
+  if (!hadRemoteParticipant.value) return "waiting_for_remote"
+  if (isRemoteDisconnected.value) return "remote_left"
+  if (isRemoteMediaInterrupted.value) return "remote_media_interrupted"
+  return "connected"
+})
 
 onMounted(() => {
   viewportQuery = window.matchMedia("(max-width: 768px)")
@@ -192,9 +203,7 @@ onBeforeUnmount(() => {
     :is-remote-audio-muted="isRemoteAudioMuted"
     :is-remote-video-off="isRemoteVideoOff"
     :has-local-stream="!!localStream"
-    :is-waiting-for-remote="isWaitingForRemote"
-    :is-remote-disconnected="isRemoteDisconnected"
-    :is-remote-media-interrupted="isRemoteMediaInterrupted"
+    :remote-display-state="remoteDisplayState"
     :mobile-layout="mobileCallLayout"
     :remote-zoom-style="remoteZoom.transformStyle.value"
     :set-local-video-el="setLocalVideoEl"
@@ -226,9 +235,7 @@ onBeforeUnmount(() => {
     :is-remote-audio-muted="isRemoteAudioMuted"
     :is-remote-video-off="isRemoteVideoOff"
     :has-local-stream="!!localStream"
-    :is-waiting-for-remote="isWaitingForRemote"
-    :is-remote-disconnected="isRemoteDisconnected"
-    :is-remote-media-interrupted="isRemoteMediaInterrupted"
+    :remote-display-state="remoteDisplayState"
     :desktop-layout="desktopCallLayout"
     :remote-zoom-style="remoteZoom.transformStyle.value"
     :set-local-video-el="setLocalVideoEl"
