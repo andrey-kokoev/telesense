@@ -53,7 +53,10 @@ const SESSION_REPLACED_MESSAGE = "Call moved to another tab. Multiple tabs are n
 const ROOM_ENDED_MESSAGE = "Room ended"
 
 export async function decodeCallApiError(response: Response) {
-  const errorData = (await response.json().catch(() => ({}))) as {
+  const errorData = (await response
+    .clone()
+    .json()
+    .catch(() => ({}))) as {
     code?: string
     error?: string
   }
