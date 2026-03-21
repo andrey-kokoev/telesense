@@ -22,6 +22,8 @@ type CallDisplayState =
   | "remote_media_interrupted"
   | "remote_left"
 
+type TakeoverPromptState = "closed" | "prompting" | "resolving"
+
 const props = defineProps<{ roomId: string }>()
 const { show: showToast } = useToast()
 const store = useAppStore()
@@ -35,7 +37,9 @@ const remoteZoom = usePinchZoom()
 const isMobile = ref(false)
 const showLogs = ref(false)
 const logs = ref<LogEntry[]>([])
-const takeoverPrompt = ref<{ message: string; resolve: (value: boolean) => void } | null>(null)
+const takeoverPromptState = ref<TakeoverPromptState>("closed")
+const takeoverPromptMessage = ref("")
+const takeoverPromptResolver = ref<((value: boolean) => void) | null>(null)
 const mediaQueryListener = ref<((event: MediaQueryListEvent) => void) | null>(null)
 let viewportQuery: MediaQueryList | null = null
 
@@ -72,13 +76,20 @@ function leaveWithErrorToLanding(message: string) {
 
 function confirmTakeover(message: string) {
   return new Promise<boolean>((resolve) => {
-    takeoverPrompt.value = { message, resolve }
+    takeoverPromptMessage.value = message
+    takeoverPromptResolver.value = resolve
+    takeoverPromptState.value = "prompting"
   })
 }
 
 function resolveTakeoverPrompt(value: boolean) {
-  takeoverPrompt.value?.resolve(value)
-  takeoverPrompt.value = null
+  if (takeoverPromptState.value !== "prompting") return
+
+  takeoverPromptState.value = "resolving"
+  takeoverPromptResolver.value?.(value)
+  takeoverPromptResolver.value = null
+  takeoverPromptMessage.value = ""
+  takeoverPromptState.value = "closed"
 }
 
 let syncMediaStateImpl: () => Promise<void> | void = () => {}
@@ -255,22 +266,24 @@ onBeforeUnmount(() => {
     @remote-double-tap="remoteZoom.onDoubleTap"
   />
   <div
-    v-if="takeoverPrompt"
+    v-if="takeoverPromptState !== 'closed'"
     class="call-view__modal-backdrop"
-    @click.self="resolveTakeoverPrompt(false)"
+    @click.self="takeoverPromptState === 'prompting' && resolveTakeoverPrompt(false)"
   >
     <div class="call-view__modal">
       <h3 class="call-view__modal-title">{{ t("call_takeover_title") }}</h3>
-      <p class="call-view__modal-copy">{{ takeoverPrompt.message }}</p>
+      <p class="call-view__modal-copy">{{ takeoverPromptMessage }}</p>
       <div class="call-view__modal-actions">
         <button
           class="call-view__modal-button call-view__modal-button--secondary"
+          :disabled="takeoverPromptState !== 'prompting'"
           @click="resolveTakeoverPrompt(false)"
         >
           {{ t("landing_cancel") }}
         </button>
         <button
           class="call-view__modal-button call-view__modal-button--primary"
+          :disabled="takeoverPromptState !== 'prompting'"
           @click="resolveTakeoverPrompt(true)"
         >
           {{ t("call_take_over") }}
