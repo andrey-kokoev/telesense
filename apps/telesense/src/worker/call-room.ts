@@ -24,6 +24,7 @@ export interface Participant {
 export interface CallState {
   sessions: Map<string, Session>
   participants: Map<string, Participant>
+  budgetId: string | null
 }
 
 type SessionLookup =
@@ -46,6 +47,7 @@ export class CallRoom {
   private state: DurableObjectState
   private sessions: Map<string, Session> = new Map()
   private participants: Map<string, Participant> = new Map()
+  private budgetId: string | null = null
   private initialized: boolean = false
 
   constructor(state: DurableObjectState) {
@@ -57,6 +59,7 @@ export class CallRoom {
 
     const storedSessions = await this.state.storage.get<[string, Session][]>("sessions")
     const storedParticipants = await this.state.storage.get<[string, Participant][]>("participants")
+    const storedBudgetId = await this.state.storage.get<string>("budgetId")
 
     if (storedSessions && Array.isArray(storedSessions)) {
       this.sessions = new Map(storedSessions)
@@ -79,6 +82,11 @@ export class CallRoom {
     } else {
       this.rebuildParticipantsFromSessions()
       console.log(`[CallRoom] Rebuilt ${this.participants.size} participants from sessions`)
+    }
+
+    if (storedBudgetId) {
+      this.budgetId = storedBudgetId
+      console.log(`[CallRoom] Loaded budgetId: ${storedBudgetId.slice(0, 8)}`)
     }
 
     this.initialized = true
@@ -119,6 +127,10 @@ export class CallRoom {
           return await this.terminateRoom()
         case "getState":
           return this.getState()
+        case "setBudgetId":
+          return await this.setBudgetId(request)
+        case "getBudgetId":
+          return this.getBudgetId()
         default:
           console.error(`[CallRoom] Unknown action: ${action}`)
           return new Response(JSON.stringify({ error: `Unknown action: ${action}` }), {
@@ -720,5 +732,22 @@ export class CallRoom {
     )
     await this.state.storage.put("sessions", sessionEntries)
     await this.state.storage.put("participants", participantEntries)
+    if (this.budgetId) {
+      await this.state.storage.put("budgetId", this.budgetId)
+    }
+  }
+
+  private async setBudgetId(request: Request): Promise<Response> {
+    const body = (await request.json()) as { budgetId: string }
+    if (!body.budgetId) {
+      return new Response(JSON.stringify({ error: "budgetId required" }), { status: 400 })
+    }
+    this.budgetId = body.budgetId
+    await this.state.storage.put("budgetId", body.budgetId)
+    return new Response(JSON.stringify({ ok: true, budgetId: body.budgetId }), { status: 200 })
+  }
+
+  private getBudgetId(): Response {
+    return new Response(JSON.stringify({ budgetId: this.budgetId }), { status: 200 })
   }
 }

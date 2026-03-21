@@ -19,10 +19,20 @@ directory = "./dist"
 name = "CALL_ROOMS"
 class_name = "CallRoom"
 
+# Durable Objects for entitlement budget management
+[[durable_objects.bindings]]
+name = "ENTITLEMENT_BUDGETS"
+class_name = "EntitlementBudget"
+
 # Durable Object migration (required for new DO classes)
 [[migrations]]
 tag = "v1"
 new_classes = ["CallRoom"]
+
+# EntitlementBudget DO migration
+[[migrations]]
+tag = "v2"
+new_classes = ["EntitlementBudget"]
 
 # Protocol debugging: enable only during development
 # DEBUG_PROTOCOL = "true"

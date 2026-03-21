@@ -15,6 +15,8 @@
 import { Context, Hono } from "hono"
 import { logger } from "hono/logger"
 import { CallRoom } from "./call-room"
+import { EntitlementBudget } from "./entitlement-budget"
+import { mintToken, verifyTokenWithSecret } from "./tokens"
 
 type Env = {
   REALTIME_APP_ID: string
@@ -25,6 +27,7 @@ type Env = {
   BUDGET_KV?: KVNamespace // Optional: for usage limiting
   ASSETS?: Fetcher // Workers Sites static assets
   CALL_ROOMS: DurableObjectNamespace
+  ENTITLEMENT_BUDGETS: DurableObjectNamespace
 }
 
 // VERIFIED: rtc.live.cloudflare.com/v1 (not realtime.cloudflare.com/client/v4)
@@ -34,6 +37,12 @@ const REALTIME_API = "https://rtc.live.cloudflare.com/v1/apps"
 function getCallRoom(env: Env, roomId: string): DurableObjectStub {
   const id = env.CALL_ROOMS.idFromName(roomId)
   return env.CALL_ROOMS.get(id)
+}
+
+// Helper to get EntitlementBudget DO instance (shared global budget)
+function getEntitlementBudget(env: Env): DurableObjectStub {
+  const id = env.ENTITLEMENT_BUDGETS.idFromName("global")
+  return env.ENTITLEMENT_BUDGETS.get(id)
 }
 
 // Type definitions
@@ -368,16 +377,83 @@ async function handleCreateSession(c: AppContext) {
   const roomStatus = await getRoomStatus(env, roomId)
   const callRoom = getCallRoom(env, roomId)
 
-  if (!roomStatus.exists && !hasValidServiceEntitlementToken(c.req.raw, env)) {
-    return c.json(
-      {
-        error: "Room not found",
-        code: c.req.header("X-Service-Entitlement-Token")
-          ? "ROOM_NOT_FOUND"
-          : "SERVICE_ENTITLEMENT_REQUIRED",
-      } as ErrorResponse,
-      c.req.header("X-Service-Entitlement-Token") ? 404 : 401,
+  // Extract and verify service entitlement token
+  const token = c.req.header("X-Service-Entitlement-Token") || ""
+  let tokenBudgetId: string | null = null
+
+  if (!roomStatus.exists) {
+    // Room doesn't exist - require valid token and check budget
+    if (!token) {
+      return c.json(
+        {
+          error: "Room not found",
+          code: "SERVICE_ENTITLEMENT_REQUIRED",
+        } as ErrorResponse,
+        401,
+      )
+    }
+
+    // Verify token statelessly
+    const budget = getEntitlementBudget(env)
+    const currentSecretRes = await budget.fetch(
+      new Request("http://do.internal/?action=getCurrentSecret"),
     )
+    if (!currentSecretRes.ok) {
+      return c.json(
+        {
+          error: "Service entitlement not available",
+          code: "SERVICE_ENTITLEMENT_UNAVAILABLE",
+        } as ErrorResponse,
+        503,
+      )
+    }
+
+    const { secret } = (await currentSecretRes.json()) as { secret: string }
+    const verification = await verifyTokenWithSecret(token, secret)
+
+    if (!verification.valid) {
+      return c.json(
+        {
+          error: "Invalid service entitlement token",
+          code: "SERVICE_ENTITLEMENT_INVALID",
+        } as ErrorResponse,
+        403,
+      )
+    }
+
+    tokenBudgetId = verification.budgetId
+
+    // Check budget depletion before activating room
+    const budgetRes = await budget.fetch(new Request("http://do.internal/?action=getBudget"))
+    const budgetData = (await budgetRes.json()) as { budgetId: string; remainingBytes: number }
+
+    if (budgetData.remainingBytes <= 0) {
+      return c.json(
+        {
+          error: "Service entitlement budget exhausted",
+          code: "SERVICE_ENTITLEMENT_EXHAUSTED",
+        } as ErrorResponse,
+        403,
+      )
+    }
+
+    // Bind room to budget on activation
+    await callRoom.fetch(
+      new Request("http://do.internal/?action=setBudgetId", {
+        method: "POST",
+        body: JSON.stringify({ budgetId: tokenBudgetId }),
+      }),
+    )
+  } else {
+    // Room exists - check if already bound to a budget
+    const budgetIdRes = await callRoom.fetch(new Request("http://do.internal/?action=getBudgetId"))
+    if (budgetIdRes.ok) {
+      const { budgetId } = (await budgetIdRes.json()) as { budgetId: string }
+      if (budgetId) {
+        // Room is already affiliated - ignore token for budget routing
+        tokenBudgetId = budgetId
+      }
+    }
   }
 
   const authorizeParticipantRes = await callRoom.fetch(
@@ -608,6 +684,60 @@ app.onError((err, c) => {
     } as ErrorResponse,
     500,
   )
+})
+
+// Admin: Mint service entitlement token
+app.post("/admin/entitlement/mint", async (c) => {
+  const env = c.env
+
+  // Require master SERVICE_ENTITLEMENT_TOKEN for admin access
+  const providedToken = c.req.header("X-Service-Entitlement-Token")
+  if (!providedToken || providedToken !== env.SERVICE_ENTITLEMENT_TOKEN) {
+    return c.json(
+      {
+        error: "Unauthorized",
+        code: "SERVICE_ENTITLEMENT_INVALID",
+      },
+      403,
+    )
+  }
+
+  const budget = getEntitlementBudget(env)
+
+  // Ensure budget has a secret
+  const secretRes = await budget.fetch(new Request("http://do.internal/?action=getCurrentSecret"))
+  if (!secretRes.ok) {
+    // No secret exists, rotate to create one
+    const rotateRes = await budget.fetch(
+      new Request("http://do.internal/?action=rotateSecret", { method: "POST" }),
+    )
+    if (!rotateRes.ok) {
+      return c.json({ error: "Failed to initialize budget secret" }, 500)
+    }
+  }
+
+  // Get current secret for minting
+  const currentSecretRes = await budget.fetch(
+    new Request("http://do.internal/?action=getCurrentSecret"),
+  )
+  if (!currentSecretRes.ok) {
+    return c.json({ error: "Failed to get budget secret" }, 500)
+  }
+
+  const { version, secret } = (await currentSecretRes.json()) as { version: number; secret: string }
+
+  // Get budget ID
+  const budgetRes = await budget.fetch(new Request("http://do.internal/?action=getBudget"))
+  const budgetData = (await budgetRes.json()) as { budgetId: string }
+
+  // Mint token
+  const token = await mintToken(budgetData.budgetId, version, secret)
+
+  return c.json({
+    token,
+    budgetId: budgetData.budgetId,
+    secretVersion: version,
+  })
 })
 
 // Health check endpoint
@@ -1215,5 +1345,6 @@ app.get("*", async (c) => {
 
 export default app
 
-// Export Durable Object class
+// Export Durable Object classes
 export { CallRoom }
+export { EntitlementBudget }
