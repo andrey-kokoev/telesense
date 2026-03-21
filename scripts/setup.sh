@@ -6,6 +6,8 @@ set -euo pipefail
 
 FORCE=false
 DRY_RUN=false
+AUTO_DEPLOY=false
+MODE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --force)
@@ -16,13 +18,27 @@ while [[ $# -gt 0 ]]; do
       DRY_RUN=true
       shift
       ;;
+    --deploy)
+      AUTO_DEPLOY=true
+      shift
+      ;;
+    --mode)
+      MODE="${2:-}"
+      shift 2
+      ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--force] [--dry-run]"
+      echo "Usage: $0 [--force] [--dry-run] [--deploy] [--mode deploy-only|local-dev]"
       exit 1
       ;;
   esac
 done
+
+if [[ -n "$MODE" && "$MODE" != "deploy-only" && "$MODE" != "local-dev" ]]; then
+  echo "Invalid mode: $MODE"
+  echo "Allowed values: deploy-only, local-dev"
+  exit 1
+fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_DIR="$ROOT_DIR/apps/telesense"
@@ -118,6 +134,48 @@ run_or_echo() {
   "$@"
 }
 
+maybe_deploy() {
+  local should_deploy="$AUTO_DEPLOY"
+
+  if [[ "$AUTO_DEPLOY" == false && "$DRY_RUN" == false ]]; then
+    echo
+    read -r -p "Deploy telesense now? [y/N] " deploy_reply
+    if [[ "$deploy_reply" =~ ^[Yy]$ ]]; then
+      should_deploy=true
+    fi
+  fi
+
+  if [[ "$should_deploy" == true ]]; then
+    say "${BLUE}Deploying telesense...${NC}"
+    run_or_echo vp run deploy
+    say "${GREEN}✓ Deploy step completed${NC}"
+  else
+    say "${BLUE}Skipping deploy step${NC}"
+  fi
+}
+
+resolve_mode() {
+  if [[ -n "$MODE" ]]; then
+    return
+  fi
+
+  if [[ "$DRY_RUN" == true ]]; then
+    MODE="local-dev"
+    return
+  fi
+
+  echo
+  read -r -p "Setup mode: deploy-only or local-dev? [deploy-only/local-dev] " mode_reply
+  case "$mode_reply" in
+    local-dev)
+      MODE="local-dev"
+      ;;
+    *)
+      MODE="deploy-only"
+      ;;
+  esac
+}
+
 say "═══════════════════════════════════════════════════════════"
 say "  telesense Setup - Realtime + Entitlement Host Admin"
 say "═══════════════════════════════════════════════════════════"
@@ -177,6 +235,10 @@ fi
 say "${GREEN}✓ Updated REALTIME_APP_ID${NC}"
 say ""
 
+resolve_mode
+say "${BLUE}Selected setup mode:${NC} $MODE"
+say ""
+
 say "${BLUE}Configuring service entitlement token...${NC}"
 SERVICE_ENTITLEMENT_TOKEN="$(read_existing_dev_var SERVICE_ENTITLEMENT_TOKEN)"
 if [[ -n "$SERVICE_ENTITLEMENT_TOKEN" && "$FORCE" == false ]]; then
@@ -186,9 +248,13 @@ else
   say "${GREEN}✓ Generated new SERVICE_ENTITLEMENT_TOKEN${NC}"
 fi
 
-write_dev_vars "$APP_SECRET" "$SERVICE_ENTITLEMENT_TOKEN"
-write_env_file "$SERVICE_ENTITLEMENT_TOKEN"
-say "${GREEN}✓ Updated $DEV_VARS and $ENV_FILE${NC}"
+if [[ "$MODE" == "local-dev" ]]; then
+  write_dev_vars "$APP_SECRET" "$SERVICE_ENTITLEMENT_TOKEN"
+  write_env_file "$SERVICE_ENTITLEMENT_TOKEN"
+  say "${GREEN}✓ Updated $DEV_VARS and $ENV_FILE${NC}"
+else
+  say "${BLUE}Skipping local dev files in deploy-only mode${NC}"
+fi
 say ""
 
 say "${BLUE}Configuring D1 host-admin registry...${NC}"
@@ -264,11 +330,20 @@ say "  HOST_ADMIN_DB: $HOST_ADMIN_DB_NAME ($HOST_ADMIN_DB_ID)"
 say ""
 say "${GREEN}Notes:${NC}"
 say "  - Host-admin registry seeding happens automatically on first host-admin access or scheduled monthly processing."
-say "  - Local development keeps DO_NOT_ENFORCE_SERVICE_ENTITLEMENT=true in $DEV_VARS."
+if [[ "$MODE" == "local-dev" ]]; then
+  say "  - Local development keeps DO_NOT_ENFORCE_SERVICE_ENTITLEMENT=true in $DEV_VARS."
+fi
 say ""
 say "${GREEN}Next steps:${NC}"
-say "  1. Run locally: vp dev"
-say "  2. Open host admin: http://localhost:5173/?admin=1"
-say "  3. Run E2E tests: vp run test"
+maybe_deploy
+if [[ "$MODE" == "local-dev" ]]; then
+  say "  1. Run locally: vp dev"
+  say "  2. Open host admin locally at: http://localhost:5173/?admin=1"
+  say "  3. Run E2E tests: vp run test"
+else
+  say "  1. Open the deployed app"
+  say "  2. Go to ?admin=1 and verify host-admin access"
+  say "  3. Configure labels, monthly allowances, and mint service entitlement tokens"
+fi
 say ""
 say "${BLUE}To reconfigure, run: ./scripts/setup.sh --force${NC}"
