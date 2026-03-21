@@ -222,4 +222,153 @@ describe("CallRoom", () => {
       }),
     ])
   })
+
+  test("binds a room budget and keeps it stable across later joins", async () => {
+    const setBudget = await requestJson(callRoom, "setBudgetId", {
+      method: "POST",
+      body: JSON.stringify({
+        budgetId: "budget-a",
+        roomId: "ROOM1",
+      }),
+    })
+    expect(setBudget.response.status).toBe(200)
+
+    const budgetLookup = await requestJson(callRoom, "getBudgetId")
+    expect(budgetLookup.data?.budgetId).toBe("budget-a")
+
+    const authorizeA = await requestJson(callRoom, "authorizeParticipant", {
+      method: "POST",
+      body: JSON.stringify({
+        participantId: "participant-a",
+      }),
+    })
+    await requestJson(callRoom, "createSession", {
+      method: "POST",
+      body: JSON.stringify({
+        internalId: "session-a",
+        participantId: "participant-a",
+        participantSecret: authorizeA.data?.participantSecret,
+        cfSessionId: "cf-session-a",
+      }),
+    })
+
+    const authorizeB = await requestJson(callRoom, "authorizeParticipant", {
+      method: "POST",
+      body: JSON.stringify({
+        participantId: "participant-b",
+      }),
+    })
+    await requestJson(callRoom, "createSession", {
+      method: "POST",
+      body: JSON.stringify({
+        internalId: "session-b",
+        participantId: "participant-b",
+        participantSecret: authorizeB.data?.participantSecret,
+        cfSessionId: "cf-session-b",
+      }),
+    })
+
+    const budgetLookupAfterJoin = await requestJson(callRoom, "getBudgetId")
+    expect(budgetLookupAfterJoin.data?.budgetId).toBe("budget-a")
+  })
+
+  test("enters room grace and rejects new joins when budget grants grace", async () => {
+    await requestJson(callRoom, "setBudgetId", {
+      method: "POST",
+      body: JSON.stringify({
+        budgetId: "budget-a",
+        roomId: "ROOM1",
+      }),
+    })
+
+    const existingAuthorize = await requestJson(callRoom, "authorizeParticipant", {
+      method: "POST",
+      body: JSON.stringify({
+        participantId: "participant-existing",
+      }),
+    })
+    await requestJson(callRoom, "createSession", {
+      method: "POST",
+      body: JSON.stringify({
+        internalId: "session-existing",
+        participantId: "participant-existing",
+        participantSecret: existingAuthorize.data?.participantSecret,
+        cfSessionId: "cf-session-existing",
+      }),
+    })
+
+    const result = await requestJson(callRoom, "handleChargeResult", {
+      method: "POST",
+      body: JSON.stringify({
+        ok: false,
+        lifecycle: "in_grace",
+        graceEndsAt: Date.now() + 15 * 60 * 1000,
+      }),
+    })
+
+    expect(result.response.status).toBe(200)
+
+    const metering = await requestJson(callRoom, "getMeteringStatus")
+    expect(metering.data).toEqual(
+      expect.objectContaining({
+        lifecycle: "in_grace",
+        isInGrace: true,
+      }),
+    )
+
+    const authorize = await requestJson(callRoom, "authorizeParticipant", {
+      method: "POST",
+      body: JSON.stringify({
+        participantId: "participant-a",
+      }),
+    })
+
+    expect(authorize.response.status).toBe(402)
+    expect(authorize.data?.code).toBe("SERVICE_BUDGET_EXHAUSTED")
+  })
+
+  test("terminates immediately when another room already claimed grace", async () => {
+    await requestJson(callRoom, "setBudgetId", {
+      method: "POST",
+      body: JSON.stringify({
+        budgetId: "budget-a",
+        roomId: "ROOM1",
+      }),
+    })
+
+    const authorize = await requestJson(callRoom, "authorizeParticipant", {
+      method: "POST",
+      body: JSON.stringify({
+        participantId: "participant-a",
+      }),
+    })
+
+    await requestJson(callRoom, "createSession", {
+      method: "POST",
+      body: JSON.stringify({
+        internalId: "session-a",
+        participantId: "participant-a",
+        participantSecret: authorize.data?.participantSecret,
+        cfSessionId: "cf-session-a",
+      }),
+    })
+
+    const result = await requestJson(callRoom, "handleChargeResult", {
+      method: "POST",
+      body: JSON.stringify({
+        ok: false,
+        lifecycle: "exhausted",
+      }),
+    })
+    expect(result.response.status).toBe(200)
+
+    const state = await requestJson(callRoom, "getState")
+    expect(state.data).toEqual(
+      expect.objectContaining({
+        lifecycle: "terminated",
+        participantCount: 0,
+        sessionCount: 0,
+      }),
+    )
+  })
 })
