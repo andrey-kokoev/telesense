@@ -2,13 +2,14 @@
 # Get this from: https://dash.cloudflare.com/?to=/:account/calls
 CF_CALLS_SECRET=your-app-token-here
 
-# Generic User Token - Any client with this token can use the app
+# Service Entitlement Token - Any client with this token can create rooms
+# This is proof of right to consume service (not user identity)
 # Generate with: openssl rand -hex 32
-GENERIC_USER_TOKEN=your-generated-token-here
+SERVICE_ENTITLEMENT_TOKEN=your-generated-token-here
 
 # Debug mode - set to 'true' to enable verbose logging
 # DEBUG=true
 
-# Dev-only: Disable user token enforcement (skip auth in local dev)
-# Set to 'true' to allow requests without X-User-Token header
-DO_NOT_ENFORCE_USER_TOKEN=true
+# Dev-only: Disable service entitlement enforcement (skip auth in local dev)
+# Set to 'true' to allow requests without X-Service-Entitlement-Token header
+DO_NOT_ENFORCE_SERVICE_ENTITLEMENT=true

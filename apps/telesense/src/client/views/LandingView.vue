@@ -195,10 +195,10 @@ import { useToast } from "../composables/useToast"
 
 const {
   isAuthenticated,
-  setToken,
+  setServiceEntitlementToken,
   recentCalls,
   addRecentCall,
-  clearToken: clearStoredToken,
+  clearServiceEntitlementToken: clearStoredToken,
   renameRecentCall,
   removeRecentCall,
 } = useAppStore()
@@ -387,7 +387,7 @@ function setRecentScrollRef(el: Element | null) {
 async function verifyToken(candidateToken: string) {
   const res = await fetch("/api/auth/verify", {
     headers: {
-      "X-User-Token": candidateToken,
+      "X-Service-Entitlement-Token": candidateToken,
     },
   })
 
@@ -404,7 +404,7 @@ async function saveToken() {
     return
   }
 
-  setToken(token, true)
+  setServiceEntitlementToken(token, true)
   tokenInput.value = ""
   show(t("landing_token_saved"), "success")
 }

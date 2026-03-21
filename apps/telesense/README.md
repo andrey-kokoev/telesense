@@ -37,6 +37,7 @@ vp run health         # Check health endpoint
 Copy `.dev.vars.example` to `.dev.vars` and set:
 
 - `CF_CALLS_SECRET` - From Cloudflare dashboard
+- `SERVICE_ENTITLEMENT_TOKEN` - Shared secret for room creation (generate with `openssl rand -hex 32`)
 
 Edit `wrangler.toml`:
 
@@ -72,8 +73,10 @@ Multiple tabs are not supported for the same browser participant. Taking over fr
 
 ## Important Error Semantics
 
-- `401 AUTH_REQUIRED`
-  - room does not currently exist and a valid creator token is required to enter
+- `401 SERVICE_ENTITLEMENT_REQUIRED`
+  - room does not currently exist and a valid service entitlement token is required to create it
+- `403 SERVICE_ENTITLEMENT_INVALID`
+  - the provided service entitlement token is invalid or expired
 - `404 ROOM_NOT_FOUND`
   - room does not currently exist and a token was provided but is not allowed to create it
 - `403 PARTICIPANT_AUTH_FAILED`

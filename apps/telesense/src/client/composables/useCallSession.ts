@@ -95,8 +95,8 @@ export async function decodeCallApiError(response: Response) {
 
   if (response.status === 401) {
     return {
-      kind: "auth-required" as const,
-      message: "Room requires a valid token",
+      kind: "service-entitlement-required" as const,
+      message: "Room requires a valid service entitlement",
       code: errorData.code,
     }
   }

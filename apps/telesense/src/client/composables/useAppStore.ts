@@ -16,8 +16,8 @@ export interface RoomParticipantCredential {
 
 interface AppState {
   browserInstanceId: string
-  token: string
-  tokenVerified: boolean
+  serviceEntitlementToken: string
+  serviceEntitlementTokenVerified: boolean
   recentCalls: RecentCall[]
   roomParticipantCredentials: Record<string, RoomParticipantCredential>
   preferences: {
@@ -36,8 +36,8 @@ function generateBrowserInstanceId(): string {
 
 const defaultState: AppState = {
   browserInstanceId: generateBrowserInstanceId(),
-  token: "",
-  tokenVerified: false,
+  serviceEntitlementToken: "",
+  serviceEntitlementTokenVerified: false,
   recentCalls: [],
   roomParticipantCredentials: {},
   preferences: {
@@ -78,21 +78,23 @@ export function useAppStore() {
   }
 
   // Auth
-  const isAuthenticated = computed(() => !!state.value.token && state.value.tokenVerified)
+  const isAuthenticated = computed(
+    () => !!state.value.serviceEntitlementToken && state.value.serviceEntitlementTokenVerified,
+  )
 
-  function setToken(token: string, verified = false) {
-    state.value.token = token.trim()
-    state.value.tokenVerified = !!state.value.token && verified
+  function setServiceEntitlementToken(token: string, verified = false) {
+    state.value.serviceEntitlementToken = token.trim()
+    state.value.serviceEntitlementTokenVerified = !!state.value.serviceEntitlementToken && verified
   }
 
-  function clearToken() {
-    state.value.token = ""
-    state.value.tokenVerified = false
+  function clearServiceEntitlementToken() {
+    state.value.serviceEntitlementToken = ""
+    state.value.serviceEntitlementTokenVerified = false
   }
 
   function getAuthHeaders(): Record<string, string> {
     return {
-      "X-User-Token": state.value.token,
+      "X-Service-Entitlement-Token": state.value.serviceEntitlementToken,
     }
   }
 
@@ -160,16 +162,16 @@ export function useAppStore() {
   return {
     // State (readonly)
     browserInstanceId: computed(() => state.value.browserInstanceId),
-    token: computed(() => state.value.token),
-    tokenVerified: computed(() => state.value.tokenVerified),
+    serviceEntitlementToken: computed(() => state.value.serviceEntitlementToken),
+    serviceEntitlementTokenVerified: computed(() => state.value.serviceEntitlementTokenVerified),
     recentCalls,
     roomParticipantCredentials,
     preferences,
     isAuthenticated,
 
     // Actions
-    setToken,
-    clearToken,
+    setServiceEntitlementToken,
+    clearServiceEntitlementToken,
     getAuthHeaders,
     addRecentCall,
     renameRecentCall,

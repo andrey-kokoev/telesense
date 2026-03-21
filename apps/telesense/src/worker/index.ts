@@ -19,8 +19,8 @@ import { CallRoom } from "./call-room"
 type Env = {
   REALTIME_APP_ID: string
   CF_CALLS_SECRET: string
-  GENERIC_USER_TOKEN: string
-  DO_NOT_ENFORCE_USER_TOKEN?: string // Dev-only: set 'true' to disable auth
+  SERVICE_ENTITLEMENT_TOKEN: string
+  DO_NOT_ENFORCE_SERVICE_ENTITLEMENT?: string // Dev-only: set 'true' to disable auth
   DEBUG?: string
   BUDGET_KV?: KVNamespace // Optional: for usage limiting
   ASSETS?: Fetcher // Workers Sites static assets
@@ -156,16 +156,16 @@ type AppContext = Context<{ Bindings: Env }>
 const ROOM_STATUS_BATCH_LIMIT = 100
 
 function isAuthDisabled(env: Env): boolean {
-  return env.DO_NOT_ENFORCE_USER_TOKEN === "true"
+  return env.DO_NOT_ENFORCE_SERVICE_ENTITLEMENT === "true"
 }
 
-function hasValidUserToken(request: Request, env: Env): boolean {
+function hasValidServiceEntitlementToken(request: Request, env: Env): boolean {
   if (isAuthDisabled(env)) {
     return true
   }
 
-  const token = request.headers.get("X-User-Token")
-  return !!token && token === env.GENERIC_USER_TOKEN
+  const token = request.headers.get("X-Service-Entitlement-Token")
+  return !!token && token === env.SERVICE_ENTITLEMENT_TOKEN
 }
 
 // Helper functions
@@ -368,13 +368,15 @@ async function handleCreateSession(c: AppContext) {
   const roomStatus = await getRoomStatus(env, roomId)
   const callRoom = getCallRoom(env, roomId)
 
-  if (!roomStatus.exists && !hasValidUserToken(c.req.raw, env)) {
+  if (!roomStatus.exists && !hasValidServiceEntitlementToken(c.req.raw, env)) {
     return c.json(
       {
         error: "Room not found",
-        code: c.req.header("X-User-Token") ? "ROOM_NOT_FOUND" : "AUTH_REQUIRED",
+        code: c.req.header("X-Service-Entitlement-Token")
+          ? "ROOM_NOT_FOUND"
+          : "SERVICE_ENTITLEMENT_REQUIRED",
       } as ErrorResponse,
-      c.req.header("X-User-Token") ? 404 : 401,
+      c.req.header("X-Service-Entitlement-Token") ? 404 : 401,
     )
   }
 
@@ -504,13 +506,15 @@ const app = new Hono<{ Bindings: Env }>()
 app.use("*", logger())
 
 app.get("/api/auth/verify", (c) => {
-  if (!hasValidUserToken(c.req.raw, c.env)) {
+  if (!hasValidServiceEntitlementToken(c.req.raw, c.env)) {
     return c.json(
       {
-        error: "Invalid authentication token",
-        code: c.req.header("X-User-Token") ? "AUTH_INVALID" : "AUTH_MISSING",
+        error: "Invalid service entitlement token",
+        code: c.req.header("X-Service-Entitlement-Token")
+          ? "SERVICE_ENTITLEMENT_INVALID"
+          : "SERVICE_ENTITLEMENT_MISSING",
       },
-      c.req.header("X-User-Token") ? 403 : 401,
+      c.req.header("X-Service-Entitlement-Token") ? 403 : 401,
     )
   }
 
@@ -1119,13 +1123,15 @@ app.post("/api/rooms/:roomId/terminate", async (c) => {
     return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
   }
 
-  if (!hasValidUserToken(c.req.raw, env)) {
+  if (!hasValidServiceEntitlementToken(c.req.raw, env)) {
     return c.json(
       {
-        error: "Invalid authentication token",
-        code: c.req.header("X-User-Token") ? "AUTH_INVALID" : "AUTH_MISSING",
+        error: "Invalid service entitlement token",
+        code: c.req.header("X-Service-Entitlement-Token")
+          ? "SERVICE_ENTITLEMENT_INVALID"
+          : "SERVICE_ENTITLEMENT_MISSING",
       } as ErrorResponse,
-      c.req.header("X-User-Token") ? 403 : 401,
+      c.req.header("X-Service-Entitlement-Token") ? 403 : 401,
     )
   }
 
