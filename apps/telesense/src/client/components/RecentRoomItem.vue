@@ -100,18 +100,43 @@ const swipeTriggered = ref(false)
 const swipe = useSwipePhysics()
 const swipeState = swipe.state
 
-const swipeVisuals = computed(() => {
-  let className = ""
-  if (swipeState.value.direction && swipeState.value.phase !== "idle") {
-    const sideClass =
-      swipeState.value.direction === "edit"
-        ? "landing__recent-item--swiping-right landing__recent-item--editing"
-        : "landing__recent-item--swiping-left landing__recent-item--deleting"
+type RecentRowInteractionState =
+  | "idle"
+  | "editing"
+  | "swiping_edit"
+  | "swiping_delete"
+  | "swipe_ready_edit"
+  | "swipe_ready_delete"
 
-    className =
-      swipeState.value.phase === "ready" || swipeState.value.phase === "auto"
-        ? `${sideClass} landing__recent-item--swipe-ready`
-        : sideClass
+const interactionState = computed<RecentRowInteractionState>(() => {
+  if (editing.value) return "editing"
+  if (swipeState.value.direction === "edit") {
+    return swipeState.value.phase === "ready" || swipeState.value.phase === "auto"
+      ? "swipe_ready_edit"
+      : swipeState.value.phase === "idle"
+        ? "idle"
+        : "swiping_edit"
+  }
+  if (swipeState.value.direction === "delete") {
+    return swipeState.value.phase === "ready" || swipeState.value.phase === "auto"
+      ? "swipe_ready_delete"
+      : swipeState.value.phase === "idle"
+        ? "idle"
+        : "swiping_delete"
+  }
+  return "idle"
+})
+
+const swipeVisuals = computed(() => {
+  const classMap: Record<RecentRowInteractionState, string> = {
+    idle: "",
+    editing: "landing__recent-item--editing",
+    swiping_edit: "landing__recent-item--swiping-right landing__recent-item--editing",
+    swiping_delete: "landing__recent-item--swiping-left landing__recent-item--deleting",
+    swipe_ready_edit:
+      "landing__recent-item--swiping-right landing__recent-item--editing landing__recent-item--swipe-ready",
+    swipe_ready_delete:
+      "landing__recent-item--swiping-left landing__recent-item--deleting landing__recent-item--swipe-ready",
   }
 
   const rootStyle = {
@@ -134,7 +159,7 @@ const swipeVisuals = computed(() => {
   }
 
   return {
-    className,
+    className: classMap[interactionState.value],
     rootStyle,
     itemStyle,
     actionStyle,
