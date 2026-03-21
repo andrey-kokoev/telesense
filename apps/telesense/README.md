@@ -10,6 +10,7 @@ src/
 │   ├── index.ts                # Hono worker routes and Cloudflare API wiring
 │   ├── call-room.ts            # Durable Object for room/session/participant coordination
 │   ├── entitlement-budget.ts   # Durable Object for service entitlement budget
+│   ├── monthly-allowance.ts    # Durable Object for cron-driven budget reset policy
 │   └── tokens.ts               # Stateless token minting and verification
 ├── client/
 │   ├── main.ts                 # Browser entry
@@ -46,6 +47,9 @@ Edit `wrangler.toml`:
 - `REALTIME_APP_ID` - Your app ID
 - `GLOBAL_ENTITLEMENT_BUDGET_ID` - Shared budget name for current rollout
 - `SERVICE_ENTITLEMENT_ALLOWANCE_BYTES` - Bytes added to the shared budget per minted token
+- `MONTHLY_ALLOWANCE_ACTIVE` - Whether scheduled monthly budget resets are enabled
+- `MONTHLY_ALLOWANCE_RESET_AMOUNT_BYTES` - Target shared-budget value after each scheduled reset
+- `MONTHLY_ALLOWANCE_CRON_EXPR` - Five-field cron expression interpreted by the monthly allowance DO
 
 ## Identity Model
 
@@ -133,6 +137,20 @@ budgetId.secretVersion.claims.proof
 - 60-second metering ticks estimate egress usage
 - Grace period (15 minutes) when budget exhausted
 - New joins rejected during grace; room terminates at grace end
+
+### Monthly Allowance Model
+
+- One shared `MonthlyAllowance` DO per deployment
+- Stores:
+  - linked `budgetId`
+  - `resetAmountBytes`
+  - `cronExpr`
+  - `active`
+  - `nextResetAt`
+  - `lastResetAt`
+- Cron is only the trigger; reset policy lives in the DO
+- When active and due, cron resets the shared budget to `MONTHLY_ALLOWANCE_RESET_AMOUNT_BYTES`
+- This is a budget reset policy, not cumulative period accounting
 
 ### Secret Rotation
 

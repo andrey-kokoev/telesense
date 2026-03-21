@@ -15,8 +15,13 @@
 import { Context, Hono } from "hono"
 import { logger } from "hono/logger"
 import { CallRoom } from "./call-room"
-import { GLOBAL_ENTITLEMENT_BUDGET_NAME, SERVICE_ENTITLEMENT_HEADER } from "./entitlement-constants"
+import {
+  GLOBAL_ENTITLEMENT_BUDGET_NAME,
+  GLOBAL_MONTHLY_ALLOWANCE_NAME,
+  SERVICE_ENTITLEMENT_HEADER,
+} from "./entitlement-constants"
 import { EntitlementBudget } from "./entitlement-budget"
+import { MonthlyAllowance } from "./monthly-allowance"
 import { mintToken, verifyTokenWithSecret } from "./tokens"
 
 type Env = {
@@ -25,12 +30,17 @@ type Env = {
   SERVICE_ENTITLEMENT_TOKEN: string
   SERVICE_ENTITLEMENT_ALLOWANCE_BYTES: string
   GLOBAL_ENTITLEMENT_BUDGET_ID?: string
+  MONTHLY_ALLOWANCE_ACTIVE?: string
+  MONTHLY_ALLOWANCE_RESET_AMOUNT_BYTES?: string
+  MONTHLY_ALLOWANCE_CRON_EXPR?: string
+  GLOBAL_MONTHLY_ALLOWANCE_ID?: string
   DO_NOT_ENFORCE_SERVICE_ENTITLEMENT?: string // Dev-only: set 'true' to disable auth
   DEBUG?: string
   BUDGET_KV?: KVNamespace // Optional: for usage limiting
   ASSETS?: Fetcher // Workers Sites static assets
   CALL_ROOMS: DurableObjectNamespace
   ENTITLEMENT_BUDGETS: DurableObjectNamespace
+  MONTHLY_ALLOWANCES: DurableObjectNamespace
 }
 
 // VERIFIED: rtc.live.cloudflare.com/v1 (not realtime.cloudflare.com/client/v4)
@@ -48,6 +58,13 @@ function getEntitlementBudget(env: Env): DurableObjectStub {
     env.GLOBAL_ENTITLEMENT_BUDGET_ID || GLOBAL_ENTITLEMENT_BUDGET_NAME,
   )
   return env.ENTITLEMENT_BUDGETS.get(id)
+}
+
+function getMonthlyAllowance(env: Env): DurableObjectStub {
+  const id = env.MONTHLY_ALLOWANCES.idFromName(
+    env.GLOBAL_MONTHLY_ALLOWANCE_ID || GLOBAL_MONTHLY_ALLOWANCE_NAME,
+  )
+  return env.MONTHLY_ALLOWANCES.get(id)
 }
 
 // Type definitions
@@ -652,7 +669,7 @@ async function handleCreateSession(c: AppContext) {
 }
 
 // Hono app
-const app = new Hono<{ Bindings: Env }>()
+export const app = new Hono<{ Bindings: Env }>()
 
 // Request logging in development
 app.use("*", logger())
@@ -1612,8 +1629,68 @@ app.get("*", async (c) => {
   })
 })
 
-export default app
+async function runScheduledMonthlyAllowance(env: Env) {
+  const monthlyAllowanceActive = env.MONTHLY_ALLOWANCE_ACTIVE === "true"
+  const resetAmountBytes = Number.parseInt(env.MONTHLY_ALLOWANCE_RESET_AMOUNT_BYTES || "0", 10)
+  const cronExpr = env.MONTHLY_ALLOWANCE_CRON_EXPR || "0 0 1 * *"
+
+  if (!monthlyAllowanceActive) return
+  if (!Number.isFinite(resetAmountBytes) || resetAmountBytes < 0) return
+
+  const budget = getEntitlementBudget(env)
+  const budgetRes = await budget.fetch(new Request("http://do.internal/?action=getBudget"))
+  if (!budgetRes.ok) return
+  const budgetData = (await budgetRes.json()) as { budgetId: string }
+
+  const monthlyAllowance = getMonthlyAllowance(env)
+  await monthlyAllowance.fetch(
+    new Request("http://do.internal/?action=configure", {
+      method: "POST",
+      body: JSON.stringify({
+        budgetId: budgetData.budgetId,
+        resetAmountBytes,
+        cronExpr,
+        active: true,
+      }),
+    }),
+  )
+
+  const statusRes = await monthlyAllowance.fetch(
+    new Request("http://do.internal/?action=getStatus"),
+  )
+  if (!statusRes.ok) return
+  const status = (await statusRes.json()) as {
+    budgetId: string
+    resetAmountBytes: number
+    lifecycle: "inactive" | "scheduled" | "due"
+  }
+
+  if (status.lifecycle !== "due") return
+
+  const resetRes = await budget.fetch(
+    new Request("http://do.internal/?action=setAllowance", {
+      method: "POST",
+      body: JSON.stringify({ bytes: status.resetAmountBytes }),
+    }),
+  )
+  if (!resetRes.ok) return
+
+  await monthlyAllowance.fetch(
+    new Request("http://do.internal/?action=acknowledgeReset", {
+      method: "POST",
+      body: JSON.stringify({ appliedAt: Date.now() }),
+    }),
+  )
+}
+
+export default {
+  fetch: app.fetch,
+  async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext) {
+    await runScheduledMonthlyAllowance(env)
+  },
+}
 
 // Export Durable Object classes
 export { CallRoom }
 export { EntitlementBudget }
+export { MonthlyAllowance }

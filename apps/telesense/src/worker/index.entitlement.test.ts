@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test"
-import app, { CallRoom, EntitlementBudget } from "./index"
+import { app, CallRoom, EntitlementBudget } from "./index"
 
 class MemoryStorage {
   private data = new Map<string, unknown>()

@@ -10,6 +10,9 @@ compatibility_date = "2026-03-18"
 REALTIME_APP_ID = "fb81ae5790a5960bdaacfc844c27366f"
 GLOBAL_ENTITLEMENT_BUDGET_ID = "global"
 SERVICE_ENTITLEMENT_ALLOWANCE_BYTES = "10737418240" # 10 GiB per minted entitlement token
+MONTHLY_ALLOWANCE_ACTIVE = "false"
+MONTHLY_ALLOWANCE_RESET_AMOUNT_BYTES = "10737418240"
+MONTHLY_ALLOWANCE_CRON_EXPR = "0 0 1 * *"
 
 # Serve static frontend assets from the Worker
 [assets]
@@ -26,6 +29,10 @@ class_name = "CallRoom"
 name = "ENTITLEMENT_BUDGETS"
 class_name = "EntitlementBudget"
 
+[[durable_objects.bindings]]
+name = "MONTHLY_ALLOWANCES"
+class_name = "MonthlyAllowance"
+
 # Durable Object migration (required for new DO classes)
 [[migrations]]
 tag = "v1"
@@ -35,6 +42,13 @@ new_classes = ["CallRoom"]
 [[migrations]]
 tag = "v2"
 new_classes = ["EntitlementBudget"]
+
+[[migrations]]
+tag = "v3"
+new_classes = ["MonthlyAllowance"]
+
+[triggers]
+crons = ["*/15 * * * *"]
 
 # Protocol debugging: enable only during development
 # DEBUG_PROTOCOL = "true"
