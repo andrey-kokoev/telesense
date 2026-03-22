@@ -95,6 +95,69 @@ function defaultMonthlyAllowanceId(env: Env): string {
   return env.GLOBAL_MONTHLY_ALLOWANCE_ID || GLOBAL_MONTHLY_ALLOWANCE_NAME
 }
 
+async function ensureMonthlyAllowanceForBudget(
+  env: Env,
+  budgetKey: string,
+  allowanceId = budgetKey === defaultBudgetKey(env)
+    ? defaultMonthlyAllowanceId(env)
+    : `${budgetKey}-monthly`,
+) {
+  const monthlyAllowance = getMonthlyAllowanceById(env, allowanceId)
+  const statusRes = await monthlyAllowance.fetch(
+    new Request("http://do.internal/?action=getStatus"),
+  )
+  if (!statusRes.ok) {
+    throw new Error("Failed to get monthly allowance")
+  }
+
+  const status = (await statusRes.json()) as {
+    budgetKey: string
+    active: boolean
+    cronExpr: string
+    resetAmountBytes: number
+    nextResetAt: number | null
+    lastResetAt: number | null
+    lifecycle: "inactive" | "scheduled" | "due"
+  }
+
+  const needsConfiguration =
+    status.budgetKey !== budgetKey ||
+    (!status.active && status.resetAmountBytes === 0 && !status.lastResetAt)
+
+  const effective = needsConfiguration
+    ? await (async () => {
+        const configureRes = await monthlyAllowance.fetch(
+          new Request("http://do.internal/?action=configure", {
+            method: "POST",
+            body: JSON.stringify({
+              budgetKey,
+              resetAmountBytes: DEFAULT_MONTHLY_ALLOWANCE_RESET_BYTES,
+              cronExpr: "0 0 1 * *",
+              active: true,
+            }),
+          }),
+        )
+        if (!configureRes.ok) {
+          const errorText = await configureRes.text()
+          throw new Error(errorText || "Failed to configure monthly allowance")
+        }
+        return (await configureRes.json()) as typeof status
+      })()
+    : status
+
+  await upsertMonthlyAllowanceRegistry(env, {
+    allowanceId,
+    budgetKey: effective.budgetKey,
+    active: effective.active,
+    cronExpr: effective.cronExpr,
+  })
+
+  return {
+    allowanceId,
+    ...effective,
+  }
+}
+
 // Type definitions
 interface CreateSessionResponse {
   sessionId: string
@@ -1313,36 +1376,14 @@ app.get("/admin/entitlement/monthly-allowance", async (c) => {
   const adminError = await requireAdminSession(c)
   if (adminError) return adminError
 
-  const allowanceId = c.req.query("allowanceId")?.trim() || defaultMonthlyAllowanceId(c.env)
-  const monthlyAllowance = getMonthlyAllowanceById(c.env, allowanceId)
-  const statusRes = await monthlyAllowance.fetch(
-    new Request("http://do.internal/?action=getStatus"),
-  )
-  if (!statusRes.ok) {
+  const budgetKey = c.req.query("budgetKey")?.trim() || defaultBudgetKey(c.env)
+  const allowanceId = c.req.query("allowanceId")?.trim()
+
+  try {
+    return c.json(await ensureMonthlyAllowanceForBudget(c.env, budgetKey, allowanceId))
+  } catch {
     return c.json({ error: "Failed to get monthly allowance" }, 500)
   }
-
-  const status = (await statusRes.json()) as {
-    budgetKey: string
-    active: boolean
-    cronExpr: string
-    resetAmountBytes: number
-    nextResetAt: number | null
-    lastResetAt: number | null
-    lifecycle: "inactive" | "scheduled" | "due"
-  }
-
-  await upsertMonthlyAllowanceRegistry(c.env, {
-    allowanceId,
-    budgetKey: status.budgetKey,
-    active: status.active,
-    cronExpr: status.cronExpr,
-  })
-
-  return c.json({
-    allowanceId,
-    ...status,
-  })
 })
 
 // Admin: Reset monthly allowance policy to the seeded default for a budget
