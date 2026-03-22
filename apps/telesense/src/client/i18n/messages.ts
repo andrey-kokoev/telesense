@@ -162,6 +162,8 @@ export const messages = {
     admin_budget_created: "Budget created",
     admin_budget_title: "Budget",
     admin_budget_unlabeled: "Unlabeled budget",
+    admin_budget_expand: "Expand budget details",
+    admin_budget_collapse: "Collapse budget details",
     admin_new_budget_key_placeholder: "e.g. team-a",
     admin_new_budget_label_placeholder: "Optional budget label",
     admin_budget_actions_section: "Budget Actions",
