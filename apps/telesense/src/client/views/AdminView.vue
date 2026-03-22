@@ -1,15 +1,19 @@
 <template>
   <div class="admin-view">
-    <header class="admin-view__header">
-      <button class="admin-view__back" @click="goBack">
-        {{ t("admin_back") }}
-      </button>
-      <div>
-        <h1 class="admin-view__title">{{ t("admin_title") }}</h1>
-        <p class="admin-view__subtitle">{{ t("admin_subtitle") }}</p>
+    <header class="admin-hero">
+      <div class="admin-hero__copy">
+        <button class="admin-btn admin-btn--ghost admin-hero__back" @click="goBack">
+          {{ t("admin_back") }}
+        </button>
+        <div>
+          <p class="admin-kicker">{{ t("admin_host_operations") }}</p>
+          <h1 class="admin-hero__title">{{ t("admin_title") }}</h1>
+          <p class="admin-hero__subtitle">{{ t("admin_subtitle") }}</p>
+        </div>
       </div>
+
       <button
-        class="admin-view__refresh"
+        class="admin-btn admin-btn--primary"
         :disabled="loadingState === 'loading'"
         @click="refreshAll"
       >
@@ -17,33 +21,41 @@
       </button>
     </header>
 
-    <div v-if="lastError" class="admin-view__alert admin-view__alert--error" role="alert">
+    <div v-if="lastError" class="admin-alert admin-alert--error" role="alert">
       {{ lastError }}
     </div>
 
-    <div
+    <section
       v-if="adminAccessState !== 'authorized'"
-      class="admin-view__access admin-card"
+      class="admin-panel admin-access"
       role="status"
     >
-      <h2 class="admin-card__title">
-        {{
-          adminAccessState === "checking" ? t("admin_access_checking") : t("admin_access_denied")
-        }}
-      </h2>
-      <p class="admin-card__hint">
-        {{
-          adminAccessState === "checking"
-            ? t("admin_access_checking_hint")
-            : t("admin_access_denied_hint")
-        }}
-      </p>
-      <form class="admin-card__form" @submit.prevent="saveHostAdminToken">
-        <label class="admin-card__field">
-          <span>{{ t("admin_bootstrap_token") }}</span>
+      <div class="admin-panel__header">
+        <div>
+          <p class="admin-kicker">{{ t("admin_bootstrap_section") }}</p>
+          <h2 class="admin-panel__title">
+            {{
+              adminAccessState === "checking"
+                ? t("admin_access_checking")
+                : t("admin_access_denied")
+            }}
+          </h2>
+          <p class="admin-panel__hint">
+            {{
+              adminAccessState === "checking"
+                ? t("admin_access_checking_hint")
+                : t("admin_access_denied_hint")
+            }}
+          </p>
+        </div>
+      </div>
+
+      <form class="admin-form" @submit.prevent="saveHostAdminToken">
+        <label class="admin-field">
+          <span class="admin-field__label">{{ t("admin_bootstrap_token") }}</span>
           <input
             v-model="hostAdminTokenInput"
-            class="admin-card__input"
+            class="admin-input"
             type="password"
             spellcheck="false"
             autocomplete="off"
@@ -51,9 +63,10 @@
             :disabled="adminAccessState === 'checking'"
           />
         </label>
-        <div class="admin-view__bootstrap-actions">
+
+        <div class="admin-access__actions">
           <button
-            class="admin-card__button"
+            class="admin-btn admin-btn--primary"
             :disabled="!hostAdminTokenInput.trim() || adminAccessState === 'checking'"
           >
             {{ t("admin_bootstrap_save") }}
@@ -61,7 +74,7 @@
           <button
             v-if="hasHostAdminSessionToken"
             type="button"
-            class="admin-card__button admin-card__button--ghost"
+            class="admin-btn admin-btn--ghost"
             :disabled="adminAccessState === 'checking'"
             @click="clearStoredHostAdminToken"
           >
@@ -69,217 +82,314 @@
           </button>
         </div>
       </form>
-    </div>
+    </section>
 
-    <div v-else class="admin-view__grid">
-      <section class="admin-card">
+    <section v-else class="admin-shell">
+      <div class="admin-card">
         <div class="admin-card__header">
-          <h2 class="admin-card__title">{{ t("admin_budgets_title") }}</h2>
-          <span class="admin-card__badge">{{ budgets.length }}</span>
-        </div>
-
-        <div v-if="budgets.length" class="admin-list">
-          <button
-            v-for="item in budgets"
-            :key="item.budgetKey"
-            class="admin-list__item"
-            :class="{ 'admin-list__item--active': item.budgetKey === selectedBudgetKey }"
-            @click="selectBudget(item.budgetKey)"
-          >
-            <strong>{{ item.label || item.budgetKey }}</strong>
-            <span>{{ item.budgetId }}</span>
-          </button>
-        </div>
-        <p v-else class="admin-card__empty">{{ t("admin_not_loaded") }}</p>
-      </section>
-
-      <section class="admin-card admin-card--wide">
-        <div class="admin-card__header">
-          <h2 class="admin-card__title">{{ t("admin_budget_title") }}</h2>
-          <span v-if="budget" class="admin-card__badge">{{ budget.grace.lifecycle }}</span>
-        </div>
-
-        <div v-if="budget" class="admin-budget">
-          <div class="admin-card__rows">
-            <div class="admin-card__row">
-              <span>{{ t("admin_budget_label") }}</span>
-              <strong>{{ selectedBudgetLabel || "—" }}</strong>
-            </div>
-            <div class="admin-card__row">
-              <span>{{ t("admin_budget_key") }}</span>
-              <code>{{ budget.budgetKey }}</code>
-            </div>
-            <div class="admin-card__row">
-              <span>{{ t("admin_budget_id") }}</span>
-              <code>{{ budget.budgetId }}</code>
-            </div>
-            <div class="admin-card__row">
-              <span>{{ t("admin_budget_remaining") }}</span>
-              <strong>{{ formatBytes(budget.allowance.remainingBytes) }}</strong>
-            </div>
-            <div class="admin-card__row">
-              <span>{{ t("admin_budget_consumed") }}</span>
-              <strong>{{ formatBytes(budget.allowance.consumedBytes) }}</strong>
-            </div>
-            <div class="admin-card__row">
-              <span>{{ t("admin_budget_grace_ends") }}</span>
-              <strong>{{ formatTime(budget.grace.graceEndsAt) }}</strong>
-            </div>
+          <div>
+            <h2 class="admin-card__title">{{ t("admin_budgets_title") }}</h2>
+            <p class="admin-card__hint">{{ t("admin_registry_hint") }}</p>
           </div>
-
-          <div class="admin-budget__actions">
-            <div class="admin-card__header">
-              <h3 class="admin-card__subtitle">{{ t("admin_budget_actions_title") }}</h3>
-            </div>
-            <form class="admin-card__form" @submit.prevent="saveBudgetLabel">
-              <label class="admin-card__field">
-                <span>{{ t("admin_budget_label") }}</span>
-                <input
-                  v-model="budgetLabelForm"
-                  class="admin-card__input"
-                  type="text"
-                  :placeholder="selectedBudgetKey"
-                  spellcheck="false"
-                />
-              </label>
-              <button class="admin-card__button" :disabled="loadingState === 'saving-label'">
-                {{
-                  loadingState === "saving-label" ? t("admin_saving") : t("admin_budget_save_label")
-                }}
-              </button>
-            </form>
+          <div class="admin-card__actions">
+            <span class="admin-badge">{{ budgets.length }}</span>
             <button
-              class="admin-card__button"
-              :disabled="loadingState === 'minting' || !selectedBudgetKey"
-              @click="mintToken"
+              class="admin-btn admin-btn--primary"
+              :disabled="loadingState === 'loading'"
+              @click="refreshAll"
             >
-              {{ loadingState === "minting" ? t("admin_minting") : t("admin_mint_button") }}
+              {{ loadingState === "loading" ? t("admin_loading") : t("admin_refresh") }}
             </button>
-            <p class="admin-card__hint">{{ t("admin_mint_hint") }}</p>
-
-            <button
-              class="admin-card__button admin-card__button--warn"
-              :disabled="loadingState === 'rotating' || !selectedBudgetKey"
-              @click="rotateSecret"
-            >
-              {{ loadingState === "rotating" ? t("admin_rotating") : t("admin_rotate_button") }}
-            </button>
-            <p class="admin-card__hint">{{ t("admin_secret_hint") }}</p>
-
-            <div v-if="mintedToken" class="admin-card__minted">
-              <textarea class="admin-card__textarea" readonly :value="mintedToken"></textarea>
-              <div class="admin-card__row">
-                <span>{{ t("admin_budget_remaining") }}</span>
-                <strong>{{ mintedRemainingBytes }}</strong>
-              </div>
-              <button class="admin-card__button admin-card__button--ghost" @click="copyMintedToken">
-                {{ t("admin_copy_token") }}
-              </button>
-            </div>
           </div>
         </div>
-        <p v-else class="admin-card__empty">{{ t("admin_not_loaded") }}</p>
-      </section>
 
-      <section class="admin-card">
-        <div class="admin-card__header">
-          <h2 class="admin-card__title">{{ t("admin_monthly_list_title") }}</h2>
-          <span class="admin-card__badge">{{ linkedMonthlyAllowances.length }}</span>
-        </div>
-
-        <div v-if="linkedMonthlyAllowances.length" class="admin-list">
+        <form class="admin-create" @submit.prevent="createBudget">
+          <label class="admin-field">
+            <span class="admin-field__label">{{ t("admin_budget_key") }}</span>
+            <input
+              v-model="newBudgetForm.budgetKey"
+              class="admin-input"
+              type="text"
+              spellcheck="false"
+              :placeholder="t('admin_new_budget_key_placeholder')"
+            />
+          </label>
+          <label class="admin-field">
+            <span class="admin-field__label">{{ t("admin_budget_label") }}</span>
+            <input
+              v-model="newBudgetForm.label"
+              class="admin-input"
+              type="text"
+              spellcheck="false"
+              :placeholder="t('admin_new_budget_label_placeholder')"
+            />
+          </label>
           <button
-            v-for="item in linkedMonthlyAllowances"
-            :key="item.allowanceId"
-            class="admin-list__item"
-            :class="{ 'admin-list__item--active': item.allowanceId === selectedAllowanceId }"
-            @click="selectMonthlyAllowance(item.allowanceId)"
+            class="admin-btn admin-btn--primary"
+            :disabled="loadingState === 'creating-budget' || !newBudgetForm.budgetKey.trim()"
           >
-            <strong>{{ item.allowanceId }}</strong>
-            <span>{{ item.active ? item.cronExpr : t("admin_monthly_inactive") }}</span>
-          </button>
-        </div>
-        <p v-else class="admin-card__empty">{{ t("admin_monthly_none_for_budget") }}</p>
-      </section>
-
-      <section class="admin-card">
-        <div class="admin-card__header">
-          <h2 class="admin-card__title">{{ t("admin_monthly_title") }}</h2>
-          <span
-            v-if="monthlyAllowance"
-            class="admin-card__badge"
-            :class="{ 'admin-card__badge--inactive': !monthlyAllowance.active }"
-          >
-            {{ monthlyAllowance.lifecycle }}
-          </span>
-        </div>
-
-        <button
-          class="admin-card__button admin-card__button--ghost"
-          @click="startNewMonthlyAllowance"
-        >
-          {{ t("admin_monthly_new") }}
-        </button>
-
-        <form class="admin-card__form" @submit.prevent="saveMonthlyAllowance">
-          <label class="admin-card__field">
-            <span>{{ t("admin_allowance_id") }}</span>
-            <input
-              v-model="monthlyAllowanceForm.allowanceId"
-              class="admin-card__input"
-              type="text"
-              spellcheck="false"
-            />
-          </label>
-          <label class="admin-card__field">
-            <span>{{ t("admin_budget_key") }}</span>
-            <input
-              v-model="monthlyAllowanceForm.budgetKey"
-              class="admin-card__input"
-              type="text"
-              spellcheck="false"
-              readonly
-            />
-          </label>
-          <label class="admin-card__field admin-card__field--checkbox">
-            <input v-model="monthlyAllowanceForm.active" type="checkbox" />
-            <span>{{ t("admin_monthly_active") }}</span>
-          </label>
-          <label class="admin-card__field">
-            <span>{{ t("admin_monthly_reset_amount") }}</span>
-            <input
-              v-model="monthlyAllowanceForm.resetAmountBytes"
-              class="admin-card__input"
-              type="number"
-              min="0"
-              step="1"
-            />
-          </label>
-          <label class="admin-card__field">
-            <span>{{ t("admin_monthly_cron_expr") }}</span>
-            <input
-              v-model="monthlyAllowanceForm.cronExpr"
-              class="admin-card__input"
-              type="text"
-              spellcheck="false"
-            />
-          </label>
-          <div v-if="monthlyAllowance" class="admin-card__rows admin-card__rows--compact">
-            <div class="admin-card__row">
-              <span>{{ t("admin_monthly_next_reset") }}</span>
-              <strong>{{ formatTime(monthlyAllowance.nextResetAt) }}</strong>
-            </div>
-            <div class="admin-card__row">
-              <span>{{ t("admin_monthly_last_reset") }}</span>
-              <strong>{{ formatTime(monthlyAllowance.lastResetAt) }}</strong>
-            </div>
-          </div>
-          <button class="admin-card__button" :disabled="loadingState === 'saving-monthly'">
-            {{ loadingState === "saving-monthly" ? t("admin_saving") : t("admin_monthly_save") }}
+            {{ loadingState === "creating-budget" ? t("admin_saving") : t("admin_budget_new") }}
           </button>
         </form>
-      </section>
-    </div>
+      </div>
+
+      <div v-if="budgets.length" class="admin-budget-list">
+        <article
+          v-for="item in budgets"
+          :key="item.budgetKey"
+          class="admin-budget"
+          :class="{ 'admin-budget--open': item.budgetKey === selectedBudgetKey }"
+        >
+          <button class="admin-budget__summary" @click="selectBudget(item.budgetKey)">
+            <div class="admin-budget__summary-main">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                class="admin-budget__chevron"
+                :class="{ 'admin-budget__chevron--open': item.budgetKey === selectedBudgetKey }"
+              >
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+              <div class="admin-budget__identity">
+                <strong>{{ item.label || t("admin_budget_unlabeled") }}</strong>
+                <span>{{ item.budgetKey }}</span>
+              </div>
+            </div>
+
+            <div class="admin-budget__summary-meta">
+              <code>{{ item.budgetId }}</code>
+              <span class="admin-badge">
+                {{
+                  item.budgetKey === selectedBudgetKey
+                    ? formatBudgetLifecycle(budget?.grace.lifecycle)
+                    : t("admin_status_closed")
+                }}
+              </span>
+            </div>
+          </button>
+
+          <div v-if="item.budgetKey === selectedBudgetKey" class="admin-budget__detail">
+            <p class="admin-budget__summaryline">
+              <strong>{{ t("admin_budget_remaining") }}</strong>
+              {{ budget ? formatBytes(budget.allowance.remainingBytes) : "—" }}
+              <span aria-hidden="true">·</span>
+              <strong>{{ t("admin_budget_consumed") }}</strong>
+              {{ budget ? formatBytes(budget.allowance.consumedBytes) : "—" }}
+              <span aria-hidden="true">·</span>
+              <strong>{{ t("admin_budget_grace_ends") }}</strong>
+              {{ budget ? formatTime(budget.grace.graceEndsAt) : "—" }}
+            </p>
+
+            <div class="admin-detail-grid">
+              <section class="admin-card admin-card--inner">
+                <div class="admin-card__header admin-card__header--stack">
+                  <div>
+                    <p class="admin-kicker">{{ t("admin_budget_actions_section") }}</p>
+                    <h3 class="admin-card__title">{{ t("admin_budget_actions_title") }}</h3>
+                  </div>
+                </div>
+
+                <form class="admin-form" @submit.prevent="saveBudgetLabel">
+                  <label class="admin-field">
+                    <span class="admin-field__label">{{ t("admin_budget_label") }}</span>
+                    <input
+                      v-model="budgetLabelForm"
+                      class="admin-input"
+                      type="text"
+                      :placeholder="selectedBudgetKey"
+                      spellcheck="false"
+                    />
+                  </label>
+                  <button
+                    class="admin-btn admin-btn--primary"
+                    :disabled="loadingState === 'saving-label'"
+                  >
+                    {{
+                      loadingState === "saving-label"
+                        ? t("admin_saving")
+                        : t("admin_budget_save_label")
+                    }}
+                  </button>
+                </form>
+
+                <div class="admin-actions admin-actions--compact">
+                  <button
+                    class="admin-btn admin-btn--ghost admin-btn--compact"
+                    :disabled="loadingState === 'minting' || !selectedBudgetKey"
+                    @click="mintToken"
+                  >
+                    {{ loadingState === "minting" ? t("admin_minting") : t("admin_mint_button") }}
+                  </button>
+
+                  <button
+                    class="admin-btn admin-btn--ghost admin-btn--compact"
+                    :disabled="loadingState === 'rotating' || !selectedBudgetKey"
+                    @click="rotateSecret"
+                  >
+                    {{
+                      loadingState === "rotating" ? t("admin_rotating") : t("admin_rotate_button")
+                    }}
+                  </button>
+                </div>
+
+                <div v-if="mintedToken" class="admin-minted">
+                  <div class="admin-meta">
+                    <span>{{ t("admin_token_minted") }}</span>
+                  </div>
+                  <div class="admin-actions admin-actions--compact">
+                    <button
+                      class="admin-btn admin-btn--ghost admin-btn--compact"
+                      @click="toggleMintedToken"
+                    >
+                      {{ showMintedToken ? t("admin_hide_token") : t("admin_reveal_token") }}
+                    </button>
+                    <button
+                      class="admin-btn admin-btn--ghost admin-btn--compact"
+                      @click="copyMintedToken"
+                    >
+                      {{ t("admin_copy_token") }}
+                    </button>
+                  </div>
+                  <textarea
+                    v-if="showMintedToken"
+                    class="admin-textarea"
+                    readonly
+                    :value="mintedToken"
+                  ></textarea>
+                </div>
+              </section>
+
+              <section class="admin-card admin-card--inner">
+                <div class="admin-card__header">
+                  <div>
+                    <p class="admin-kicker">{{ t("admin_allowance_section") }}</p>
+                    <h3 class="admin-card__title">{{ t("admin_monthly_title") }}</h3>
+                  </div>
+                  <span
+                    v-if="monthlyAllowance"
+                    class="admin-badge"
+                    :class="{ 'admin-badge--inactive': !monthlyAllowance.active }"
+                  >
+                    {{ formatMonthlyLifecycle(monthlyAllowance.lifecycle) }}
+                  </span>
+                </div>
+
+                <div class="admin-policy-list">
+                  <div v-if="hasMultiplePolicies" class="admin-policy-items">
+                    <button
+                      v-for="allowance in linkedMonthlyAllowances"
+                      :key="allowance.allowanceId"
+                      class="admin-policy-item"
+                      :class="{
+                        'admin-policy-item--active': allowance.allowanceId === selectedAllowanceId,
+                      }"
+                      @click="selectMonthlyAllowance(allowance.allowanceId)"
+                    >
+                      <strong>{{ allowance.allowanceId }}</strong>
+                      <span>{{
+                        allowance.active ? allowance.cronExpr : t("admin_monthly_inactive")
+                      }}</span>
+                    </button>
+                  </div>
+                  <div class="admin-policy-list__actions">
+                    <p v-if="!linkedMonthlyAllowances.length" class="admin-card__hint">
+                      {{ t("admin_monthly_none_for_budget") }}
+                    </p>
+                    <button
+                      v-if="linkedMonthlyAllowances.length"
+                      class="admin-btn admin-btn--ghost admin-btn--compact"
+                      @click="startNewMonthlyAllowance"
+                    >
+                      {{ t("admin_monthly_new_secondary") }}
+                    </button>
+                  </div>
+                </div>
+
+                <form class="admin-form" @submit.prevent="saveMonthlyAllowance">
+                  <label class="admin-field admin-field--checkbox">
+                    <input v-model="monthlyAllowanceForm.active" type="checkbox" />
+                    <div>
+                      <span class="admin-field__label">{{ t("admin_monthly_active") }}</span>
+                      <p class="admin-field__hint">{{ t("admin_monthly_active_hint") }}</p>
+                    </div>
+                  </label>
+                  <label class="admin-field">
+                    <span class="admin-field__label">{{ t("admin_monthly_reset_amount") }}</span>
+                    <input
+                      v-model="monthlyAllowanceForm.resetAmountGiB"
+                      class="admin-input"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                    />
+                  </label>
+                  <label class="admin-field">
+                    <span class="admin-field__label">{{ t("admin_monthly_cron_expr") }}</span>
+                    <input
+                      v-model="monthlyAllowanceForm.cronExpr"
+                      class="admin-input"
+                      type="text"
+                      spellcheck="false"
+                    />
+                    <p class="admin-field__hint">{{ t("admin_monthly_cron_hint") }}</p>
+                  </label>
+
+                  <label v-if="isCreatingAdditionalPolicy" class="admin-field">
+                    <span class="admin-field__label">{{ t("admin_allowance_id") }}</span>
+                    <input
+                      v-model="monthlyAllowanceForm.allowanceId"
+                      class="admin-input"
+                      type="text"
+                      spellcheck="false"
+                    />
+                  </label>
+                  <label v-if="isCreatingAdditionalPolicy" class="admin-field">
+                    <span class="admin-field__label">{{ t("admin_budget_key") }}</span>
+                    <input
+                      v-model="monthlyAllowanceForm.budgetKey"
+                      class="admin-input"
+                      type="text"
+                      spellcheck="false"
+                      readonly
+                    />
+                  </label>
+
+                  <div v-if="monthlyAllowance" class="admin-meta-grid">
+                    <div class="admin-meta">
+                      <span>{{ t("admin_monthly_next_reset") }}</span>
+                      <strong>{{ formatTime(monthlyAllowance.nextResetAt) }}</strong>
+                    </div>
+                    <div class="admin-meta">
+                      <span>{{ t("admin_monthly_last_reset") }}</span>
+                      <strong>{{ formatTime(monthlyAllowance.lastResetAt) }}</strong>
+                    </div>
+                  </div>
+
+                  <button
+                    class="admin-btn admin-btn--primary"
+                    :disabled="loadingState === 'saving-monthly'"
+                  >
+                    {{
+                      loadingState === "saving-monthly"
+                        ? t("admin_saving")
+                        : t("admin_monthly_save")
+                    }}
+                  </button>
+                </form>
+              </section>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <div v-else class="admin-card admin-card--empty">
+        <p class="admin-card__hint">{{ t("admin_not_loaded") }}</p>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -289,7 +399,15 @@ import { useAppStore } from "../composables/useAppStore"
 import { useI18n } from "../composables/useI18n"
 import { useToast } from "../composables/useToast"
 
-type LoadingState = "idle" | "loading" | "saving-label" | "saving-monthly" | "minting" | "rotating"
+type LoadingState =
+  | "idle"
+  | "loading"
+  | "creating-budget"
+  | "saving-label"
+  | "saving-monthly"
+  | "resetting-monthly"
+  | "minting"
+  | "rotating"
 type AdminAccessState = "checking" | "authorized" | "unauthorized"
 
 type BudgetListItem = {
@@ -349,28 +467,62 @@ const selectedAllowanceId = ref("")
 const budget = ref<BudgetResponse | null>(null)
 const monthlyAllowance = ref<MonthlyAllowanceResponse | null>(null)
 const mintedToken = ref("")
-const mintedRemainingBytes = ref("")
+const showMintedToken = ref(false)
 const lastError = ref("")
 const loadingState = ref<LoadingState>("idle")
 const budgetLabelForm = ref("")
 const adminAccessState = ref<AdminAccessState>("checking")
 const hostAdminTokenInput = ref("")
+const newBudgetForm = reactive({
+  budgetKey: "",
+  label: "",
+})
 
 const monthlyAllowanceForm = reactive({
   allowanceId: "global",
   budgetKey: "",
   active: false,
-  resetAmountBytes: "0",
+  resetAmountGiB: "0",
   cronExpr: "0 0 1 * *",
 })
+
+const GIB = 1024 * 1024 * 1024
 
 const hasHostAdminSessionToken = computed(() => !!store.hostAdminSessionToken.value)
 const linkedMonthlyAllowances = computed(() =>
   monthlyAllowances.value.filter((item) => item.budgetKey === selectedBudgetKey.value),
 )
+const hasMultiplePolicies = computed(() => linkedMonthlyAllowances.value.length > 1)
+const isCreatingAdditionalPolicy = computed(
+  () => !selectedAllowanceId.value || !linkedMonthlyAllowances.value.length,
+)
 const selectedBudgetLabel = computed(
   () => budgets.value.find((item) => item.budgetKey === selectedBudgetKey.value)?.label ?? "",
 )
+
+function formatBudgetLifecycle(lifecycle: BudgetResponse["grace"]["lifecycle"] | undefined) {
+  if (!lifecycle) return t("admin_status_loading")
+
+  switch (lifecycle) {
+    case "active":
+      return t("admin_status_active")
+    case "in_grace":
+      return t("admin_status_in_grace")
+    case "exhausted":
+      return t("admin_status_exhausted")
+  }
+}
+
+function formatMonthlyLifecycle(lifecycle: MonthlyAllowanceResponse["lifecycle"]) {
+  switch (lifecycle) {
+    case "inactive":
+      return t("admin_status_inactive")
+    case "scheduled":
+      return t("admin_status_scheduled")
+    case "due":
+      return t("admin_status_due")
+  }
+}
 
 function goBack() {
   window.location.href = "/"
@@ -389,6 +541,18 @@ function formatBytes(bytes: number | null | undefined) {
   }
 
   return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`
+}
+
+function bytesToGiBString(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0"
+  const gib = bytes / GIB
+  return Number.isInteger(gib) ? String(gib) : gib.toFixed(2).replace(/\.?0+$/, "")
+}
+
+function giBStringToBytes(value: string) {
+  const parsed = Number.parseFloat(value)
+  if (!Number.isFinite(parsed) || parsed < 0) return Number.NaN
+  return Math.round(parsed * GIB)
 }
 
 function formatTime(timestamp: number | null | undefined) {
@@ -423,8 +587,11 @@ async function loadBudgetList() {
   if (!response.ok) throw new Error(await response.text())
   const data = (await response.json()) as { budgets: BudgetListItem[] }
   budgets.value = data.budgets
-  if (!selectedBudgetKey.value && data.budgets.length > 0) {
-    selectedBudgetKey.value = data.budgets[0].budgetKey
+  if (
+    selectedBudgetKey.value &&
+    !data.budgets.some((item) => item.budgetKey === selectedBudgetKey.value)
+  ) {
+    selectedBudgetKey.value = ""
   }
 }
 
@@ -447,7 +614,7 @@ async function verifyAdminAccess() {
 }
 
 async function saveHostAdminToken() {
-  const bootstrapToken = hostAdminTokenInput.value.trim()
+  const bootstrapToken = store.sanitizeCredentialToken(hostAdminTokenInput.value)
   if (!bootstrapToken) return
 
   lastError.value = ""
@@ -487,6 +654,8 @@ function clearStoredHostAdminToken() {
   selectedAllowanceId.value = ""
   budget.value = null
   monthlyAllowance.value = null
+  mintedToken.value = ""
+  showMintedToken.value = false
   lastError.value = ""
 }
 
@@ -518,7 +687,7 @@ async function loadMonthlyAllowance() {
     monthlyAllowanceForm.allowanceId = "global"
     monthlyAllowanceForm.budgetKey = selectedBudgetKey.value
     monthlyAllowanceForm.active = false
-    monthlyAllowanceForm.resetAmountBytes = "0"
+    monthlyAllowanceForm.resetAmountGiB = "0"
     monthlyAllowanceForm.cronExpr = "0 0 1 * *"
     return
   }
@@ -533,7 +702,7 @@ async function loadMonthlyAllowance() {
   monthlyAllowanceForm.allowanceId = data.allowanceId
   monthlyAllowanceForm.budgetKey = data.budgetKey
   monthlyAllowanceForm.active = data.active
-  monthlyAllowanceForm.resetAmountBytes = String(data.resetAmountBytes)
+  monthlyAllowanceForm.resetAmountGiB = bytesToGiBString(data.resetAmountBytes)
   monthlyAllowanceForm.cronExpr = data.cronExpr
 }
 
@@ -572,11 +741,24 @@ function startNewMonthlyAllowance() {
   monthlyAllowanceForm.allowanceId = `${selectedBudgetKey.value || "global"}-monthly`
   monthlyAllowanceForm.budgetKey = selectedBudgetKey.value
   monthlyAllowanceForm.active = false
-  monthlyAllowanceForm.resetAmountBytes = "0"
+  monthlyAllowanceForm.resetAmountGiB = "0"
   monthlyAllowanceForm.cronExpr = "0 0 1 * *"
 }
 
 async function selectBudget(budgetKey: string) {
+  if (selectedBudgetKey.value === budgetKey) {
+    selectedBudgetKey.value = ""
+    selectedAllowanceId.value = ""
+    budget.value = null
+    monthlyAllowance.value = null
+    return
+  }
+
+  if (selectedBudgetKey.value !== budgetKey) {
+    mintedToken.value = ""
+    showMintedToken.value = false
+  }
+
   selectedBudgetKey.value = budgetKey
   syncSelectedAllowance()
   await Promise.all([loadBudget(), loadMonthlyAllowance()])
@@ -591,13 +773,18 @@ async function saveMonthlyAllowance() {
   loadingState.value = "saving-monthly"
   lastError.value = ""
   try {
+    const resetAmountBytes = giBStringToBytes(monthlyAllowanceForm.resetAmountGiB)
+    if (!Number.isFinite(resetAmountBytes)) {
+      throw new Error(t("admin_monthly_invalid_reset_amount"))
+    }
+
     const response = await adminFetch("/admin/entitlement/monthly-allowance", {
       method: "POST",
       body: JSON.stringify({
         allowanceId: monthlyAllowanceForm.allowanceId.trim(),
         budgetKey: monthlyAllowanceForm.budgetKey.trim(),
         active: monthlyAllowanceForm.active,
-        resetAmountBytes: Number.parseInt(monthlyAllowanceForm.resetAmountBytes, 10),
+        resetAmountBytes,
         cronExpr: monthlyAllowanceForm.cronExpr.trim(),
       }),
     })
@@ -608,9 +795,50 @@ async function saveMonthlyAllowance() {
     monthlyAllowance.value = data
     selectedAllowanceId.value = data.allowanceId
     selectedBudgetKey.value = data.budgetKey
+    monthlyAllowanceForm.allowanceId = data.allowanceId
+    monthlyAllowanceForm.budgetKey = data.budgetKey
+    monthlyAllowanceForm.active = data.active
+    monthlyAllowanceForm.resetAmountGiB = bytesToGiBString(data.resetAmountBytes)
+    monthlyAllowanceForm.cronExpr = data.cronExpr
     syncSelectedAllowance()
     await Promise.all([loadBudgetList(), loadMonthlyAllowanceList(), loadBudget()])
     show(t("admin_monthly_saved"), "success")
+  } catch (error) {
+    lastError.value = error instanceof Error ? error.message : String(error)
+    show(lastError.value, "error")
+  } finally {
+    loadingState.value = "idle"
+  }
+}
+
+async function createBudget() {
+  loadingState.value = "creating-budget"
+  lastError.value = ""
+  try {
+    const response = await adminFetch("/admin/entitlement/budget/create", {
+      method: "POST",
+      body: JSON.stringify({
+        budgetKey: newBudgetForm.budgetKey.trim(),
+        label: newBudgetForm.label.trim() || null,
+      }),
+    })
+    if (!response.ok) {
+      throw new Error(await response.text())
+    }
+
+    const data = (await response.json()) as BudgetResponse
+    newBudgetForm.budgetKey = ""
+    newBudgetForm.label = ""
+    selectedBudgetKey.value = data.budgetKey
+    budget.value = data
+    budgetLabelForm.value =
+      budgets.value.find((item) => item.budgetKey === data.budgetKey)?.label ?? ""
+    mintedToken.value = ""
+    showMintedToken.value = false
+    await Promise.all([loadBudgetList(), loadMonthlyAllowanceList()])
+    syncSelectedAllowance()
+    await loadMonthlyAllowance()
+    show(t("admin_budget_created"), "success")
   } catch (error) {
     lastError.value = error instanceof Error ? error.message : String(error)
     show(lastError.value, "error")
@@ -661,7 +889,7 @@ async function mintToken() {
     }
     const data = (await response.json()) as MintResponse
     mintedToken.value = data.serviceEntitlementToken
-    mintedRemainingBytes.value = formatBytes(data.remainingBytes)
+    showMintedToken.value = false
     await Promise.all([loadBudgetList(), loadBudget()])
     show(t("admin_token_minted"), "success")
   } catch (error) {
@@ -670,6 +898,10 @@ async function mintToken() {
   } finally {
     loadingState.value = "idle"
   }
+}
+
+function toggleMintedToken() {
+  showMintedToken.value = !showMintedToken.value
 }
 
 async function copyMintedToken() {
@@ -721,266 +953,441 @@ watch(
 <style scoped>
 .admin-view {
   min-height: 100vh;
-  padding: var(--space-6) var(--space-4) var(--space-8);
-  background: var(--color-bg-primary);
+  padding: 2rem 1rem 3rem;
+  background: color-mix(in srgb, var(--ui-bg) 94%, white 6%);
 }
 
-.admin-view__header {
+.admin-hero,
+.admin-alert,
+.admin-access,
+.admin-shell {
   width: min(72rem, 100%);
-  margin: 0 auto var(--space-6);
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: var(--space-4);
-  align-items: start;
+  margin: 0 auto;
 }
 
-.admin-view__back,
-.admin-view__refresh,
-.admin-card__button,
-.admin-list__item {
+.admin-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+}
+
+.admin-hero__copy {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.admin-kicker {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ui-text-muted);
+}
+
+.admin-hero__title {
+  margin: 0;
+  font-size: clamp(1.8rem, 3vw, 2.6rem);
+  line-height: 1.05;
+  color: var(--ui-text);
+}
+
+.admin-hero__subtitle {
+  margin: 0.5rem 0 0;
+  max-width: 44rem;
+  color: var(--ui-text-muted);
+}
+
+.admin-shell {
+  display: grid;
+  gap: 1rem;
+}
+
+.admin-card,
+.admin-access {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  border: 1px solid var(--ui-border);
+  background: white;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+}
+
+.admin-card--inner {
+  background: color-mix(in srgb, white 96%, var(--ui-bg) 4%);
+}
+
+.admin-card--empty {
+  text-align: center;
+}
+
+.admin-card__header,
+.admin-panel__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.admin-card__header--stack {
+  justify-content: flex-start;
+}
+
+.admin-card__title,
+.admin-panel__title {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--ui-text);
+}
+
+.admin-card__hint,
+.admin-panel__hint,
+.admin-panel__empty {
+  margin: 0.35rem 0 0;
+  color: var(--ui-text-muted);
+}
+
+.admin-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.admin-btn,
+.admin-budget__summary,
+.admin-policy-item {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-secondary);
-  color: var(--color-text-primary);
+  gap: 0.5rem;
+  padding: 0.7rem 0.95rem;
+  border-radius: 0.8rem;
+  border: 1px solid var(--ui-border);
+  background: white;
+  color: var(--ui-text);
   font: inherit;
   cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    color 140ms ease;
 }
 
-.admin-view__refresh:disabled,
-.admin-card__button:disabled {
+.admin-btn:hover:not(:disabled),
+.admin-policy-item:hover,
+.admin-budget__summary:hover {
+  border-color: color-mix(in srgb, var(--ui-primary) 40%, var(--ui-border) 60%);
+  background: color-mix(in srgb, white 90%, var(--ui-bg) 10%);
+}
+
+.admin-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
 
-.admin-view__title {
-  margin: 0;
-  font-size: 1.75rem;
-  color: var(--color-text-primary);
+.admin-btn--primary {
+  background: #cb641c;
+  border-color: #cb641c;
+  color: white;
 }
 
-.admin-view__subtitle {
-  margin: var(--space-2) 0 0;
-  color: var(--color-text-secondary);
+.admin-btn--ghost {
+  background: white;
 }
 
-.admin-view__alert {
-  width: min(72rem, 100%);
-  margin: 0 auto var(--space-6);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border);
-}
-
-.admin-view__alert--error {
-  color: var(--color-danger, #c43d2f);
-  background: color-mix(in srgb, var(--color-bg-secondary) 82%, #c43d2f 18%);
-}
-
-.admin-view__access {
-  width: min(48rem, 100%);
-  margin: 0 auto;
-}
-
-.admin-view__bootstrap-actions {
-  display: flex;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-}
-
-.admin-view__grid {
-  width: min(72rem, 100%);
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
-  gap: var(--space-4);
-}
-
-.admin-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  padding: var(--space-5);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  background: var(--color-bg-secondary);
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.12),
-    0 8px 24px rgb(0 0 0 / 0.08);
-}
-
-.admin-card--wide {
-  grid-column: span 2;
-}
-
-.admin-card__header {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-3);
-  align-items: center;
-}
-
-.admin-card__title {
-  margin: 0;
-  font-size: 1rem;
-  color: var(--color-text-primary);
-}
-
-.admin-card__subtitle {
-  margin: 0;
+.admin-btn--compact {
+  padding: 0.5rem 0.7rem;
   font-size: 0.9rem;
-  color: var(--color-text-primary);
 }
 
-.admin-card__badge {
-  padding: 0.25rem 0.6rem;
-  border-radius: var(--radius-full);
-  background: var(--color-bg-tertiary);
-  color: var(--color-text-secondary);
+.admin-btn--danger {
+  border-color: #d8b3ad;
+  color: #9d3023;
+}
+
+.admin-alert {
+  margin-bottom: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgb(196 61 47 / 0.22);
+}
+
+.admin-alert--error {
+  color: #a63227;
+  background: rgb(255 242 240 / 0.9);
+}
+
+.admin-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid var(--ui-border);
+  background: white;
+  color: var(--ui-text-muted);
   font-size: 0.75rem;
   text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
-.admin-card__badge--inactive {
+.admin-badge--inactive {
   opacity: 0.7;
 }
 
-.admin-list {
+.admin-access__actions,
+.admin-form,
+.admin-create,
+.admin-actions,
+.admin-minted,
+.admin-policy-list,
+.admin-meta-grid {
   display: grid;
-  gap: var(--space-2);
+  gap: 0.75rem;
 }
 
-.admin-list__item {
+.admin-policy-list__actions {
+  display: flex;
   justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.admin-actions--compact {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.admin-create {
+  grid-template-columns: minmax(12rem, 1fr) minmax(12rem, 1fr) auto;
+  align-items: end;
+}
+
+.admin-budget-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.admin-budget {
+  border: 1px solid var(--ui-border);
+  border-radius: 1rem;
+  background: white;
+}
+
+.admin-budget--open {
+  border-color: color-mix(in srgb, var(--ui-primary) 35%, var(--ui-border) 65%);
+}
+
+.admin-budget__summary {
+  width: 100%;
+  justify-content: space-between;
+  padding: 1rem;
+  border: 0;
+  border-radius: 1rem;
+  text-align: left;
+}
+
+.admin-budget__summary-main,
+.admin-budget__summary-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.admin-budget__summary-meta {
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.admin-budget__identity {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.admin-budget__identity strong {
+  color: var(--ui-text);
+}
+
+.admin-budget__identity span,
+.admin-budget__summary-meta code {
+  color: var(--ui-text-muted);
+  font-size: 0.85rem;
+}
+
+.admin-budget__summary-meta code {
+  word-break: break-all;
+}
+
+.admin-budget__chevron {
+  flex: none;
+  transition: transform 140ms ease;
+}
+
+.admin-budget__chevron--open {
+  transform: rotate(180deg);
+}
+
+.admin-budget__detail {
+  display: grid;
+  gap: 1rem;
+  padding: 0 1rem 1rem;
+}
+
+.admin-budget__summaryline {
+  margin: 0;
+  color: var(--ui-text-muted);
+  font-size: 0.95rem;
+}
+
+.admin-budget__summaryline strong {
+  color: var(--ui-text);
+  font-weight: 600;
+}
+
+.admin-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.admin-policy-items {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.admin-policy-item {
   flex-direction: column;
   align-items: flex-start;
+  text-align: left;
 }
 
-.admin-list__item span {
-  color: var(--color-text-secondary);
+.admin-policy-item strong {
+  color: var(--ui-text);
+}
+
+.admin-policy-item span {
+  color: var(--ui-text-muted);
   font-size: 0.8rem;
   word-break: break-all;
 }
 
-.admin-list__item--active {
-  border-color: var(--color-accent, #d96b1d);
-  background: color-mix(in srgb, var(--color-bg-secondary) 82%, #d96b1d 18%);
+.admin-policy-item--active {
+  border-color: color-mix(in srgb, var(--ui-primary) 35%, var(--ui-border) 65%);
+  background: color-mix(in srgb, white 90%, var(--ui-bg) 10%);
 }
 
-.admin-budget {
+.admin-stats {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(18rem, 0.9fr);
-  gap: var(--space-5);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
 }
 
-.admin-budget__actions {
+.admin-stat {
   display: grid;
-  align-content: start;
-  gap: var(--space-3);
-  padding-left: var(--space-4);
-  border-left: 1px solid var(--color-border);
+  gap: 0.35rem;
+  padding: 0.9rem 1rem;
+  border-radius: 0.9rem;
+  border: 1px solid var(--ui-border);
+  background: color-mix(in srgb, white 96%, var(--ui-bg) 4%);
 }
 
-.admin-card__rows {
-  display: grid;
-  gap: var(--space-2);
+.admin-stat strong {
+  color: var(--ui-text);
+  font-size: 1rem;
 }
 
-.admin-card__rows--compact {
-  margin-top: var(--space-2);
+.admin-stat__label,
+.admin-field__label {
+  color: var(--ui-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 
-.admin-card__row {
+.admin-meta {
   display: flex;
   justify-content: space-between;
-  gap: var(--space-4);
+  gap: 1rem;
   align-items: center;
-  color: var(--color-text-secondary);
+  color: var(--ui-text-muted);
 }
 
-.admin-card__row strong,
-.admin-card__row code {
-  color: var(--color-text-primary);
+.admin-meta strong {
+  color: var(--ui-text);
 }
 
-.admin-card__row code {
-  font-size: 0.75rem;
-  word-break: break-all;
-}
-
-.admin-card__form {
+.admin-field {
   display: grid;
-  gap: var(--space-3);
+  gap: 0.45rem;
 }
 
-.admin-card__field {
-  display: grid;
-  gap: var(--space-2);
-  color: var(--color-text-secondary);
+.admin-field__hint {
+  margin: 0;
+  color: var(--ui-text-muted);
+  font-size: 0.8rem;
 }
 
-.admin-card__field--checkbox {
+.admin-field--checkbox {
   grid-template-columns: auto 1fr;
   align-items: center;
 }
 
-.admin-card__input,
-.admin-card__textarea {
+.admin-input,
+.admin-textarea {
   width: 100%;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--color-bg-primary);
-  color: var(--color-text-primary);
+  border: 1px solid var(--ui-border);
+  border-radius: 0.8rem;
+  background: white;
+  color: var(--ui-text);
   font: inherit;
-  padding: var(--space-3);
+  padding: 0.75rem 0.9rem;
 }
 
-.admin-card__textarea {
-  min-height: 7rem;
+.admin-input:focus,
+.admin-textarea:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--ui-primary) 50%, var(--ui-border) 50%);
+}
+
+.admin-textarea {
+  min-height: 8rem;
   resize: vertical;
 }
 
-.admin-card__button--ghost {
-  background: transparent;
-}
-
-.admin-card__button--warn {
-  border-color: color-mix(in srgb, var(--color-border) 65%, #c43d2f 35%);
-}
-
-.admin-card__hint,
-.admin-card__empty {
-  margin: 0;
-  color: var(--color-text-secondary);
-}
-
-.admin-card__minted {
-  display: grid;
-  gap: var(--space-3);
+@media (max-width: 900px) {
+  .admin-detail-grid,
+  .admin-stats {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 720px) {
-  .admin-view__header {
+  .admin-hero {
+    flex-direction: column;
+  }
+
+  .admin-create,
+  .admin-budget__summary,
+  .admin-budget__summary-main,
+  .admin-budget__summary-meta,
+  .admin-card__header,
+  .admin-card__actions {
     grid-template-columns: 1fr;
+    flex-direction: column;
+    align-items: flex-start;
   }
+}
 
-  .admin-card--wide {
-    grid-column: auto;
-  }
-
-  .admin-budget {
-    grid-template-columns: 1fr;
-  }
-
-  .admin-budget__actions {
-    padding-left: 0;
-    border-left: 0;
-    border-top: 1px solid var(--color-border);
-    padding-top: var(--space-4);
+@media (max-width: 540px) {
+  .admin-view {
+    padding-inline: 0.75rem;
   }
 }
 </style>

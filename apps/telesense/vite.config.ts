@@ -69,6 +69,8 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/api": "http://localhost:8787",
+      "/admin": "http://localhost:8787",
+      "/health": "http://localhost:8787",
     },
     // Vite 8: Optimized HMR
     hmr: {
@@ -122,6 +124,8 @@ export default defineConfig({
     port: 4173,
     proxy: {
       "/api": "http://localhost:8787",
+      "/admin": "http://localhost:8787",
+      "/health": "http://localhost:8787",
     },
   },
 

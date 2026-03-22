@@ -191,26 +191,17 @@
         </svg>
         <span>{{ t("landing_clear_token") }}</span>
       </button>
-      <button class="landing__token-action" @click="openAdmin">
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <path d="M12 3v18" />
-          <path d="M3 12h18" />
-          <circle cx="12" cy="12" r="3" />
-        </svg>
-        <span>{{ t("landing_admin") }}</span>
-      </button>
     </div>
 
     <div class="landing__footer">
       <div class="landing__footer-actions">
-        <button class="landing__footer-admin" @click="openAdmin">
+        <button
+          v-if="hasHostAdminSessionToken"
+          class="landing__footer-admin"
+          :aria-label="t('landing_admin')"
+          :title="t('landing_admin')"
+          @click="openAdmin"
+        >
           <svg
             width="14"
             height="14"
@@ -223,7 +214,6 @@
             <path d="M3 12h18" />
             <circle cx="12" cy="12" r="3" />
           </svg>
-          <span>{{ t("landing_admin") }}</span>
         </button>
         <LanguageToggle />
         <ThemeToggle />
@@ -248,6 +238,8 @@ import { useToast } from "../composables/useToast"
 const {
   serviceEntitlementState,
   hasServiceEntitlementToken,
+  hasHostAdminSessionToken,
+  sanitizeCredentialToken,
   setServiceEntitlementToken,
   recentCalls,
   addRecentCall,
@@ -464,7 +456,7 @@ async function verifyServiceEntitlementToken(candidateToken: string) {
 }
 
 async function saveServiceEntitlementToken() {
-  const token = tokenInput.value.trim()
+  const token = sanitizeCredentialToken(tokenInput.value)
   if (!token) return false
 
   transientServiceEntitlementUiState.value = "verifying"

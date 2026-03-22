@@ -302,7 +302,26 @@ describe("entitlement routes", () => {
     )
   })
 
-  test("/admin/entitlement/mint adds allowance and returns a usable token", async () => {
+  test("/admin/entitlement/mint returns a usable token without changing allowance", async () => {
+    await budgetStub.budget.fetch(
+      new Request("http://do.internal/?action=addAllowance", {
+        method: "POST",
+        body: JSON.stringify({ bytes: 1_000 }),
+      }),
+    )
+
+    const budgetBeforeRes = await app.request(
+      "http://example.test/admin/entitlement/budget",
+      {
+        headers: await adminSessionHeaders(),
+      },
+      env,
+    )
+    expect(budgetBeforeRes.status).toBe(200)
+    const budgetBefore = (await budgetBeforeRes.json()) as {
+      allowance: { remainingBytes: number }
+    }
+
     const mintResponse = await app.request(
       "http://example.test/admin/entitlement/mint",
       {
@@ -319,7 +338,7 @@ describe("entitlement routes", () => {
       budgetId: string
     }
 
-    expect(minted.remainingBytes).toBe(1_000)
+    expect(minted.remainingBytes).toBe(budgetBefore.allowance.remainingBytes)
     expect(typeof minted.serviceEntitlementToken).toBe("string")
     expect(minted.budgetId).toBeTruthy()
 
@@ -336,7 +355,7 @@ describe("entitlement routes", () => {
       expect.objectContaining({
         ok: true,
         budgetId: minted.budgetId,
-        remainingBytes: 1_000,
+        remainingBytes: budgetBefore.allowance.remainingBytes,
       }),
     )
   })
@@ -404,6 +423,13 @@ describe("entitlement routes", () => {
   })
 
   test("existing room joins ignore later invalid tokens and keep the original budget binding", async () => {
+    await budgetStub.budget.fetch(
+      new Request("http://do.internal/?action=addAllowance", {
+        method: "POST",
+        body: JSON.stringify({ bytes: 1_000 }),
+      }),
+    )
+
     const mintResponse = await app.request(
       "http://example.test/admin/entitlement/mint",
       {
@@ -729,6 +755,49 @@ describe("entitlement routes", () => {
     )
   })
 
+  test("/admin/entitlement/monthly-allowance/reset restores the seeded default policy", async () => {
+    await app.request(
+      "http://example.test/admin/entitlement/monthly-allowance",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(await adminSessionHeaders()),
+        },
+        body: JSON.stringify({
+          active: false,
+          resetAmountBytes: 0,
+          cronExpr: "0 0 1 * *",
+        }),
+      },
+      env,
+    )
+
+    const response = await app.request(
+      "http://example.test/admin/entitlement/monthly-allowance/reset",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(await adminSessionHeaders()),
+        },
+        body: JSON.stringify({}),
+      },
+      env,
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({
+        allowanceId: "global-monthly",
+        budgetKey: "global-budget",
+        active: true,
+        cronExpr: "0 0 1 * *",
+        resetAmountBytes: 100 * 1024 * 1024 * 1024,
+      }),
+    )
+  })
+
   test("/admin/host/budgets lists known budgets without D1", async () => {
     const mintResponse = await app.request(
       "http://example.test/admin/entitlement/mint",
@@ -803,6 +872,32 @@ describe("entitlement routes", () => {
     expect(hostAdminDb.monthlyAllowances.has("global-monthly")).toBe(true)
   })
 
+  test("/admin/host/monthly-allowances seeds the default allowance onto the default budget", async () => {
+    const response = await app.request(
+      "http://example.test/admin/host/monthly-allowances",
+      {
+        headers: await adminSessionHeaders(),
+      },
+      env,
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({
+        monthlyAllowances: [
+          expect.objectContaining({
+            allowanceId: "global-monthly",
+            budgetKey: "global-budget",
+            active: true,
+            cronExpr: "0 0 1 * *",
+          }),
+        ],
+      }),
+    )
+    expect(hostAdminDb.monthlyAllowances.get("global-monthly")?.budget_key).toBe("global-budget")
+    expect(hostAdminDb.monthlyAllowances.get("global-monthly")?.active).toBe(1)
+  })
+
   test("/admin/entitlement/budget-label updates registry label for selected budget", async () => {
     await app.request(
       "http://example.test/admin/entitlement/mint",
@@ -831,5 +926,35 @@ describe("entitlement routes", () => {
 
     expect(response.status).toBe(200)
     expect(hostAdminDb.budgets.get("global-budget")?.label).toBe("Production Shared Budget")
+  })
+
+  test("/admin/entitlement/budget/create creates a budget record with optional label", async () => {
+    const response = await app.request(
+      "http://example.test/admin/entitlement/budget/create",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(await adminSessionHeaders()),
+        },
+        body: JSON.stringify({
+          budgetKey: "team-a",
+          label: "Team A",
+        }),
+      },
+      env,
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({
+        budgetKey: "team-a",
+        allowance: expect.objectContaining({
+          remainingBytes: 0,
+          consumedBytes: 0,
+        }),
+      }),
+    )
+    expect(hostAdminDb.budgets.get("team-a")?.label).toBe("Team A")
   })
 })

@@ -1,6 +1,7 @@
 import { computed } from "vue"
 import { useStorage } from "@vueuse/core"
-import { detectLocale, type Locale } from "../i18n/messages"
+import { z } from "zod"
+import { detectLocale, isSupportedLocale, type Locale } from "../i18n/messages"
 
 // Single namespaced key for all app state
 const STORAGE_KEY = "telesense:state"
@@ -16,7 +17,7 @@ export interface RoomParticipantCredential {
 
 export type StoredServiceEntitlementState = "missing" | "valid" | "exhausted"
 
-interface AppState {
+export interface AppState {
   browserInstanceId: string
   serviceEntitlementToken: string
   serviceEntitlementState: StoredServiceEntitlementState
@@ -54,59 +55,155 @@ const defaultState: AppState = {
   },
 }
 
+const localeSchema = z.custom<Locale>(
+  (value) => typeof value === "string" && isSupportedLocale(value),
+)
+const recentCallSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().optional(),
+})
+const roomParticipantCredentialSchema = z.object({
+  participantSecret: z.string().min(1),
+})
+const appStateSchema = z.object({
+  browserInstanceId: z.string().min(1),
+  serviceEntitlementToken: z.string(),
+  serviceEntitlementState: z.enum(["missing", "valid", "exhausted"]),
+  hostAdminSessionToken: z.string(),
+  recentCalls: z.array(recentCallSchema),
+  roomParticipantCredentials: z.record(z.string(), roomParticipantCredentialSchema),
+  preferences: z.object({
+    showLogs: z.boolean(),
+    audioEnabled: z.boolean(),
+    videoEnabled: z.boolean(),
+    desktopCallLayout: z.enum(["side-by-side", "focus-remote"]),
+    mobileCallLayout: z.enum(["picture-in-picture", "remote-only"]),
+    locale: localeSchema,
+  }),
+})
+
+export function sanitizeCredentialToken(token: string): string {
+  return token.normalize("NFKC").replace(/[\p{C}\p{Z}]+/gu, "")
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value)
+}
+
+export function normalizeStoredAppState(raw: unknown): AppState {
+  const input = isRecord(raw) ? raw : {}
+
+  const browserInstanceId = z.string().min(1).safeParse(input.browserInstanceId).success
+    ? (input.browserInstanceId as string)
+    : z.string().min(1).safeParse(input.userId).success
+      ? (input.userId as string)
+      : generateBrowserInstanceId()
+
+  const serviceEntitlementToken = sanitizeCredentialToken(
+    z.string().catch("").parse(input.serviceEntitlementToken),
+  )
+  const hostAdminSessionToken = sanitizeCredentialToken(
+    z
+      .string()
+      .catch("")
+      .parse(
+        z.string().safeParse(input.hostAdminSessionToken).success
+          ? input.hostAdminSessionToken
+          : z.string().safeParse(input.hostAdminToken).success
+            ? input.hostAdminToken
+            : input.hostToken,
+      ),
+  )
+
+  const serviceEntitlementState = z
+    .enum(["missing", "valid", "exhausted"])
+    .safeParse(input.serviceEntitlementState).success
+    ? (input.serviceEntitlementState as StoredServiceEntitlementState)
+    : !serviceEntitlementToken
+      ? "missing"
+      : input.serviceEntitlementTokenVerified === true
+        ? "valid"
+        : "exhausted"
+
+  const recentCalls = Array.isArray(input.recentCalls)
+    ? input.recentCalls
+        .flatMap((item) => {
+          const parsed = recentCallSchema.safeParse(item)
+          if (!parsed.success) return []
+          return [
+            {
+              id: parsed.data.id.toUpperCase(),
+              name: parsed.data.name?.trim() || undefined,
+            } satisfies RecentCall,
+          ]
+        })
+        .slice(0, 999)
+    : []
+
+  const roomParticipantCredentials = isRecord(input.roomParticipantCredentials)
+    ? Object.fromEntries(
+        Object.entries(input.roomParticipantCredentials)
+          .map(([roomId, credential]) => {
+            const parsed = roomParticipantCredentialSchema.safeParse(credential)
+            if (!parsed.success) return null
+            return [
+              roomId.toUpperCase(),
+              { participantSecret: parsed.data.participantSecret },
+            ] as const
+          })
+          .filter((entry): entry is readonly [string, RoomParticipantCredential] => entry !== null),
+      )
+    : {}
+
+  const preferencesInput = isRecord(input.preferences) ? input.preferences : {}
+  const localeCandidate =
+    z.string().safeParse(preferencesInput.locale).success &&
+    isSupportedLocale(preferencesInput.locale as string)
+      ? (preferencesInput.locale as Locale)
+      : defaultState.preferences.locale
+
+  return appStateSchema.parse({
+    browserInstanceId,
+    serviceEntitlementToken,
+    serviceEntitlementState,
+    hostAdminSessionToken,
+    recentCalls,
+    roomParticipantCredentials,
+    preferences: {
+      showLogs: z
+        .boolean()
+        .catch(defaultState.preferences.showLogs)
+        .parse(preferencesInput.showLogs),
+      audioEnabled: z
+        .boolean()
+        .catch(defaultState.preferences.audioEnabled)
+        .parse(preferencesInput.audioEnabled),
+      videoEnabled: z
+        .boolean()
+        .catch(defaultState.preferences.videoEnabled)
+        .parse(preferencesInput.videoEnabled),
+      desktopCallLayout: z
+        .enum(["side-by-side", "focus-remote"])
+        .catch(defaultState.preferences.desktopCallLayout)
+        .parse(preferencesInput.desktopCallLayout),
+      mobileCallLayout: z
+        .enum(["picture-in-picture", "remote-only"])
+        .catch(defaultState.preferences.mobileCallLayout)
+        .parse(preferencesInput.mobileCallLayout),
+      locale: localeCandidate,
+    },
+  })
+}
+
 // Reactive state backed by localStorage
-const state = useStorage<AppState>(STORAGE_KEY, defaultState, localStorage)
+const state = useStorage<AppState>(
+  STORAGE_KEY,
+  defaultState,
+  typeof localStorage === "undefined" ? undefined : localStorage,
+)
 
 export function useAppStore() {
-  const legacyState = state.value as AppState & {
-    userId?: string
-    serviceEntitlementTokenVerified?: boolean
-    hostToken?: string
-    hostAdminToken?: string
-  }
-  if (!state.value.browserInstanceId && legacyState.userId) {
-    state.value.browserInstanceId = legacyState.userId
-    delete legacyState.userId
-  }
-
-  if (!state.value.browserInstanceId) {
-    state.value.browserInstanceId = generateBrowserInstanceId()
-  }
-
-  if (!state.value.roomParticipantCredentials) {
-    state.value.roomParticipantCredentials = {}
-  }
-
-  if (!state.value.preferences) {
-    state.value.preferences = { ...defaultState.preferences }
-  } else {
-    state.value.preferences = {
-      ...defaultState.preferences,
-      ...state.value.preferences,
-    }
-  }
-
-  if (!state.value.serviceEntitlementState) {
-    const hasToken = !!state.value.serviceEntitlementToken
-    if (!hasToken) {
-      state.value.serviceEntitlementState = "missing"
-    } else if (legacyState.serviceEntitlementTokenVerified) {
-      state.value.serviceEntitlementState = "valid"
-    } else {
-      state.value.serviceEntitlementState = "exhausted"
-    }
-    delete legacyState.serviceEntitlementTokenVerified
-  }
-
-  if (!state.value.hostAdminSessionToken && (legacyState.hostAdminToken || legacyState.hostToken)) {
-    state.value.hostAdminSessionToken = legacyState.hostAdminToken || legacyState.hostToken || ""
-    delete legacyState.hostAdminToken
-    delete legacyState.hostToken
-  }
-
-  if (!state.value.hostAdminSessionToken) {
-    state.value.hostAdminSessionToken = ""
-  }
+  state.value = normalizeStoredAppState(state.value)
 
   // Auth
   const hasServiceEntitlementToken = computed(() => !!state.value.serviceEntitlementToken)
@@ -120,7 +217,7 @@ export function useAppStore() {
     token: string,
     entitlementState: Exclude<StoredServiceEntitlementState, "missing"> = "valid",
   ) {
-    state.value.serviceEntitlementToken = token.trim()
+    state.value.serviceEntitlementToken = sanitizeCredentialToken(token)
     state.value.serviceEntitlementState = state.value.serviceEntitlementToken
       ? entitlementState
       : "missing"
@@ -132,7 +229,7 @@ export function useAppStore() {
   }
 
   function setHostAdminSessionToken(token: string) {
-    state.value.hostAdminSessionToken = token.trim()
+    state.value.hostAdminSessionToken = sanitizeCredentialToken(token)
   }
 
   function clearHostAdminSessionToken() {
@@ -141,13 +238,13 @@ export function useAppStore() {
 
   function getServiceEntitlementHeaders(): Record<string, string> {
     return {
-      "X-Service-Entitlement-Token": state.value.serviceEntitlementToken,
+      "X-Service-Entitlement-Token": sanitizeCredentialToken(state.value.serviceEntitlementToken),
     }
   }
 
   function getHostAdminHeaders(): Record<string, string> {
     return {
-      "X-Host-Admin-Session": state.value.hostAdminSessionToken,
+      "X-Host-Admin-Session": sanitizeCredentialToken(state.value.hostAdminSessionToken),
     }
   }
 
@@ -227,6 +324,7 @@ export function useAppStore() {
     isAuthenticated,
 
     // Actions
+    sanitizeCredentialToken,
     setServiceEntitlementToken,
     clearServiceEntitlementToken,
     setHostAdminSessionToken,

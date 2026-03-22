@@ -37,6 +37,7 @@ export function useMetering(roomId: string) {
       status.value = (await response.json()) as MeteringStatus
     } catch (e) {
       error.value = e instanceof Error ? e.message : "Unknown error"
+      console.warn("[metering] status fetch failed", e)
     } finally {
       isLoading.value = false
     }

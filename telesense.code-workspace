@@ -9,6 +9,9 @@
     {
       "path": "../feedback-gitops",
     },
+    {
+      "path": "../harmonia",
+    },
   ],
   "settings": {},
 }

@@ -6,9 +6,22 @@ import { useTheme } from "./composables/useTheme"
 // Initialize theme before mounting
 useTheme()
 
-registerSW({
-  immediate: true,
-})
+if (import.meta.env.DEV) {
+  void navigator.serviceWorker
+    .getRegistrations()
+    .then((registrations) => {
+      for (const registration of registrations) {
+        void registration.unregister()
+      }
+    })
+    .catch(() => {
+      // Ignore service worker cleanup failures in development.
+    })
+} else {
+  registerSW({
+    immediate: true,
+  })
+}
 
 const app = createApp(App)
 

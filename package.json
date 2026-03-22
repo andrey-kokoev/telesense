@@ -10,7 +10,7 @@
     "test:e2e": "vp run --filter telesense test:e2e",
     "ship": "./scripts/ship.sh",
     "ship:telesense": "vp run --filter telesense ship",
-    "deploy": "pnpm run ship",
+    "deploy": "vp run ship",
     "deploy:telesense": "vp run --filter telesense ship",
     "typecheck": "vp run --filter telesense typecheck",
     "lint": "vp run --filter telesense lint",

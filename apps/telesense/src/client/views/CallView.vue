@@ -238,15 +238,6 @@ onBeforeUnmount(() => {
       }}
     </span>
   </div>
-  <div
-    v-if="metering.error.value"
-    class="grace-banner grace-banner--stale"
-    role="status"
-    aria-live="polite"
-  >
-    <span class="grace-banner__icon">!</span>
-    <span class="grace-banner__text">{{ t("call_metering_status_stale") }}</span>
-  </div>
 
   <CallMobileLayout
     v-if="useMobileLayout"
