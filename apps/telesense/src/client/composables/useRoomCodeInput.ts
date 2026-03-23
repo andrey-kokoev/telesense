@@ -4,6 +4,21 @@ export function normalizeRoomCode(value: string) {
   return value.replace(/[^A-Z0-9]/gi, "").toUpperCase()
 }
 
+function roomCodeCharacterFromKeyboardEvent(event: KeyboardEvent) {
+  if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return ""
+
+  const normalizedKey = normalizeRoomCode(event.key).slice(-1)
+  if (normalizedKey) return normalizedKey
+
+  const letterMatch = /^Key([A-Z])$/.exec(event.code)
+  if (letterMatch) return letterMatch[1]
+
+  const digitMatch = /^Digit([0-9])$/.exec(event.code)
+  if (digitMatch) return digitMatch[1]
+
+  return ""
+}
+
 export function useRoomCodeInput(onSubmit?: () => void) {
   const digits = ref<string[]>(Array.from({ length: 6 }, () => ""))
   const inputs = ref<Array<HTMLInputElement | null>>([])
@@ -53,8 +68,9 @@ export function useRoomCodeInput(onSubmit?: () => void) {
   }
 
   function onKeydown(index: number, event: KeyboardEvent) {
-    const replacement = normalizeRoomCode(event.key)
-    if (replacement.length === 1 && digits.value[index]) {
+    const replacement = roomCodeCharacterFromKeyboardEvent(event)
+
+    if (replacement.length === 1) {
       event.preventDefault()
       digits.value[index] = replacement
       const input = event.currentTarget as HTMLInputElement | null

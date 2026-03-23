@@ -1,10 +1,14 @@
 import { defineConfig, devices } from "@playwright/test"
 
+const isCI = Boolean(
+  (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.CI,
+)
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
-  forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
+  forbidOnly: isCI,
+  retries: isCI ? 2 : 0,
   workers: 1,
   reporter: "list",
   use: {
@@ -35,9 +39,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "pnpm dev",
+    command: "vp dev",
     url: "http://localhost:5173",
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: !isCI,
     timeout: 120000,
   },
 })

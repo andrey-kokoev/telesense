@@ -259,7 +259,7 @@ const roomEntryHelperText = computed(() => {
       ? t("landing_service_entitlement_verifying_hint")
       : t("landing_service_entitlement_exhausted_hint")
   }
-  if (roomLookupState.value === "missing") return t("landing_enter_token_hint")
+  if (roomLookupState.value === "missing") return ""
   return ""
 })
 const shouldShowEnterTokenPrompt = computed(
@@ -487,18 +487,34 @@ function isEditableTarget(target: EventTarget | null) {
   )
 }
 
+function roomCodeCharacterFromKeyboardEvent(event: KeyboardEvent) {
+  if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return ""
+
+  const normalizedKey = event.key
+    .replace(/[^A-Z0-9]/gi, "")
+    .toUpperCase()
+    .slice(-1)
+  if (normalizedKey) return normalizedKey
+
+  const letterMatch = /^Key([A-Z])$/.exec(event.code)
+  if (letterMatch) return letterMatch[1]
+
+  const digitMatch = /^Digit([0-9])$/.exec(event.code)
+  if (digitMatch) return digitMatch[1]
+
+  return ""
+}
+
 function handleDesktopLandingKeydown(event: KeyboardEvent) {
+  const roomCodeCharacter = roomCodeCharacterFromKeyboardEvent(event)
   if (!isDesktopViewport()) return
   if (event.defaultPrevented) return
-  if (event.ctrlKey || event.metaKey || event.altKey) return
-  if (typeof event.key !== "string") return
-  if (event.key.length !== 1) return
-  if (!/[a-z0-9]/i.test(event.key)) return
+  if (!roomCodeCharacter) return
   if (isEditableTarget(event.target)) return
   if (showTokenModal.value) return
 
   event.preventDefault()
-  void insertRoomCodeCharacter(event.key)
+  void insertRoomCodeCharacter(roomCodeCharacter)
 }
 
 async function resolveEnteredToken(candidateToken: string) {
@@ -634,9 +650,10 @@ function openAdmin() {
 .landing__room-helper {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--space-2);
   margin-top: var(--space-3);
+  text-align: center;
 }
 
 .landing__inline-link {
