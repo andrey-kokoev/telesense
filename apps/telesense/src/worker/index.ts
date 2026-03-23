@@ -52,6 +52,12 @@ import {
 } from "./host-admin-registry"
 import { MonthlyAllowance } from "./monthly-allowance"
 import { mintToken, parseToken, verifyTokenWithSecret } from "./tokens"
+import {
+  buildTokenPreview,
+  getReusableServiceEntitlementTokenForBudget,
+  mintTrackedServiceEntitlementTokenForBudget,
+} from "./entitlement-token-service"
+import { resolveBudgetAdminAccess, resolveHostAdminAccess } from "./auth-resolve"
 
 type Env = {
   REALTIME_APP_ID: string
@@ -173,11 +179,6 @@ async function ensureMonthlyAllowanceForBudget(
     allowanceId,
     ...effective,
   }
-}
-
-function buildTokenPreview(token: string): string {
-  if (token.length <= 18) return token
-  return `${token.slice(0, 8)}…${token.slice(-8)}`
 }
 
 // Type definitions
@@ -399,79 +400,12 @@ async function mintServiceEntitlementTokenForBudget(
   budgetKey: string,
   label: string | null = null,
 ) {
-  const budget = getEntitlementBudgetByKey(env, budgetKey)
-
-  const secretRes = await budget.fetch(new Request("http://do.internal/?action=getCurrentSecret"))
-  if (!secretRes.ok) {
-    const rotateRes = await budget.fetch(
-      new Request("http://do.internal/?action=rotateSecret", { method: "POST" }),
-    )
-    if (!rotateRes.ok) {
-      throw new Error("Failed to initialize budget secret")
-    }
-  }
-
-  const currentSecretRes = await budget.fetch(
-    new Request("http://do.internal/?action=getCurrentSecret"),
-  )
-  if (!currentSecretRes.ok) {
-    throw new Error("Failed to get budget secret")
-  }
-
-  const { version, secret } = (await currentSecretRes.json()) as { version: number; secret: string }
-  const budgetRes = await budget.fetch(new Request("http://do.internal/?action=getBudget"))
-  if (!budgetRes.ok) {
-    throw new Error("Failed to get budget data")
-  }
-  const budgetData = (await budgetRes.json()) as {
-    budgetId: string
-    remainingBytes: number
-    enabled?: boolean
-  }
-  await upsertBudgetRegistry(env, { budgetKey, budgetId: budgetData.budgetId })
-
-  const serviceEntitlementToken = await mintToken(budgetData.budgetId, version, secret)
-  const tokenClaims = parseToken(serviceEntitlementToken)?.claims
-  if (!tokenClaims) {
-    throw new Error("Failed to mint service entitlement token")
-  }
-
-  await upsertEntitlementTokenRegistry(env, {
-    tokenId: tokenClaims.tokenId,
+  return mintTrackedServiceEntitlementTokenForBudget({
+    env,
     budgetKey,
-    budgetId: budgetData.budgetId,
-    secretVersion: version,
-    tokenValue: serviceEntitlementToken,
-    tokenPreview: buildTokenPreview(serviceEntitlementToken),
+    budget: getEntitlementBudgetByKey(env, budgetKey),
     label,
   })
-
-  return {
-    serviceEntitlementToken,
-    tokenId: tokenClaims.tokenId,
-    budgetKey,
-    budgetId: budgetData.budgetId,
-    secretVersion: version,
-    remainingBytes: budgetData.remainingBytes,
-  }
-}
-
-async function getReusableServiceEntitlementTokenForBudget(
-  env: Env,
-  budgetKey: string,
-): Promise<string | null> {
-  if (!env.HOST_ADMIN_DB) return null
-
-  const tokens = await listEntitlementTokensByBudgetKey(env, budgetKey)
-  for (const token of tokens) {
-    if (!token.active) continue
-    const record = await getEntitlementTokenRegistry(env, token.tokenId)
-    if (record?.tokenValue) {
-      return record.tokenValue
-    }
-  }
-
-  return null
 }
 
 async function verifyServiceEntitlementToken(
@@ -1292,77 +1226,38 @@ app.post("/auth/resolve", async (c) => {
     return c.json({ error: "Token required", code: "BAD_REQUEST" }, 400)
   }
 
-  if (isAuthDisabled(c.env) || token === c.env.HOST_ADMIN_BOOTSTRAP_TOKEN) {
-    const hostAdminSessionToken = await mintHostAdminSessionToken(c.env.HOST_ADMIN_BOOTSTRAP_TOKEN)
-    const budgetKey = defaultBudgetKey(c.env)
-    const existingServiceEntitlementToken = await getReusableServiceEntitlementTokenForBudget(
-      c.env,
-      budgetKey,
-    )
-    const entitlement = existingServiceEntitlementToken
-      ? { serviceEntitlementToken: existingServiceEntitlementToken, budgetKey }
-      : await mintServiceEntitlementTokenForBudget(c.env, budgetKey, "Example token label")
-    return c.json({
-      ok: true,
-      kind: "host-admin",
-      hostAdminSessionToken,
-      serviceEntitlementToken: entitlement.serviceEntitlementToken,
-      budgetKey: entitlement.budgetKey,
-    })
+  const hostAdminAccess = await resolveHostAdminAccess({
+    env: c.env,
+    token,
+    defaultBudgetKey: defaultBudgetKey(c.env),
+    isAuthDisabled: isAuthDisabled(c.env),
+    getReusableServiceEntitlementTokenForBudget,
+    mintServiceEntitlementTokenForBudget: async (env, budgetKey, label) => {
+      const entitlement = await mintServiceEntitlementTokenForBudget(env as Env, budgetKey, label)
+      return {
+        serviceEntitlementToken: entitlement.serviceEntitlementToken,
+        budgetKey: entitlement.budgetKey,
+      }
+    },
+  })
+  if (hostAdminAccess) {
+    return c.json(hostAdminAccess)
   }
 
-  const budgetAdminVerification = await verifyBudgetAdminToken(
+  const budgetAdminAccess = await resolveBudgetAdminAccess({
+    env: c.env,
     token,
-    c.env.HOST_ADMIN_BOOTSTRAP_TOKEN,
-  )
-  if (budgetAdminVerification.valid) {
-    if (c.env.HOST_ADMIN_DB) {
-      const currentToken = await getBudgetAdminTokenRegistry(
-        c.env,
-        budgetAdminVerification.claims.budgetKey,
-      )
-      if (currentToken?.token === token) {
-        const budgetKey = budgetAdminVerification.claims.budgetKey
-        const existingServiceEntitlementToken = await getReusableServiceEntitlementTokenForBudget(
-          c.env,
-          budgetKey,
-        )
-        const entitlement = existingServiceEntitlementToken
-          ? { serviceEntitlementToken: existingServiceEntitlementToken, budgetKey }
-          : await mintServiceEntitlementTokenForBudget(c.env, budgetKey, "budget-admin")
-        const budgetAdminSessionToken = await mintBudgetAdminSessionToken(
-          c.env.HOST_ADMIN_BOOTSTRAP_TOKEN,
-          budgetKey,
-        )
-        return c.json({
-          ok: true,
-          kind: "budget-admin",
-          budgetKey,
-          budgetAdminSessionToken,
-          serviceEntitlementToken: entitlement.serviceEntitlementToken,
-        })
-      }
-    } else {
-      const budgetKey = budgetAdminVerification.claims.budgetKey
-      const existingServiceEntitlementToken = await getReusableServiceEntitlementTokenForBudget(
-        c.env,
-        budgetKey,
-      )
-      const entitlement = existingServiceEntitlementToken
-        ? { serviceEntitlementToken: existingServiceEntitlementToken, budgetKey }
-        : await mintServiceEntitlementTokenForBudget(c.env, budgetKey, "budget-admin")
-      const budgetAdminSessionToken = await mintBudgetAdminSessionToken(
-        c.env.HOST_ADMIN_BOOTSTRAP_TOKEN,
-        budgetKey,
-      )
-      return c.json({
-        ok: true,
-        kind: "budget-admin",
-        budgetKey,
-        budgetAdminSessionToken,
+    getReusableServiceEntitlementTokenForBudget,
+    mintServiceEntitlementTokenForBudget: async (env, budgetKey, label) => {
+      const entitlement = await mintServiceEntitlementTokenForBudget(env as Env, budgetKey, label)
+      return {
         serviceEntitlementToken: entitlement.serviceEntitlementToken,
-      })
-    }
+        budgetKey: entitlement.budgetKey,
+      }
+    },
+  })
+  if (budgetAdminAccess) {
+    return c.json(budgetAdminAccess)
   }
 
   const entitlementVerification = await verifyServiceEntitlementToken(c.env, token)
