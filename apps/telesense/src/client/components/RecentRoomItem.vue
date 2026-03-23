@@ -70,7 +70,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+  type ComponentPublicInstance,
+} from "vue"
 import RecentRoomBody from "./RecentRoomBody.vue"
 import type { RecentCall } from "../composables/useAppStore"
 import { useI18n } from "../composables/useI18n"
@@ -166,8 +174,18 @@ const swipeVisuals = computed(() => {
   }
 })
 
-function setRootRef(el: Element | null) {
-  rootEl.value = el instanceof HTMLElement ? el : null
+function setRootRef(el: Element | ComponentPublicInstance | null) {
+  const resolved =
+    el instanceof HTMLElement
+      ? el
+      : el instanceof Element
+        ? el instanceof HTMLElement
+          ? el
+          : null
+        : el && "$el" in el && el.$el instanceof HTMLElement
+          ? el.$el
+          : null
+  rootEl.value = resolved
 }
 
 watch(
@@ -239,7 +257,7 @@ function onTouchMove(event: TouchEvent) {
 
   if (swipeState.value.shouldAutoTrigger && swipeState.value.direction && !swipeTriggered.value) {
     swipeTriggered.value = true
-    triggerSwipeAction(swipeState.value.direction)
+    triggerSwipeAction(swipeState.value.direction as "edit" | "delete")
   }
 }
 
@@ -255,7 +273,7 @@ function onTouchEnd() {
   }
 
   if (swipeState.value.shouldTriggerOnRelease && swipeState.value.direction) {
-    triggerSwipeAction(swipeState.value.direction)
+    triggerSwipeAction(swipeState.value.direction as "edit" | "delete")
     return
   }
 

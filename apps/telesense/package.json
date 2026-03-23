@@ -8,7 +8,7 @@
     "build": "vp build",
     "ship": "wrangler deploy",
     "deploy": "pnpm run ship",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "vue-tsc --noEmit",
     "lint": "tsc --noEmit",
     "clean": "rm -rf dist .wrangler/tmp test-results playwright-report",
     "test": "playwright test",
@@ -36,6 +36,7 @@
     "vite": "catalog:",
     "vite-plugin-pwa": "^1.2.0",
     "vite-plus": "catalog:",
+    "vue-tsc": "^3.2.6",
     "workbox-window": "^7.4.0",
     "wrangler": "^4.75.0"
   }

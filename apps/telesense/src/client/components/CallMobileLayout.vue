@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { CSSProperties } from "vue"
+import type { CSSProperties, ComponentPublicInstance } from "vue"
 import { computed, onBeforeUnmount, onMounted, ref } from "vue"
 import { Icon } from "@iconify/vue"
 import LanguageToggle from "./LanguageToggle.vue"
@@ -28,8 +28,8 @@ const props = defineProps<{
     | "remote_left"
   mobileLayout: "picture-in-picture" | "remote-only"
   remoteZoomStyle: CSSProperties
-  setLocalVideoEl: (el: Element | null) => void
-  setRemoteVideoEl: (el: Element | null) => void
+  setLocalVideoEl: (el: Element | ComponentPublicInstance | null) => void
+  setRemoteVideoEl: (el: Element | ComponentPublicInstance | null) => void
 }>()
 
 const { show } = useToast()

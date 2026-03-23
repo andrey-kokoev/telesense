@@ -68,7 +68,7 @@
           >
             <label class="admin-budget__override-input-wrap">
               <input
-                :value="currentRemainingGiB"
+                :value="currentRemainingValue"
                 class="admin-input admin-input--compact"
                 type="number"
                 min="0"
@@ -252,7 +252,7 @@ defineProps<{
   editingBudgetLabel: string
   isRemainingOverrideOpen: boolean
   isMenuOpen: boolean
-  currentRemainingGiB: string
+  currentRemainingValue: string
   monthlyAllowanceForm: {
     resetAmountGiB: string
     cronExpr: string

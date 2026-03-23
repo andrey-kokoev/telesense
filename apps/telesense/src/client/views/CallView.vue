@@ -210,16 +210,6 @@ onBeforeUnmount(() => {
   viewportQuery = null
   mediaQueryListener.value = null
 
-  if (visibilityListener.value) {
-    document.removeEventListener("visibilitychange", visibilityListener.value)
-    visibilityListener.value = null
-  }
-
-  if (beforeUnloadListener.value) {
-    window.removeEventListener("beforeunload", beforeUnloadListener.value)
-    beforeUnloadListener.value = null
-  }
-
   document.documentElement.style.overflow = ""
   document.body.style.overflow = ""
   document.body.style.touchAction = ""

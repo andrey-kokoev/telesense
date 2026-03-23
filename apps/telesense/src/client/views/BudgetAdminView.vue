@@ -2,7 +2,7 @@
   <div class="budget-admin">
     <header class="budget-admin__hero">
       <div class="budget-admin__copy">
-        <HomeLogoButton :aria-label="t('admin_home')" @click="goHome" />
+        <HomeLogoButton :ariaLabel="t('admin_home')" @click="goHome" />
         <div>
           <p class="budget-admin__kicker">{{ t("budget_admin_kicker") }}</p>
           <h1 class="budget-admin__title">{{ budgetLabel }}</h1>
@@ -495,7 +495,7 @@ const {
 } = useEntitlementTokenActions({
   budgetKey: props.budgetKey,
   adminFetch,
-  t,
+  t: t as (key: string, params?: Record<string, string>) => string,
   show,
   lastError,
   entitlementTokens,

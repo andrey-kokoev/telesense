@@ -43,6 +43,7 @@
 </template>
 
 <script setup lang="ts">
+import type { ComponentPublicInstance } from "vue"
 import RecentRoomItem from "./RecentRoomItem.vue"
 import type { RecentCall } from "../composables/useAppStore"
 import type { Availability } from "../composables/useRecentRoomAvailability"
@@ -53,7 +54,7 @@ defineProps<{
   roomAvailability: Record<string, Availability>
   activeOnly: boolean
   activeCount: number
-  setScrollRef: (el: Element | null) => void
+  setScrollRef: (el: Element | ComponentPublicInstance | null) => void
   registerVisibilityRef: (el: unknown, roomId: string) => void
 }>()
 

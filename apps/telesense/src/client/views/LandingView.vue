@@ -221,7 +221,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue"
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  type ComponentPublicInstance,
+} from "vue"
 import LandingHero from "../components/LandingHero.vue"
 import LanguageToggle from "../components/LanguageToggle.vue"
 import RecentRoomsSection from "../components/RecentRoomsSection.vue"
@@ -240,6 +247,7 @@ const {
   hasServiceEntitlementToken,
   hasHostAdminSessionToken,
   hasBudgetAdminSessionToken,
+  budgetAdminBudgetKey,
   sanitizeCredentialToken,
   setServiceEntitlementToken,
   setHostAdminSessionToken,
@@ -254,7 +262,6 @@ const {
 } = useAppStore()
 const { show } = useToast()
 const { t } = useI18n()
-type ServiceEntitlementUiState = "missing" | "verifying" | "valid" | "exhausted" | "invalid"
 const {
   digits: roomCodeDigits,
   value: roomIdInput,
@@ -289,7 +296,6 @@ type JoinRoomFlowState = "editing" | "submitting"
 const createRoomFlowState = ref<CreateRoomFlowState>("idle")
 const joinRoomFlowState = ref<JoinRoomFlowState>("editing")
 const {
-  activeCodeTarget,
   isCreateRoomSectionInactive,
   isJoinRoomSectionInactive,
   activateCreateTarget,
@@ -352,7 +358,7 @@ const {
   clearHostAdminSessionToken,
   clearBudgetAdminSession,
   resolveEnteredToken,
-  t,
+  t: t as (key: string, params?: Record<string, string>) => string,
   show,
   navigate: (path) => {
     window.location.href = path
@@ -490,8 +496,17 @@ function deleteRoom(roomId: string) {
   removeRecentCall(roomId)
 }
 
-function setRecentScrollRef(el: Element | null) {
-  recentScrollEl.value = el instanceof HTMLElement ? el : null
+function setRecentScrollRef(el: Element | ComponentPublicInstance | null) {
+  recentScrollEl.value =
+    el instanceof HTMLElement
+      ? el
+      : el instanceof Element
+        ? el instanceof HTMLElement
+          ? el
+          : null
+        : el && "$el" in el && el.$el instanceof HTMLElement
+          ? el.$el
+          : null
 }
 
 function isCreateRoomInputDisabled(index: number) {
@@ -522,6 +537,7 @@ function handleDesktopLandingKeydown(event: KeyboardEvent) {
   if (!isDesktopViewport()) return
   if (event.defaultPrevented) return
   if (event.ctrlKey || event.metaKey || event.altKey) return
+  if (typeof event.key !== "string") return
   if (event.key.length !== 1) return
   if (!/[a-z0-9]/i.test(event.key)) return
   if (isEditableTarget(event.target)) return

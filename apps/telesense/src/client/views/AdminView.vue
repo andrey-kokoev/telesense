@@ -2,7 +2,7 @@
   <div class="admin-view">
     <header class="admin-hero">
       <div class="admin-hero__copy">
-        <HomeLogoButton :aria-label="t('admin_home')" @click="goBack" />
+        <HomeLogoButton :ariaLabel="t('admin_home')" @click="goBack" />
         <div>
           <p class="admin-kicker">{{ t("admin_host_operations") }}</p>
           <h1 class="admin-hero__title">{{ t("admin_title") }}</h1>
@@ -155,7 +155,7 @@
           :editing-budget-label="editingBudgetLabel"
           :is-remaining-override-open="openRemainingOverrideKey === item.budgetKey"
           :is-menu-open="openBudgetMenuKey === item.budgetKey"
-          :current-remaining-gib="currentRemainingGiB"
+          :current-remaining-value="currentRemainingGiB"
           :monthly-allowance-form="monthlyAllowanceForm"
           :has-monthly-allowance-changes="hasMonthlyAllowanceChanges"
           :monthly-next-reset-tooltip="monthlyNextResetTooltip"

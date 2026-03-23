@@ -1,4 +1,4 @@
-import { ref } from "vue"
+import { ref, type ComponentPublicInstance } from "vue"
 
 export function useCallMedia({
   log,
@@ -23,15 +23,31 @@ export function useCallMedia({
   const isScreenSharing = ref(false)
   let lastTap = 0
 
-  function setLocalVideoEl(el: Element | null) {
-    localVid.value = el instanceof HTMLVideoElement ? el : undefined
+  function setLocalVideoEl(el: Element | ComponentPublicInstance | null) {
+    const resolved =
+      el instanceof HTMLVideoElement
+        ? el
+        : el instanceof Element
+          ? (el.querySelector("video") as HTMLVideoElement | null)
+          : el && "$el" in el && el.$el instanceof Element
+            ? (el.$el.querySelector("video") as HTMLVideoElement | null)
+            : null
+    localVid.value = resolved ?? undefined
     if (localVid.value && localStream.value) {
       localVid.value.srcObject = localStream.value
     }
   }
 
-  function setRemoteVideoEl(el: Element | null) {
-    remoteVid.value = el instanceof HTMLVideoElement ? el : undefined
+  function setRemoteVideoEl(el: Element | ComponentPublicInstance | null) {
+    const resolved =
+      el instanceof HTMLVideoElement
+        ? el
+        : el instanceof Element
+          ? (el.querySelector("video") as HTMLVideoElement | null)
+          : el && "$el" in el && el.$el instanceof Element
+            ? (el.$el.querySelector("video") as HTMLVideoElement | null)
+            : null
+    remoteVid.value = resolved ?? undefined
     if (remoteVid.value && remoteStream.value) {
       remoteVid.value.srcObject = remoteStream.value
     }
