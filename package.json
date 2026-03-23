@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vp run --filter telesense dev",
     "build": "vp run --filter telesense build",
+    "check:full": "vp check && vp run --filter telesense typecheck",
     "test": "vp run --filter telesense test",
     "test:e2e": "vp run --filter telesense test:e2e",
     "ship": "./scripts/ship.sh",
