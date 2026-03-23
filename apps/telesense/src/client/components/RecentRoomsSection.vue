@@ -186,4 +186,15 @@ const emit = defineEmits<{
   flex-direction: column;
   gap: var(--space-2);
 }
+
+@media (pointer: coarse) {
+  .landing__recent-header {
+    margin-bottom: var(--space-2);
+  }
+
+  .landing__recent-scroll {
+    max-height: 52vh;
+    padding: var(--space-3);
+  }
+}
 </style>

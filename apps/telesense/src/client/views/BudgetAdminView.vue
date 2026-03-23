@@ -154,8 +154,12 @@ type AccessState = "checking" | "authorized" | "unauthorized"
 type BudgetResponse = {
   budgetKey: string
   budgetId: string
+  initialized: boolean
   allowance: { remainingBytes: number; consumedBytes: number }
-  grace: { lifecycle: "active" | "in_grace" | "exhausted"; graceEndsAt: number | null }
+  grace: {
+    lifecycle: "uninitialized" | "active" | "in_grace" | "exhausted"
+    graceEndsAt: number | null
+  }
 }
 type MonthlyAllowanceResponse = {
   allowanceId: string
@@ -187,6 +191,8 @@ const showBudgetKey = computed(() => budgetLabel.value.trim() !== props.budgetKe
 
 const budgetStatus = computed(() => {
   switch (budget.value?.grace.lifecycle) {
+    case "uninitialized":
+      return t("admin_status_uninitialized")
     case "active":
       return t("admin_status_active")
     case "in_grace":
@@ -201,6 +207,9 @@ const budgetStatus = computed(() => {
 const usageSummary = computed(() => {
   if (!budget.value) {
     return "— used"
+  }
+  if (budget.value.grace.lifecycle === "uninitialized") {
+    return t("admin_budget_not_initialized")
   }
   const totalBytes =
     monthlyAllowance.value?.resetAmountBytes ??
@@ -217,6 +226,9 @@ const usagePercent = computed(() => {
   if (!budget.value) {
     return 0
   }
+  if (budget.value.grace.lifecycle === "uninitialized") {
+    return 0
+  }
   const totalBytes =
     monthlyAllowance.value?.resetAmountBytes ??
     budget.value.allowance.remainingBytes + budget.value.allowance.consumedBytes
@@ -231,6 +243,9 @@ const usageLimitLabel = computed(() => {
   if (!budget.value && !monthlyAllowance.value) {
     return "— budget size"
   }
+  if (budget.value?.grace.lifecycle === "uninitialized" && monthlyAllowance.value) {
+    return `${formatBytes(monthlyAllowance.value.resetAmountBytes)} budget size`
+  }
   const totalBytes =
     monthlyAllowance.value?.resetAmountBytes ??
     (budget.value?.allowance.remainingBytes ?? 0) + (budget.value?.allowance.consumedBytes ?? 0)
@@ -241,6 +256,9 @@ const usageLimitLabel = computed(() => {
 const usageDetail = computed(() => {
   if (!budget.value) {
     return ""
+  }
+  if (budget.value.grace.lifecycle === "uninitialized") {
+    return t("admin_budget_not_initialized")
   }
   const totalBytes =
     monthlyAllowance.value?.resetAmountBytes ??

@@ -26,6 +26,7 @@ type LoadingState =
   | "saving-label"
   | "saving-monthly"
   | "saving-remaining"
+  | "archiving-budget"
   | "minting"
 type AdminAccessState = "checking" | "authorized" | "unauthorized"
 
@@ -580,6 +581,11 @@ export default function useAdminView() {
     bytesToGiBString,
     giBStringToBytes,
     saveBudgetLabelValue,
+    onBudgetArchived: (budgetKey) => {
+      if (selectedBudgetKey.value === budgetKey) {
+        selectedBudgetKey.value = ""
+      }
+    },
   })
 
   onMounted(() => {
@@ -613,6 +619,7 @@ export default function useAdminView() {
     clearStoredHostAdminToken,
     commitBudgetLabel: hostAdminBudgetActions.commitBudgetLabel,
     copyMintedToken: hostAdminBudgetActions.copyMintedToken,
+    archiveBudget: hostAdminBudgetActions.archiveBudget,
     createBudget,
     creatingBudget,
     editingBudgetKey,

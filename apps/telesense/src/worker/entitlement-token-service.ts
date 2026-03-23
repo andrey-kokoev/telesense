@@ -1,7 +1,6 @@
 import {
   getEntitlementTokenRegistry,
   listEntitlementTokensByBudgetKey,
-  upsertBudgetRegistry,
   upsertEntitlementTokenRegistry,
 } from "./host-admin-registry"
 import { mintToken, parseToken } from "./tokens"
@@ -53,8 +52,6 @@ export async function mintTrackedServiceEntitlementTokenForBudget(options: {
     remainingBytes: number
     enabled?: boolean
   }
-
-  await upsertBudgetRegistry(env, { budgetKey, budgetId: budgetData.budgetId })
 
   const serviceEntitlementToken = await mintToken(budgetData.budgetId, version, secret)
   const tokenClaims = parseToken(serviceEntitlementToken)?.claims

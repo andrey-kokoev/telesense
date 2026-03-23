@@ -21,6 +21,7 @@
             :disabled="isInputDisabled(index)"
             @input="emit('input', index, $event)"
             @keydown="emit('keydown', index, $event)"
+            @blur="emit('blur')"
           />
           <span
             v-if="
@@ -68,6 +69,7 @@ const emit = defineEmits<{
   (e: "paste", event: ClipboardEvent): void
   (e: "input", index: number, event: Event): void
   (e: "keydown", index: number, event: KeyboardEvent): void
+  (e: "blur"): void
 }>()
 </script>
 
@@ -161,6 +163,22 @@ const emit = defineEmits<{
   50%,
   100% {
     opacity: 0.18;
+  }
+}
+
+@media (max-width: 480px) {
+  .landing__code-inputs {
+    gap: var(--space-1);
+    padding: var(--space-2);
+    border-radius: var(--radius-lg);
+  }
+
+  .landing__code-input {
+    font-size: 1.2rem;
+  }
+
+  .landing__code-caret {
+    font-size: 1.65rem;
   }
 }
 </style>

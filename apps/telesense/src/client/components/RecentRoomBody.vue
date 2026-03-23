@@ -208,4 +208,20 @@ defineExpose({
   flex: 1;
   padding: var(--space-2) var(--space-3);
 }
+
+@media (pointer: coarse) {
+  .landing__recent-item-main {
+    background: transparent;
+    padding: var(--space-3);
+    gap: var(--space-3);
+  }
+
+  .landing__recent-id--muted {
+    color: color-mix(in srgb, var(--color-text-primary) 72%, var(--color-text-secondary));
+  }
+
+  .landing__recent-icon {
+    display: none;
+  }
+}
 </style>

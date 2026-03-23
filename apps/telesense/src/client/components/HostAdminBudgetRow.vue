@@ -10,33 +10,38 @@
       />
       <div class="admin-budget__summary-main">
         <div class="admin-budget__identity">
-          <template v-if="isEditingLabel">
-            <form
-              class="admin-budget__label-edit"
-              @submit.prevent="$emit('commit-label', budget.budgetKey)"
+          <div class="admin-budget__identity-topline">
+            <template v-if="isEditingLabel">
+              <form
+                class="admin-budget__label-edit"
+                @submit.prevent="$emit('commit-label', budget.budgetKey)"
+              >
+                <input
+                  :ref="setEditingInputRef"
+                  :value="editingBudgetLabel"
+                  class="admin-budget__label-input"
+                  type="text"
+                  spellcheck="false"
+                  maxlength="40"
+                  @input="$emit('update:editing-budget-label', $event)"
+                  @click.stop
+                  @keydown.esc.prevent="$emit('cancel-label-edit')"
+                  @blur="$emit('commit-label', budget.budgetKey)"
+                />
+              </form>
+            </template>
+            <strong
+              v-else
+              class="admin-budget__label"
+              :title="renameTitle"
+              @click.stop="$emit('start-label-edit', budget)"
             >
-              <input
-                :ref="setEditingInputRef"
-                :value="editingBudgetLabel"
-                class="admin-budget__label-input"
-                type="text"
-                spellcheck="false"
-                maxlength="40"
-                @input="$emit('update:editing-budget-label', $event)"
-                @click.stop
-                @keydown.esc.prevent="$emit('cancel-label-edit')"
-                @blur="$emit('commit-label', budget.budgetKey)"
-              />
-            </form>
-          </template>
-          <strong
-            v-else
-            class="admin-budget__label"
-            :title="renameTitle"
-            @click.stop="$emit('start-label-edit', budget)"
-          >
-            {{ budget.label || unlabeledLabel }}
-          </strong>
+              {{ budget.label || unlabeledLabel }}
+            </strong>
+            <span v-if="isDefaultBudget" class="admin-budget__default-badge">
+              {{ defaultBudgetLabel }}
+            </span>
+          </div>
           <span>{{ budget.budgetKey }}</span>
         </div>
       </div>
@@ -212,6 +217,17 @@
                   </p>
                 </div>
               </div>
+              <div class="admin-budget__menu-footer">
+                <button
+                  v-if="!isDefaultBudget"
+                  type="button"
+                  class="admin-budget__menu-item admin-budget__menu-item--danger"
+                  :disabled="loadingState === 'archiving-budget'"
+                  @click="$emit('archive-budget', budget.budgetKey)"
+                >
+                  {{ archiveBudgetLabel }}
+                </button>
+              </div>
             </div>
           </div>
           <button
@@ -265,9 +281,11 @@ defineProps<{
     | "saving-label"
     | "saving-monthly"
     | "saving-remaining"
+    | "archiving-budget"
     | "minting"
   mintedToken: string
   showMintedToken: boolean
+  isDefaultBudget: boolean
   setEditingInputRef: (el: Element | ComponentPublicInstance | null) => void
   budgetActivateTitle: string
   budgetDeactivateTitle: string
@@ -284,6 +302,8 @@ defineProps<{
   revealTokenLabel: string
   hideTokenLabel: string
   copyTokenLabel: string
+  archiveBudgetLabel: string
+  defaultBudgetLabel: string
   openBudgetTitle: string
   renameTitle: string
   unlabeledLabel: string
@@ -306,6 +326,7 @@ defineEmits<{
   "mint-token": [budgetKey: string]
   "toggle-minted-token": []
   "copy-minted-token": []
+  "archive-budget": [budgetKey: string]
   "open-budget-page": [budgetKey: string]
 }>()
 </script>
@@ -403,6 +424,29 @@ defineEmits<{
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
+}
+
+.admin-budget__identity-topline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.admin-budget__default-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.14rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--ui-primary) 32%, var(--ui-border) 68%);
+  background: color-mix(in srgb, var(--ui-primary) 10%, var(--admin-surface) 90%);
+  color: var(--ui-text-muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .admin-input {
@@ -674,6 +718,11 @@ defineEmits<{
   padding: 0.2rem 0.2rem 0.45rem;
 }
 
+.admin-budget__menu-footer {
+  padding: 0.35rem 0.2rem 0.2rem;
+  border-top: 1px solid color-mix(in srgb, var(--ui-border) 75%, transparent 25%);
+}
+
 .admin-budget__menu-item {
   display: flex;
   width: 100%;
@@ -693,5 +742,13 @@ defineEmits<{
 
 .admin-budget__menu-item:hover {
   background: var(--admin-surface-hover);
+}
+
+.admin-budget__menu-item--danger {
+  color: var(--ui-danger);
+}
+
+.admin-budget__menu-item--danger:hover {
+  background: color-mix(in srgb, var(--ui-danger) 10%, var(--admin-surface-hover));
 }
 </style>

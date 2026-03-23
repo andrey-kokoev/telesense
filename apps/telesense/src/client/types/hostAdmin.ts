@@ -1,6 +1,7 @@
 export type BudgetListItem = {
   budgetKey: string
   budgetId: string
+  isDefault: boolean
   label: string | null
   createdAt: number
   updatedAt: number
@@ -19,12 +20,13 @@ export type BudgetResponse = {
   budgetKey: string
   budgetId: string
   enabled: boolean
+  initialized: boolean
   allowance: {
     remainingBytes: number
     consumedBytes: number
   }
   grace: {
-    lifecycle: "active" | "in_grace" | "exhausted"
+    lifecycle: "uninitialized" | "active" | "in_grace" | "exhausted"
     graceEndsAt: number | null
   }
 }

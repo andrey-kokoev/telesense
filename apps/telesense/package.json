@@ -38,6 +38,6 @@
     "vite-plus": "catalog:",
     "vue-tsc": "^3.2.6",
     "workbox-window": "^7.4.0",
-    "wrangler": "^4.75.0"
+    "wrangler": "^4.76.0"
   }
 }

@@ -1,4 +1,4 @@
-import { getBudgetAdminTokenRegistry } from "./host-admin-registry"
+import { getBudgetAdminTokenRegistry, getBudgetRegistry } from "./host-admin-registry"
 import {
   mintBudgetAdminSessionToken,
   mintHostAdminSessionToken,
@@ -103,6 +103,10 @@ export async function resolveBudgetAdminAccess(options: {
 
   const budgetKey = budgetAdminVerification.claims.budgetKey
   if (env.HOST_ADMIN_DB) {
+    if (!(await getBudgetRegistry(env, budgetKey))) {
+      return null
+    }
+
     const currentToken = await getBudgetAdminTokenRegistry(env, budgetKey)
     if (currentToken?.token !== token) {
       return null

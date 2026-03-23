@@ -1051,7 +1051,7 @@ export class CallRoom {
    */
   async handleChargeResult(result: {
     ok: boolean
-    lifecycle?: "active" | "in_grace" | "exhausted"
+    lifecycle?: "uninitialized" | "active" | "in_grace" | "exhausted"
     graceEndsAt?: number | null
     graceClaimedByRoomId?: string | null
   }): Promise<void> {
@@ -1078,7 +1078,7 @@ export class CallRoom {
   private async handleChargeResultAction(request: Request): Promise<Response> {
     const result = (await request.json()) as {
       ok: boolean
-      lifecycle?: "active" | "in_grace" | "exhausted"
+      lifecycle?: "uninitialized" | "active" | "in_grace" | "exhausted"
       graceEndsAt?: number
     }
     await this.handleChargeResult(result)

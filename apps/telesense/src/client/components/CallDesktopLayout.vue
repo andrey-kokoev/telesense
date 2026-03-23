@@ -13,7 +13,12 @@ const props = defineProps<{
   swipePageStyle: CSSProperties
   swipeBackdropStyle: CSSProperties
   showLogs: boolean
-  logs: Array<{ timestamp: string; message: string }>
+  logs: Array<{
+    timestamp: string
+    kind: string
+    message: string
+    details?: Record<string, unknown>
+  }>
   canEndRoom: boolean
   isAudioMuted: boolean
   isVideoOff: boolean
@@ -81,6 +86,25 @@ async function copyRoomCode() {
   try {
     await navigator.clipboard.writeText(props.roomId)
     show(t("call_room_code_copied"), "success")
+  } catch {
+    show(t("call_room_code_copy_failed"), "error")
+  }
+}
+
+async function copyDiagnostics() {
+  try {
+    await navigator.clipboard.writeText(
+      JSON.stringify(
+        props.logs.map((entry) => ({
+          at: entry.timestamp,
+          kind: entry.kind,
+          message: entry.message,
+          details: entry.details,
+        })),
+        null,
+        2,
+      ),
+    )
   } catch {
     show(t("call_room_code_copy_failed"), "error")
   }
@@ -301,9 +325,33 @@ async function copyRoomCode() {
       @click="emit('update:showLogs', false)"
     >
       <div class="call-desktop__sidebar" @click.stop>
-        <button class="call-desktop__sidebar-close" @click="emit('update:showLogs', false)">
-          {{ t("call_close_logs") }}
-        </button>
+        <div class="call-desktop__sidebar-header">
+          <strong>{{ t("call_logs") }}</strong>
+          <div class="call-desktop__sidebar-actions">
+            <button
+              class="call-desktop__sidebar-close"
+              :title="t('call_click_to_copy')"
+              :aria-label="t('call_click_to_copy')"
+              @click="copyDiagnostics"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                aria-hidden="true"
+              >
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+            </button>
+            <button class="call-desktop__sidebar-close" @click="emit('update:showLogs', false)">
+              {{ t("call_close_logs") }}
+            </button>
+          </div>
+        </div>
         <div
           v-for="(entry, index) in logs"
           :key="`${entry.timestamp}-${index}`"
@@ -311,6 +359,9 @@ async function copyRoomCode() {
         >
           <span class="call-desktop__log-time muted">{{ entry.timestamp }}</span>
           <span>{{ entry.message }}</span>
+          <pre v-if="entry.details" class="call-desktop__log-details">{{
+            JSON.stringify(entry.details, null, 2)
+          }}</pre>
         </div>
       </div>
     </div>
@@ -471,6 +522,19 @@ async function copyRoomCode() {
   overflow: auto;
 }
 
+.call-desktop__sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.call-desktop__sidebar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .call-desktop__logs-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -480,5 +544,16 @@ async function copyRoomCode() {
   justify-content: center;
   padding: 2rem;
   background: rgb(0 0 0 / 0.24);
+}
+
+.call-desktop__log-details {
+  margin: 0.35rem 0 0;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--color-bg-tertiary) 88%, transparent);
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 </style>

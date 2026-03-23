@@ -33,6 +33,8 @@ defineProps<{ subtitle: string }>()
   margin: 0;
   letter-spacing: 0.1ch;
   margin-top: var(--space-2);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .landing__title-rest {

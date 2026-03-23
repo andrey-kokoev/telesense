@@ -13,7 +13,12 @@ const props = defineProps<{
   swipePageStyle: CSSProperties
   swipeBackdropStyle: CSSProperties
   showLogs: boolean
-  logs: Array<{ timestamp: string; message: string }>
+  logs: Array<{
+    timestamp: string
+    kind: string
+    message: string
+    details?: Record<string, unknown>
+  }>
   canEndRoom: boolean
   isAudioMuted: boolean
   isVideoOff: boolean
@@ -149,6 +154,25 @@ async function copyRoomCode() {
   try {
     await navigator.clipboard.writeText(props.roomId)
     show(t("call_room_code_copied"), "success")
+  } catch {
+    show(t("call_room_code_copy_failed"), "error")
+  }
+}
+
+async function copyDiagnostics() {
+  try {
+    await navigator.clipboard.writeText(
+      JSON.stringify(
+        props.logs.map((entry) => ({
+          at: entry.timestamp,
+          kind: entry.kind,
+          message: entry.message,
+          details: entry.details,
+        })),
+        null,
+        2,
+      ),
+    )
   } catch {
     show(t("call_room_code_copy_failed"), "error")
   }
@@ -396,6 +420,30 @@ async function copyRoomCode() {
     </nav>
 
     <div v-if="showLogs" class="call-mobile__sheet">
+      <div class="call-mobile__sheet-header">
+        <strong>{{ t("call_logs") }}</strong>
+        <button
+          type="button"
+          class="call-mobile__sheet-copy"
+          :title="t('call_click_to_copy')"
+          :aria-label="t('call_click_to_copy')"
+          @click="copyDiagnostics"
+          @pointerup="blurTappedButton"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+          </svg>
+        </button>
+      </div>
       <div
         v-for="(entry, index) in logs"
         :key="`${entry.timestamp}-${index}`"
@@ -403,6 +451,9 @@ async function copyRoomCode() {
       >
         <span class="call-mobile__log-time muted">{{ entry.timestamp }}</span>
         <span>{{ entry.message }}</span>
+        <pre v-if="entry.details" class="call-mobile__log-details">{{
+          JSON.stringify(entry.details, null, 2)
+        }}</pre>
       </div>
     </div>
   </div>
@@ -558,6 +609,25 @@ async function copyRoomCode() {
   z-index: 11;
 }
 
+.call-mobile__sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.call-mobile__sheet-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  border-radius: 999px;
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+}
+
 .call-mobile__menu {
   position: absolute;
   right: 0.75rem;
@@ -568,5 +638,16 @@ async function copyRoomCode() {
   padding: 0.4rem;
   border-radius: 1rem;
   overflow-anchor: none;
+}
+
+.call-mobile__log-details {
+  margin: 0.35rem 0 0;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--color-bg-tertiary) 88%, transparent);
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 </style>

@@ -147,6 +147,45 @@ export async function listBudgetRegistry(env: RegistryEnv): Promise<BudgetRegist
   }
 }
 
+export async function getBudgetRegistry(
+  env: RegistryEnv,
+  budgetKey: string,
+): Promise<BudgetRegistryRecord | null> {
+  const db = env.HOST_ADMIN_DB
+  if (!db) return null
+
+  try {
+    const result = await db
+      .prepare(
+        `SELECT budget_key, budget_id, label, created_at, updated_at
+         FROM entitlement_budgets
+         WHERE budget_key = ?1
+         LIMIT 1`,
+      )
+      .bind(budgetKey)
+      .first<{
+        budget_key: string
+        budget_id: string
+        label: string | null
+        created_at: number
+        updated_at: number
+      }>()
+
+    if (!result) return null
+
+    return {
+      budgetKey: result.budget_key,
+      budgetId: result.budget_id,
+      label: result.label,
+      createdAt: result.created_at,
+      updatedAt: result.updated_at,
+    }
+  } catch (error) {
+    console.warn("[host-admin-registry] Failed to get budget registry", error)
+    return null
+  }
+}
+
 export async function listMonthlyAllowanceRegistry(
   env: RegistryEnv,
 ): Promise<MonthlyAllowanceRegistryRecord[]> {
@@ -405,6 +444,25 @@ export async function deleteEntitlementTokenRegistry(env: RegistryEnv, tokenId: 
       .run()
   } catch (error) {
     console.warn("[host-admin-registry] Failed to delete entitlement token", error)
+    throw error
+  }
+}
+
+export async function deleteEntitlementTokensByBudgetKey(env: RegistryEnv, budgetKey: string) {
+  const db = env.HOST_ADMIN_DB
+  if (!db) return
+
+  try {
+    await db
+      .prepare(
+        `DELETE FROM entitlement_tokens
+         WHERE budget_key = ?1`,
+      )
+      .bind(budgetKey)
+      .run()
+  } catch (error) {
+    console.warn("[host-admin-registry] Failed to delete entitlement tokens by budget", error)
+    throw error
   }
 }
 
@@ -465,5 +523,62 @@ export async function upsertBudgetAdminTokenRegistry(
       .run()
   } catch (error) {
     console.warn("[host-admin-registry] Failed to upsert budget admin token", error)
+  }
+}
+
+export async function deleteBudgetAdminTokenRegistry(env: RegistryEnv, budgetKey: string) {
+  const db = env.HOST_ADMIN_DB
+  if (!db) return
+
+  try {
+    await db
+      .prepare(
+        `DELETE FROM budget_admin_tokens
+         WHERE budget_key = ?1`,
+      )
+      .bind(budgetKey)
+      .run()
+  } catch (error) {
+    console.warn("[host-admin-registry] Failed to delete budget admin token", error)
+    throw error
+  }
+}
+
+export async function deleteMonthlyAllowanceRegistryByBudgetKey(
+  env: RegistryEnv,
+  budgetKey: string,
+) {
+  const db = env.HOST_ADMIN_DB
+  if (!db) return
+
+  try {
+    await db
+      .prepare(
+        `DELETE FROM monthly_allowances
+         WHERE budget_key = ?1`,
+      )
+      .bind(budgetKey)
+      .run()
+  } catch (error) {
+    console.warn("[host-admin-registry] Failed to delete monthly allowance by budget", error)
+    throw error
+  }
+}
+
+export async function deleteBudgetRegistry(env: RegistryEnv, budgetKey: string) {
+  const db = env.HOST_ADMIN_DB
+  if (!db) return
+
+  try {
+    await db
+      .prepare(
+        `DELETE FROM entitlement_budgets
+         WHERE budget_key = ?1`,
+      )
+      .bind(budgetKey)
+      .run()
+  } catch (error) {
+    console.warn("[host-admin-registry] Failed to delete budget registry", error)
+    throw error
   }
 }

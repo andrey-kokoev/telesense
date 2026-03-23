@@ -162,6 +162,7 @@
           :loading-state="loadingState"
           :minted-token="selectedBudgetKey === item.budgetKey ? mintedToken : ''"
           :show-minted-token="showMintedToken"
+          :is-default-budget="item.isDefault"
           :set-editing-input-ref="setEditingBudgetInput"
           :budget-activate-title="t('admin_budget_activate')"
           :budget-deactivate-title="t('admin_budget_deactivate')"
@@ -178,6 +179,8 @@
           :reveal-token-label="t('admin_reveal_token')"
           :hide-token-label="t('admin_hide_token')"
           :copy-token-label="t('admin_copy_token')"
+          :archive-budget-label="t('admin_budget_archive')"
+          :default-budget-label="t('admin_budget_default')"
           :open-budget-title="t('admin_budget_open')"
           :rename-title="t('admin_budget_rename')"
           :unlabeled-label="t('admin_budget_unlabeled')"
@@ -205,6 +208,7 @@
           @mint-token="mintToken"
           @toggle-minted-token="toggleMintedToken"
           @copy-minted-token="copyMintedToken"
+          @archive-budget="archiveBudget"
           @open-budget-page="openBudgetPage"
         />
       </div>

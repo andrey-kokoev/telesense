@@ -146,7 +146,7 @@ export function useCallSession({
 }: {
   roomId: string
   store: ReturnType<typeof useAppStore>
-  log: (message: string) => void
+  log: (message: string, kind?: string, details?: Record<string, unknown>) => void
   showToast: (message: string, type?: "success" | "error" | "info") => void
   media: MediaState
   onLeave: () => void
@@ -331,9 +331,16 @@ export function useCallSession({
     pc: RTCPeerConnection,
     sessionId: string,
     remoteTracks: Array<{ trackName: string; sessionId: string; mid: string }>,
-  ) {
+  ): Promise<boolean> {
     try {
-      log(`📤 Subscribing to ${remoteTracks.length} remote tracks...`)
+      log(`📤 Subscribing to ${remoteTracks.length} remote tracks...`, "subscribe.start", {
+        localSessionId: sessionId,
+        remoteTracks: remoteTracks.map((track) => ({
+          trackName: track.trackName,
+          sessionId: track.sessionId,
+          mid: track.mid,
+        })),
+      })
       log(`   Local session: ${sessionId.slice(0, 8)}`)
       log(
         `   Remote sessions: ${remoteTracks.map((track) => track.sessionId.slice(0, 8)).join(", ")}`,
@@ -388,15 +395,29 @@ export function useCallSession({
         throw new Error(`Complete subscribe failed: ${completeRes.status}`)
       }
 
-      log("✅ Connected to remote participant!")
+      log("✅ Connected to remote participant!", "subscribe.ok", {
+        localSessionId: sessionId,
+        remoteSessionIds: [...new Set(remoteTracks.map((track) => track.sessionId))],
+        trackCount: subscribeData.tracks?.length || remoteTracks.length,
+      })
       showToast("Remote participant connected!", "success")
+      return true
     } catch (e) {
-      log(`❌ Subscribe error: ${errorToMessage(e)}`)
+      log(`❌ Subscribe error: ${errorToMessage(e)}`, "subscribe.error", {
+        localSessionId: sessionId,
+        remoteTracks: remoteTracks.map((track) => ({
+          trackName: track.trackName,
+          sessionId: track.sessionId,
+        })),
+        error: errorToMessage(e),
+      })
+      return false
     }
   }
 
   async function pollAndSubscribe(pc: RTCPeerConnection, sessionId: string) {
     const checkedTracks = new Set<string>()
+    let lastDiscoverySignature = ""
     const poll = async () => {
       if (currentSessionId.value !== sessionId) return
       try {
@@ -415,6 +436,33 @@ export function useCallSession({
           return
         }
         const data = (await res.json()) as DiscoverResponse
+        const discoverySignature = JSON.stringify({
+          remoteParticipantCount: data.remoteParticipantCount,
+          tracks: data.tracks.map((track) => ({
+            trackName: track.trackName,
+            sessionId: track.sessionId,
+          })),
+        })
+        if (
+          discoverySignature !== lastDiscoverySignature &&
+          (data.remoteParticipantCount > 0 || data.tracks.length > 0)
+        ) {
+          log(
+            `👁️ Discovery saw ${data.remoteParticipantCount} remote participant(s) and ${data.tracks.length} remote track(s)`,
+            "discover.poll",
+            {
+              localSessionId: sessionId,
+              remoteParticipantCount: data.remoteParticipantCount,
+              remoteParticipants: data.remoteParticipants,
+              tracks: data.tracks.map((track) => ({
+                trackName: track.trackName,
+                sessionId: track.sessionId,
+                mid: track.mid,
+              })),
+            },
+          )
+          lastDiscoverySignature = discoverySignature
+        }
         const discoveredTrackNames = new Set(data.tracks.map((track) => track.trackName))
         isRemoteAudioMuted.value =
           data.remoteParticipants.length > 0 &&
@@ -438,10 +486,12 @@ export function useCallSession({
         if (newTracks.length > 0) {
           log(`🔔 Remote participant joined!`)
           log(`   Tracks: ${newTracks.map((track) => track.trackName.slice(0, 8)).join(", ")}`)
-          for (const track of newTracks) {
-            checkedTracks.add(track.trackName)
+          const subscribed = await subscribeToTracks(pc, sessionId, newTracks)
+          if (subscribed) {
+            for (const track of newTracks) {
+              checkedTracks.add(track.trackName)
+            }
           }
-          await subscribeToTracks(pc, sessionId, newTracks)
         }
       } catch (e) {
         console.error("Poll error:", e)
@@ -485,7 +535,7 @@ export function useCallSession({
   }
 
   onMounted(async () => {
-    log("🚀 Starting room...")
+    log("🚀 Starting room...", "session.start", { roomId })
     log(`🚪 Room ID: ${roomId}`)
 
     const pc = new RTCPeerConnection({
@@ -495,7 +545,11 @@ export function useCallSession({
     pcRef.value = pc
 
     pc.ontrack = (event) => {
-      log("📡 Remote video received!")
+      log("📡 Remote video received!", "remote.track", {
+        kind: event.track.kind,
+        trackId: event.track.id,
+        streamIds: event.streams.map((stream) => stream.id),
+      })
       hadRemoteParticipant.value = true
       isRemoteDisconnected.value = false
       isRemoteMediaInterrupted.value = false
@@ -536,7 +590,10 @@ export function useCallSession({
     }
 
     try {
-      log("🔑 Creating session...")
+      log("🔑 Creating session...", "session.create.start", {
+        roomId,
+        browserInstanceId: store.browserInstanceId.value,
+      })
       sessionLifecycle.value = "creating_session"
       const participantCredential = store.getRoomParticipantCredential(roomId)
       const createSession = async (confirmTakeover = false) =>
@@ -567,12 +624,18 @@ export function useCallSession({
       }
 
       const sessionData = (await sessionRes.json()) as SessionResponse
+      log("✅ Session ready", "session.create.ok", {
+        roomId,
+        browserInstanceId: store.browserInstanceId.value,
+        sessionId: sessionData.sessionId,
+        cloudflareSessionId: sessionData.cloudflareSessionId,
+        participantSecretPresent: !!sessionData.participantSecret,
+      })
       store.setRoomParticipantCredential(roomId, {
         participantSecret: sessionData.participantSecret,
       })
       const sessionId = sessionData.sessionId
       currentSessionId.value = sessionId
-      log("✅ Session ready")
       startHeartbeat(sessionId)
 
       log("📹 Requesting camera access...")
@@ -605,7 +668,10 @@ export function useCallSession({
       const offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
 
-      log("📤 Publishing...")
+      log("📤 Publishing...", "publish.start", {
+        sessionId,
+        trackKinds: media.localStream.value.getTracks().map((track) => track.kind),
+      })
       sessionLifecycle.value = "publishing"
       const publishRes = await apiCall(`/api/rooms/${roomId}/publish-offer`, {
         method: "POST",
@@ -627,7 +693,10 @@ export function useCallSession({
 
       const publishData = (await publishRes.json()) as PublishResponse
       await pc.setRemoteDescription(publishData.sessionDescription)
-      log("✅ Connected to Cloudflare")
+      log("✅ Connected to Cloudflare", "publish.ok", {
+        sessionId,
+        confirmedTrackCount: publishData.tracks?.length || 0,
+      })
 
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error("Connection timeout")), 15000)

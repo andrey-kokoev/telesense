@@ -36,17 +36,21 @@ import {
 } from "./host-admin-auth"
 import {
   findBudgetKeyByBudgetId,
+  getBudgetRegistry,
   getBudgetAdminTokenRegistry,
   getEntitlementTokenRegistry,
   listBudgetRegistry,
   listEntitlementTokensByBudgetKey,
   listMonthlyAllowanceRegistry,
   deleteEntitlementTokenRegistry,
+  deleteEntitlementTokensByBudgetKey,
+  deleteBudgetAdminTokenRegistry,
+  deleteBudgetRegistry,
+  deleteMonthlyAllowanceRegistryByBudgetKey,
   updateEntitlementTokenActive,
   updateEntitlementTokenLabel,
   updateBudgetRegistryLabel,
   upsertBudgetAdminTokenRegistry,
-  upsertBudgetRegistry,
   upsertEntitlementTokenRegistry,
   upsertMonthlyAllowanceRegistry,
 } from "./host-admin-registry"
@@ -175,10 +179,64 @@ async function ensureMonthlyAllowanceForBudget(
     cronExpr: effective.cronExpr,
   })
 
+  await materializeBudgetSnapshotIfNeeded(
+    env,
+    effective.budgetKey,
+    effective.resetAmountBytes,
+    effective.active,
+  )
+
   return {
     allowanceId,
     ...effective,
   }
+}
+
+type MonthlyAllowanceStatus = {
+  budgetKey: string
+  active: boolean
+  cronExpr: string
+  resetAmountBytes: number
+  nextResetAt: number | null
+  lastResetAt: number | null
+  lifecycle: "inactive" | "scheduled" | "due"
+}
+
+async function getMonthlyAllowanceStatusById(
+  env: Env,
+  allowanceId: string,
+): Promise<MonthlyAllowanceStatus> {
+  const monthlyAllowance = getMonthlyAllowanceById(env, allowanceId)
+  const statusRes = await monthlyAllowance.fetch(
+    new Request("http://do.internal/?action=getStatus"),
+  )
+  if (!statusRes.ok) {
+    throw new Error(await statusRes.text())
+  }
+  return (await statusRes.json()) as MonthlyAllowanceStatus
+}
+
+async function configureMonthlyAllowanceById(
+  env: Env,
+  allowanceId: string,
+  config: {
+    budgetKey: string
+    resetAmountBytes: number
+    cronExpr: string
+    active: boolean
+  },
+) {
+  const monthlyAllowance = getMonthlyAllowanceById(env, allowanceId)
+  const configureRes = await monthlyAllowance.fetch(
+    new Request("http://do.internal/?action=configure", {
+      method: "POST",
+      body: JSON.stringify(config),
+    }),
+  )
+  if (!configureRes.ok) {
+    throw new Error(await configureRes.text())
+  }
+  return (await configureRes.json()) as MonthlyAllowanceStatus
 }
 
 // Type definitions
@@ -352,6 +410,10 @@ async function requireBudgetAccess(
   c: AppContext,
   budgetKey: string,
 ): Promise<{ kind: "host-admin" | "budget-admin" } | Response> {
+  if (!(await isKnownBudgetKey(c.env, budgetKey))) {
+    return serviceEntitlementErrorResponse(c, "Budget not found", "BUDGET_NOT_FOUND", 404)
+  }
+
   if (isAuthDisabled(c.env)) {
     return { kind: "host-admin" }
   }
@@ -382,6 +444,11 @@ async function requireBudgetAccess(
       : "BUDGET_ADMIN_SESSION_REQUIRED",
     budgetAdminToken || hostAdminToken ? 403 : 401,
   )
+}
+
+async function isKnownBudgetKey(env: Env, budgetKey: string): Promise<boolean> {
+  if (budgetKey === defaultBudgetKey(env)) return true
+  return !!(await getBudgetRegistry(env, budgetKey))
 }
 
 async function getOrCreateBudgetAdminToken(env: Env, budgetKey: string): Promise<string> {
@@ -619,9 +686,10 @@ type BudgetInspection = {
     }>
   }
   grace: {
-    lifecycle: "active" | "in_grace" | "exhausted"
+    lifecycle: "uninitialized" | "active" | "in_grace" | "exhausted"
     graceEndsAt: number | null
   }
+  initialized: boolean
 }
 
 async function inspectBudget(env: Env, budgetKey: string): Promise<BudgetInspection> {
@@ -634,6 +702,7 @@ async function inspectBudget(env: Env, budgetKey: string): Promise<BudgetInspect
   const data = (await budgetRes.json()) as {
     budgetId: string
     enabled?: boolean
+    initialized?: boolean
     remainingBytes: number
     consumedBytes: number
     currentSecretVersion: number
@@ -644,10 +713,8 @@ async function inspectBudget(env: Env, budgetKey: string): Promise<BudgetInspect
       hasSecret: boolean
     }>
     graceEndsAt: number | null
-    lifecycle: "active" | "in_grace" | "exhausted"
+    lifecycle: "uninitialized" | "active" | "in_grace" | "exhausted"
   }
-
-  await upsertBudgetRegistry(env, { budgetKey, budgetId: data.budgetId })
 
   return {
     budgetKey,
@@ -657,6 +724,7 @@ async function inspectBudget(env: Env, budgetKey: string): Promise<BudgetInspect
       remainingBytes: data.remainingBytes,
       consumedBytes: data.consumedBytes,
     },
+    initialized: data.initialized !== false,
     secret: {
       currentVersion: data.currentSecretVersion,
       versionHistory: data.secretVersions.map((sv) => ({
@@ -673,15 +741,45 @@ async function inspectBudget(env: Env, budgetKey: string): Promise<BudgetInspect
   }
 }
 
+async function materializeBudgetSnapshotIfNeeded(
+  env: Env,
+  budgetKey: string,
+  resetAmountBytes: number,
+  active: boolean,
+) {
+  if (!active || resetAmountBytes <= 0) return
+
+  const currentBudget = await inspectBudget(env, budgetKey)
+  if (currentBudget.initialized) return
+
+  const budget = getEntitlementBudgetByKey(env, budgetKey)
+  const resetRes = await budget.fetch(
+    new Request("http://do.internal/?action=setSnapshot", {
+      method: "POST",
+      body: JSON.stringify({ remainingBytes: resetAmountBytes, consumedBytes: 0 }),
+    }),
+  )
+  if (!resetRes.ok) {
+    throw new Error("Failed to initialize budget snapshot")
+  }
+}
+
 async function getKnownBudgets(env: Env) {
   const records = await listBudgetRegistry(env)
-  if (records.length > 0) return records
+  if (records.length > 0) {
+    const seededDefaultBudgetKey = defaultBudgetKey(env)
+    return records.map((record) => ({
+      ...record,
+      isDefault: record.budgetKey === seededDefaultBudgetKey,
+    }))
+  }
 
   const budget = await inspectBudget(env, defaultBudgetKey(env))
   return [
     {
       budgetKey: budget.budgetKey,
       budgetId: budget.budgetId,
+      isDefault: true,
       label: "Default budget",
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -1171,6 +1269,10 @@ app.post("/budget-admin/auth/exchange", async (c) => {
     }
 
     if (c.env.HOST_ADMIN_DB) {
+      if (!(await isKnownBudgetKey(c.env, verification.claims.budgetKey))) {
+        return serviceEntitlementErrorResponse(c, "Budget not found", "BUDGET_NOT_FOUND", 404)
+      }
+
       const currentToken = await getBudgetAdminTokenRegistry(c.env, verification.claims.budgetKey)
       if (!currentToken || currentToken.token !== budgetAdminToken?.trim()) {
         return serviceEntitlementErrorResponse(
@@ -1703,12 +1805,23 @@ app.post("/admin/entitlement/budget/create", async (c) => {
 
   try {
     const budgetData = await inspectBudget(c.env, budgetKey)
+    const existingToken = await getReusableServiceEntitlementTokenForBudget(c.env, budgetKey)
+    const serviceEntitlementToken =
+      existingToken ??
+      (await mintServiceEntitlementTokenForBudget(c.env, budgetKey, "Example token label"))
+        .serviceEntitlementToken
     const label = body.label?.trim() || null
     if (label !== null) {
       await updateBudgetRegistryLabel(c.env, { budgetKey, label })
-      return c.json(await inspectBudget(c.env, budgetKey))
+      return c.json({
+        ...(await inspectBudget(c.env, budgetKey)),
+        serviceEntitlementToken,
+      })
     }
-    return c.json(budgetData)
+    return c.json({
+      ...budgetData,
+      serviceEntitlementToken,
+    })
   } catch {
     return c.json({ error: "Failed to create budget" }, 500)
   }
@@ -1821,6 +1934,92 @@ app.post("/admin/entitlement/budget/enabled", async (c) => {
   }
 })
 
+app.post("/admin/entitlement/budget/archive", async (c) => {
+  const adminError = await requireAdminSession(c)
+  if (adminError) return adminError
+
+  let body: { budgetKey?: string }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: "Invalid request body", code: "BAD_REQUEST" }, 400)
+  }
+
+  const budgetKey = body.budgetKey?.trim()
+  if (!budgetKey) {
+    return c.json({ error: "budgetKey required", code: "BAD_REQUEST" }, 400)
+  }
+  if (budgetKey === defaultBudgetKey(c.env)) {
+    return c.json({ error: "Default budget cannot be archived", code: "BAD_REQUEST" }, 400)
+  }
+
+  try {
+    const originalBudget = await inspectBudget(c.env, budgetKey)
+    const allowanceRecords = (await listMonthlyAllowanceRegistry(c.env)).filter(
+      (record) => record.budgetKey === budgetKey,
+    )
+    const originalAllowanceStates = await Promise.all(
+      allowanceRecords.map(async (record) => ({
+        allowanceId: record.allowanceId,
+        status: await getMonthlyAllowanceStatusById(c.env, record.allowanceId),
+      })),
+    )
+
+    const budget = getEntitlementBudgetByKey(c.env, budgetKey)
+    let archiveCommitted = false
+
+    try {
+      for (const allowanceState of originalAllowanceStates) {
+        await configureMonthlyAllowanceById(c.env, allowanceState.allowanceId, {
+          budgetKey,
+          resetAmountBytes: 0,
+          cronExpr: allowanceState.status.cronExpr || "0 0 1 * *",
+          active: false,
+        })
+      }
+
+      const disableBudgetRes = await budget.fetch(
+        new Request("http://do.internal/?action=setEnabled", {
+          method: "POST",
+          body: JSON.stringify({ enabled: false }),
+        }),
+      )
+      if (!disableBudgetRes.ok) {
+        throw new Error(await disableBudgetRes.text())
+      }
+
+      await deleteEntitlementTokensByBudgetKey(c.env, budgetKey)
+      await deleteBudgetAdminTokenRegistry(c.env, budgetKey)
+      await deleteMonthlyAllowanceRegistryByBudgetKey(c.env, budgetKey)
+      await deleteBudgetRegistry(c.env, budgetKey)
+      archiveCommitted = true
+    } finally {
+      if (!archiveCommitted) {
+        await Promise.allSettled([
+          budget.fetch(
+            new Request("http://do.internal/?action=setEnabled", {
+              method: "POST",
+              body: JSON.stringify({ enabled: originalBudget.enabled }),
+            }),
+          ),
+          ...originalAllowanceStates.map((allowanceState) =>
+            configureMonthlyAllowanceById(c.env, allowanceState.allowanceId, {
+              budgetKey: allowanceState.status.budgetKey,
+              resetAmountBytes: allowanceState.status.resetAmountBytes,
+              cronExpr: allowanceState.status.cronExpr,
+              active: allowanceState.status.active,
+            }),
+          ),
+        ])
+      }
+    }
+
+    return c.json({ ok: true, budgetKey })
+  } catch {
+    return c.json({ error: "Failed to archive budget" }, 500)
+  }
+})
+
 // Admin: Configure monthly allowance reset policy
 app.post("/admin/entitlement/monthly-allowance", async (c) => {
   let body: {
@@ -1862,8 +2061,6 @@ app.post("/admin/entitlement/monthly-allowance", async (c) => {
   if (!budgetRes.ok) {
     return c.json({ error: "Failed to read entitlement budget" }, 500)
   }
-  const budgetData = (await budgetRes.json()) as { budgetId: string }
-  await upsertBudgetRegistry(c.env, { budgetKey, budgetId: budgetData.budgetId })
 
   const monthlyAllowance = getMonthlyAllowanceById(c.env, allowanceId)
   const configureRes = await monthlyAllowance.fetch(
@@ -1898,6 +2095,13 @@ app.post("/admin/entitlement/monthly-allowance", async (c) => {
     active: result.active,
     cronExpr: result.cronExpr,
   })
+
+  await materializeBudgetSnapshotIfNeeded(
+    c.env,
+    result.budgetKey,
+    result.resetAmountBytes,
+    result.active,
+  )
 
   return c.json({
     allowanceId,
@@ -1939,8 +2143,6 @@ app.post("/admin/entitlement/monthly-allowance/reset", async (c) => {
   if (!budgetRes.ok) {
     return c.json({ error: "Failed to read entitlement budget" }, 500)
   }
-  const budgetData = (await budgetRes.json()) as { budgetId: string }
-  await upsertBudgetRegistry(c.env, { budgetKey, budgetId: budgetData.budgetId })
 
   const monthlyAllowance = getMonthlyAllowanceById(c.env, allowanceId)
   const configureRes = await monthlyAllowance.fetch(
@@ -1975,6 +2177,13 @@ app.post("/admin/entitlement/monthly-allowance/reset", async (c) => {
     active: result.active,
     cronExpr: result.cronExpr,
   })
+
+  await materializeBudgetSnapshotIfNeeded(
+    c.env,
+    result.budgetKey,
+    result.resetAmountBytes,
+    result.active,
+  )
 
   return c.json({
     allowanceId,
@@ -2568,9 +2777,9 @@ app.post("/api/rooms/:roomId/meter", async (c) => {
 
   const chargeResult = (await chargeRes.json()) as {
     ok: boolean
-    reason?: "exhausted" | "disabled"
+    reason?: "uninitialized" | "exhausted" | "disabled"
     remainingBytes?: number
-    lifecycle?: "active" | "in_grace" | "exhausted"
+    lifecycle?: "uninitialized" | "active" | "in_grace" | "exhausted"
     graceEndsAt?: number
     graceClaimedByRoomId?: string | null
   }
@@ -2594,6 +2803,19 @@ app.post("/api/rooms/:roomId/meter", async (c) => {
         graceClaimedByRoomId: chargeResult.graceClaimedByRoomId,
       },
       403,
+    )
+  }
+
+  if (!chargeRes.ok && chargeResult.reason === "uninitialized") {
+    return c.json(
+      {
+        error: "Service budget not initialized",
+        code: "SERVICE_BUDGET_UNINITIALIZED",
+        lifecycle: chargeResult.lifecycle,
+        graceEndsAt: chargeResult.graceEndsAt,
+        graceClaimedByRoomId: chargeResult.graceClaimedByRoomId,
+      },
+      409,
     )
   }
 
@@ -2647,7 +2869,7 @@ app.get("/api/rooms/:roomId/meter", async (c) => {
   const statusRes = await budget.fetch(new Request("http://do.internal/?action=getChargeStatus"))
   const status = (await statusRes.json()) as {
     remainingBytes: number
-    lifecycle: "active" | "in_grace" | "exhausted"
+    lifecycle: "uninitialized" | "active" | "in_grace" | "exhausted"
     graceEndsAt: number | null
     graceClaimedByRoomId: string | null
     graceRemainingMs: number
@@ -2764,9 +2986,12 @@ async function runScheduledMonthlyAllowance(env: Env) {
 
     const budget = getEntitlementBudgetByKey(env, status.budgetKey)
     const resetRes = await budget.fetch(
-      new Request("http://do.internal/?action=setAllowance", {
+      new Request("http://do.internal/?action=setSnapshot", {
         method: "POST",
-        body: JSON.stringify({ bytes: status.resetAmountBytes }),
+        body: JSON.stringify({
+          remainingBytes: status.resetAmountBytes,
+          consumedBytes: 0,
+        }),
       }),
     )
     if (!resetRes.ok) continue

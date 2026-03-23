@@ -13,6 +13,7 @@ export type SecretVersionRecord = {
 export type EntitlementBudgetState = {
   budgetId: string
   enabled: boolean
+  initialized: boolean
   remainingBytes: number
   consumedBytes: number
   currentSecretVersion: number
@@ -22,7 +23,7 @@ export type EntitlementBudgetState = {
   graceClaimedByRoomId: string | null
 }
 
-export type BudgetLifecycle = "active" | "in_grace" | "exhausted"
+export type BudgetLifecycle = "uninitialized" | "active" | "in_grace" | "exhausted"
 
 export type ChargeResult =
   | {
@@ -35,7 +36,7 @@ export type ChargeResult =
     }
   | {
       ok: false
-      reason: "exhausted" | "disabled"
+      reason: "uninitialized" | "exhausted" | "disabled"
       remainingBytes: 0
       lifecycle: BudgetLifecycle
       graceEndsAt: number | null
@@ -46,6 +47,7 @@ export class EntitlementBudget {
   private state: DurableObjectState
   private budgetId: string = ""
   private enabled: boolean = true
+  private initializedState: boolean = false
   private remainingBytes: number = 0
   private consumedBytes: number = 0
   private currentSecretVersion: number = 0
@@ -67,6 +69,9 @@ export class EntitlementBudget {
     if (stored) {
       this.budgetId = stored.budgetId
       this.enabled = stored.enabled ?? true
+      this.initializedState =
+        stored.initialized ??
+        (stored.remainingBytes > 0 || stored.consumedBytes > 0 || stored.graceEndsAt !== null)
       this.remainingBytes = stored.remainingBytes
       this.consumedBytes = stored.consumedBytes
       this.currentSecretVersion = stored.currentSecretVersion
@@ -81,6 +86,7 @@ export class EntitlementBudget {
       // New budget - generate ID and initialize
       this.budgetId = crypto.randomUUID()
       this.enabled = true
+      this.initializedState = false
       this.remainingBytes = 0
       this.consumedBytes = 0
       this.currentSecretVersion = 0
@@ -99,6 +105,7 @@ export class EntitlementBudget {
     await this.state.storage.put("budget", {
       budgetId: this.budgetId,
       enabled: this.enabled,
+      initialized: this.initializedState,
       remainingBytes: this.remainingBytes,
       consumedBytes: this.consumedBytes,
       currentSecretVersion: this.currentSecretVersion,
@@ -169,6 +176,7 @@ export class EntitlementBudget {
       JSON.stringify({
         budgetId: this.budgetId,
         enabled: this.enabled,
+        initialized: this.initializedState,
         remainingBytes: this.remainingBytes,
         consumedBytes: this.consumedBytes,
         currentSecretVersion: this.currentSecretVersion,
@@ -215,6 +223,10 @@ export class EntitlementBudget {
     }
 
     this.remainingBytes = bytes
+    this.consumedBytes = 0
+    this.initializedState = true
+    this.graceEndsAt = null
+    this.graceClaimedByRoomId = null
     await this.persist()
 
     return new Response(JSON.stringify({ ok: true, remainingBytes: this.remainingBytes }), {
@@ -238,6 +250,7 @@ export class EntitlementBudget {
 
     this.remainingBytes = remainingBytes
     this.consumedBytes = consumedBytes
+    this.initializedState = true
     this.graceEndsAt = null
     this.graceClaimedByRoomId = null
     await this.persist()
@@ -261,6 +274,9 @@ export class EntitlementBudget {
     }
 
     this.remainingBytes += bytes
+    if (bytes > 0) {
+      this.initializedState = true
+    }
     await this.persist()
 
     return new Response(
@@ -325,9 +341,15 @@ export class EntitlementBudget {
     const result = await this.charge(bytes, roomId)
 
     if (!result.ok) {
+      const error =
+        result.reason === "disabled"
+          ? "Budget disabled"
+          : result.reason === "uninitialized"
+            ? "Budget not initialized"
+            : "Budget exhausted"
       return new Response(
         JSON.stringify({
-          error: result.reason === "disabled" ? "Budget disabled" : "Budget exhausted",
+          error,
           reason: result.reason,
           graceEndsAt: result.graceEndsAt,
           graceClaimedByRoomId: result.graceClaimedByRoomId,
@@ -365,6 +387,17 @@ export class EntitlementBudget {
         lifecycle: this.getLifecycle(now),
         graceEndsAt: this.graceEndsAt,
         graceClaimedByRoomId: this.graceClaimedByRoomId,
+      }
+    }
+
+    if (!this.initializedState) {
+      return {
+        ok: false,
+        reason: "uninitialized",
+        remainingBytes: 0,
+        lifecycle: "uninitialized",
+        graceEndsAt: null,
+        graceClaimedByRoomId: null,
       }
     }
 
@@ -447,6 +480,9 @@ export class EntitlementBudget {
   }
 
   private getLifecycle(now = Date.now()): BudgetLifecycle {
+    if (!this.initializedState) {
+      return "uninitialized"
+    }
     if (!this.graceEndsAt) {
       return this.remainingBytes > 0 ? "active" : "exhausted"
     }

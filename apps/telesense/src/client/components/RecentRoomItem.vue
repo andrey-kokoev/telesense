@@ -446,4 +446,21 @@ onBeforeUnmount(() => {
     opacity: 1;
   }
 }
+
+@media (pointer: coarse) {
+  .landing__recent-item {
+    background: var(--color-bg-tertiary);
+    box-shadow: none;
+  }
+
+  .landing__recent-item:hover {
+    background: var(--color-bg-tertiary);
+    border-color: color-mix(in srgb, var(--color-border-hover) 72%, var(--color-border));
+    box-shadow: none;
+  }
+
+  .landing__recent-swipe-action {
+    width: 4rem;
+  }
+}
 </style>

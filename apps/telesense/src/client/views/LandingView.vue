@@ -3,106 +3,35 @@
     <LandingHero :subtitle="t('landing_secure_video_calls')" />
 
     <main class="landing__main">
-      <!-- Authenticated User View -->
-      <template v-if="serviceEntitlementUiState === 'valid'">
-        <RoomCodeSection
-          :title="t('landing_start_room')"
-          :digits="createRoomCodeDigits"
-          name="create-room-code"
-          :show-inputs="createRoomFlowState !== 'idle'"
-          :inactive="isCreateRoomSectionInactive"
-          :button-label="createRoomButtonLabel"
-          button-class="landing__btn--primary"
-          :button-disabled="isCreateRoomButtonDisabled"
-          :button-icon="createRoomButtonIcon"
-          :set-input-ref="setCreateRoomCodeInputRef"
-          :is-input-disabled="isCreateRoomInputDisabled"
-          @submit="submitCreateRoom"
-          @paste="onCreateRoomCodePaste"
-          @input="handleCreateRoomCodeInput"
-          @keydown="handleCreateRoomCodeKeydown"
-        />
+      <RoomCodeSection
+        :title="t('landing_enter_room')"
+        :digits="roomCodeDigits"
+        name="room-code"
+        :button-class="roomActionButtonClass"
+        :button-label="roomActionButtonLabel"
+        :button-disabled="isRoomActionButtonDisabled"
+        :set-input-ref="setRoomCodeInputRef"
+        :is-input-disabled="isRoomCodeInputDisabled"
+        @submit="submitRoomAction"
+        @paste="onRoomCodePaste"
+        @input="handleRoomCodeInput"
+        @keydown="handleRoomCodeKeydown"
+        @blur="handleRoomCodeBlur"
+      />
 
-        <div class="landing__divider">
-          <span>{{ t("landing_or") }}</span>
-        </div>
-
-        <RoomCodeSection
-          :title="t('landing_join_room')"
-          :digits="roomCodeDigits"
-          name="room-code"
-          :inactive="isJoinRoomSectionInactive"
-          button-class="landing__btn--secondary"
-          :button-label="t('landing_join')"
-          :button-disabled="isJoinRoomButtonDisabled"
-          :set-input-ref="setRoomCodeInputRef"
-          :is-input-disabled="isJoinRoomInputDisabled"
-          @submit="joinExistingRoom"
-          @paste="onRoomCodePaste"
-          @input="handleJoinRoomCodeInput"
-          @keydown="handleJoinRoomCodeKeydown"
-        />
-      </template>
-
-      <!-- Join and entitlement entry -->
-      <template v-else>
-        <RoomCodeSection
-          :title="t('landing_join_room')"
-          :digits="roomCodeDigits"
-          name="room-code"
-          button-class="landing__btn--secondary"
-          :button-label="t('landing_join')"
-          :button-disabled="isJoinRoomButtonDisabled"
-          :set-input-ref="setRoomCodeInputRef"
-          :is-input-disabled="isRoomCodeInputDisabled"
-          @submit="joinExistingRoom"
-          @paste="onRoomCodePaste"
-          @input="onRoomCodeInput"
-          @keydown="onRoomCodeKeydown"
-        />
-
-        <div class="landing__divider">
-          <span>{{ t("landing_or") }}</span>
-        </div>
-
-        <div class="landing__section">
-          <h2 class="landing__section-title">{{ t("landing_create_rooms") }}</h2>
-          <p class="landing__hint">
-            {{
-              hasServiceEntitlementToken
-                ? serviceEntitlementUiState === "verifying"
-                  ? t("landing_service_entitlement_verifying_hint")
-                  : t("landing_service_entitlement_exhausted_hint")
-                : t("landing_enter_token_hint")
-            }}
-          </p>
-
-          <form class="landing__form" @submit.prevent="saveEnteredToken">
-            <input
-              v-model="tokenInput"
-              type="password"
-              class="landing__input"
-              :placeholder="t('landing_enter_token_placeholder')"
-              autocomplete="off"
-              autocapitalize="off"
-              autocorrect="off"
-              spellcheck="false"
-              inputmode="text"
-            />
-            <button
-              type="submit"
-              class="landing__btn landing__btn--primary"
-              :disabled="!tokenInput.trim() || serviceEntitlementUiState === 'verifying'"
-            >
-              {{
-                serviceEntitlementUiState === "verifying"
-                  ? t("landing_service_entitlement_verifying")
-                  : t("landing_save_token")
-              }}
-            </button>
-          </form>
-        </div>
-      </template>
+      <div v-if="roomEntryHelperText || shouldShowEnterTokenPrompt" class="landing__room-helper">
+        <p v-if="roomEntryHelperText" class="landing__hint">
+          {{ roomEntryHelperText }}
+        </p>
+        <button
+          v-if="shouldShowEnterTokenPrompt"
+          type="button"
+          class="landing__inline-link"
+          @click="openTokenModal"
+        >
+          {{ t("landing_enter_token_prompt_action") }}
+        </button>
+      </div>
 
       <!-- Recent Calls -->
       <RecentRoomsSection
@@ -236,7 +165,6 @@ import RoomCodeSection from "../components/RoomCodeSection.vue"
 import ThemeToggle from "../components/ThemeToggle.vue"
 import { useAppStore } from "../composables/useAppStore"
 import { useI18n } from "../composables/useI18n"
-import { useActiveRoomCodeTarget } from "../composables/useActiveRoomCodeTarget"
 import { useLandingTokenEntry } from "../composables/useLandingTokenEntry"
 import { useRecentRoomAvailability } from "../composables/useRecentRoomAvailability"
 import { useRoomCodeInput } from "../composables/useRoomCodeInput"
@@ -265,6 +193,7 @@ const { t } = useI18n()
 const {
   digits: roomCodeDigits,
   value: roomIdInput,
+  setValue: setRoomCodeValue,
   setInputRef: setRoomCodeInputRef,
   focusInput: focusRoomCodeInput,
   isInputDisabled: isRoomCodeInputDisabled,
@@ -272,57 +201,19 @@ const {
   onKeydown: onRoomCodeKeydown,
   onPaste: onRoomCodePaste,
   clear: clearRoomCode,
-  insertCharacter: insertJoinRoomCharacter,
-} = useRoomCodeInput(joinExistingRoom)
-const {
-  digits: createRoomCodeDigits,
-  value: createRoomIdInput,
-  setInputRef: setCreateRoomCodeInputRef,
-  focusInput: focusCreateRoomCodeInput,
-  isInputDisabled: isCreateRoomCodeInputDisabled,
-  onInput: onCreateRoomCodeInput,
-  onKeydown: onCreateRoomCodeKeydown,
-  onPaste: onCreateRoomCodePaste,
-  setValue: setCreateRoomCodeValue,
-  insertCharacter: insertCreateRoomCharacter,
-  clear: clearCreateRoomCode,
-} = useRoomCodeInput(submitCreateRoom)
+  insertCharacter: insertRoomCodeCharacter,
+} = useRoomCodeInput(submitRoomAction)
 const { roomAvailability, recentScrollEl, setRecentItemRef } =
   useRecentRoomAvailability(recentCalls)
 const showActiveRecentOnly = ref(false)
-type CreateRoomFlowState = "idle" | "editing" | "submitting"
-type JoinRoomFlowState = "editing" | "submitting"
+type RoomLookupState = "idle" | "checking" | "exists" | "missing" | "error"
+type RoomActionState = "idle" | "submitting"
 
-const createRoomFlowState = ref<CreateRoomFlowState>("idle")
-const joinRoomFlowState = ref<JoinRoomFlowState>("editing")
-const {
-  isCreateRoomSectionInactive,
-  isJoinRoomSectionInactive,
-  activateCreateTarget,
-  activateJoinTarget,
-} = useActiveRoomCodeTarget({
-  roomIdInput,
-  createRoomIdInput,
-  createRoomFlowState,
-  joinRoomFlowState,
-  clearJoinRoomCode: clearRoomCode,
-  clearCreateRoomCode,
-})
+const roomLookupState = ref<RoomLookupState>("idle")
+const roomActionState = ref<RoomActionState>("idle")
+let lastCheckedRoomId = ""
+let roomLookupRequest = 0
 
-const createRoomButtonLabel = computed(() =>
-  createRoomFlowState.value === "idle"
-    ? t("landing_create_new_room")
-    : t("landing_create_room_with_id", { roomId: createRoomIdInput.value }),
-)
-const createRoomButtonIcon = computed(() => (createRoomFlowState.value === "idle" ? "+" : "✓"))
-const isCreateRoomButtonDisabled = computed(
-  () =>
-    createRoomFlowState.value === "submitting" ||
-    (createRoomFlowState.value === "editing" && createRoomIdInput.value.length !== 6),
-)
-const isJoinRoomButtonDisabled = computed(
-  () => joinRoomFlowState.value === "submitting" || roomIdInput.value.length !== 6,
-)
 const activeRecentCount = computed(
   () =>
     recentCalls.value.filter(
@@ -335,6 +226,48 @@ const displayedRecentCalls = computed(() =>
         (room) => (roomAvailability.value[room.id] ?? "unchecked") === "available",
       )
     : recentCalls.value,
+)
+const canCreateRooms = computed(() => serviceEntitlementUiState.value === "valid")
+const hasCompleteRoomCode = computed(() => roomIdInput.value.length === 6)
+const roomActionButtonLabel = computed(() => {
+  if (!hasCompleteRoomCode.value) return t("landing_enter_room_code")
+  if (roomLookupState.value === "checking") return t("landing_checking_room")
+  if (roomLookupState.value === "exists") return t("landing_join_room_action")
+  return t("landing_create_room_action")
+})
+const roomActionButtonClass = computed(() =>
+  roomLookupState.value === "exists" ? "landing__btn--secondary" : "landing__btn--primary",
+)
+const isRoomActionButtonDisabled = computed(() => {
+  if (roomActionState.value === "submitting") return true
+  if (!hasCompleteRoomCode.value) return true
+  if (roomLookupState.value === "checking") return true
+  if (roomLookupState.value === "missing" && !canCreateRooms.value) return true
+  return false
+})
+const roomEntryHelperText = computed(() => {
+  if (roomIdInput.value.length === 0) return ""
+  if (!hasCompleteRoomCode.value) return t("landing_room_code_helper")
+  if (roomLookupState.value === "checking") return t("landing_checking_room_hint")
+  if (roomLookupState.value === "exists") return t("landing_room_found_hint")
+  if (roomLookupState.value === "error") return t("landing_room_check_failed")
+  if (roomLookupState.value === "missing" && canCreateRooms.value) {
+    return t("landing_room_not_found_create_hint")
+  }
+  if (roomLookupState.value === "missing" && hasServiceEntitlementToken.value) {
+    return serviceEntitlementUiState.value === "verifying"
+      ? t("landing_service_entitlement_verifying_hint")
+      : t("landing_service_entitlement_exhausted_hint")
+  }
+  if (roomLookupState.value === "missing") return t("landing_enter_token_hint")
+  return ""
+})
+const shouldShowEnterTokenPrompt = computed(
+  () =>
+    hasCompleteRoomCode.value &&
+    roomLookupState.value === "missing" &&
+    !canCreateRooms.value &&
+    serviceEntitlementUiState.value !== "verifying",
 )
 const {
   tokenInput,
@@ -393,64 +326,89 @@ function generateCallId(): string {
 }
 
 async function createNewRoom() {
-  const roomId = createRoomIdInput.value || generateCallId()
+  const roomId = roomIdInput.value || generateCallId()
   if (!recentCalls.value.some((room) => room.id === roomId)) {
     addRecentCall(roomId)
   }
   show(t("landing_created_room", { roomId }), "success")
-  clearCreateRoomCode()
+  clearRoomCode()
   goToRoom(roomId)
 }
 
-async function submitCreateRoom() {
-  if (createRoomFlowState.value === "submitting") return
-
-  if (createRoomFlowState.value === "idle") {
-    activateCreateTarget()
-    const roomId = generateCallId()
-    setCreateRoomCodeValue(roomId)
-    createRoomFlowState.value = "editing"
-    await nextTick()
-    focusCreateRoomCodeInput(0)
-    return
-  }
-
-  if (createRoomIdInput.value.length !== 6) return
-  createRoomFlowState.value = "submitting"
-  await createNewRoom()
-}
-
-function joinExistingRoom() {
-  if (joinRoomFlowState.value === "submitting") return
-  activateJoinTarget()
+async function joinExistingRoom() {
+  if (roomActionState.value === "submitting") return
   const id = roomIdInput.value
   if (id.length !== 6) return
 
-  joinRoomFlowState.value = "submitting"
+  roomActionState.value = "submitting"
   if (!recentCalls.value.some((room) => room.id === id)) {
     addRecentCall(id)
   }
   goToRoom(id)
 }
 
-async function handleCreateRoomCodeInput(index: number, event: Event) {
-  activateCreateTarget()
-  await onCreateRoomCodeInput(index, event)
-}
-
-function handleCreateRoomCodeKeydown(index: number, event: KeyboardEvent) {
-  activateCreateTarget()
-  onCreateRoomCodeKeydown(index, event)
-}
-
-async function handleJoinRoomCodeInput(index: number, event: Event) {
-  activateJoinTarget()
+async function handleRoomCodeInput(index: number, event: Event) {
   await onRoomCodeInput(index, event)
+  if (roomIdInput.value.length === 6) {
+    await checkEnteredRoomAvailability()
+  } else {
+    roomLookupState.value = "idle"
+    lastCheckedRoomId = ""
+  }
 }
 
-function handleJoinRoomCodeKeydown(index: number, event: KeyboardEvent) {
-  activateJoinTarget()
+function handleRoomCodeKeydown(index: number, event: KeyboardEvent) {
   onRoomCodeKeydown(index, event)
+}
+
+async function handleRoomCodeBlur() {
+  if (roomIdInput.value.length === 6) {
+    await checkEnteredRoomAvailability()
+  }
+}
+
+async function checkEnteredRoomAvailability() {
+  const roomId = roomIdInput.value
+  if (roomId.length !== 6) return
+  if (lastCheckedRoomId === roomId && roomLookupState.value !== "error") return
+
+  roomLookupState.value = "checking"
+  const requestId = ++roomLookupRequest
+  try {
+    const res = await fetch(`/api/rooms/${roomId}/status`)
+    if (!res.ok) {
+      throw new Error("room check failed")
+    }
+
+    const data = (await res.json()) as { exists?: boolean }
+    if (requestId !== roomLookupRequest || roomIdInput.value !== roomId) return
+
+    lastCheckedRoomId = roomId
+    roomLookupState.value = data.exists ? "exists" : "missing"
+  } catch {
+    if (requestId !== roomLookupRequest || roomIdInput.value !== roomId) return
+    roomLookupState.value = "error"
+  }
+}
+
+async function submitRoomAction() {
+  if (roomActionState.value === "submitting") return
+  if (roomIdInput.value.length !== 6) return
+
+  if (roomLookupState.value === "idle" || roomLookupState.value === "error") {
+    await checkEnteredRoomAvailability()
+  }
+
+  if (roomLookupState.value === "exists") {
+    await joinExistingRoom()
+    return
+  }
+
+  if (roomLookupState.value === "missing" && canCreateRooms.value) {
+    roomActionState.value = "submitting"
+    await createNewRoom()
+    return
+  }
 }
 
 function goToRoom(roomId: string) {
@@ -467,23 +425,27 @@ async function openRecentRoom(roomId: string) {
     return
   }
 
-  try {
-    const res = await fetch(`/api/rooms/${roomId}/status`)
-    if (!res.ok) {
-      show(t("landing_room_check_failed"), "error")
-      return
-    }
+  setRoomCodeValue(roomId)
+  await nextTick()
+  focusRoomCodeInput(0)
+  await checkEnteredRoomAvailability()
 
-    const data = (await res.json()) as { exists?: boolean }
-    if (!data.exists) {
-      roomAvailability.value[roomId] = "unavailable"
-      show(t("landing_room_unavailable"), "error")
-      return
-    }
-
+  if (roomLookupState.value === "exists") {
     roomAvailability.value[roomId] = "available"
     goToRoom(roomId)
-  } catch {
+    return
+  }
+
+  if (roomLookupState.value === "missing") {
+    roomAvailability.value[roomId] = "unavailable"
+    show(t("landing_room_unavailable"), "error")
+    if (!canCreateRooms.value) {
+      openTokenModal()
+    }
+    return
+  }
+
+  if (roomLookupState.value === "error") {
     show(t("landing_room_check_failed"), "error")
   }
 }
@@ -507,14 +469,6 @@ function setRecentScrollRef(el: Element | ComponentPublicInstance | null) {
         : el && "$el" in el && el.$el instanceof HTMLElement
           ? el.$el
           : null
-}
-
-function isCreateRoomInputDisabled(index: number) {
-  return isCreateRoomCodeInputDisabled(index)
-}
-
-function isJoinRoomInputDisabled(index: number) {
-  return isRoomCodeInputDisabled(index)
 }
 
 function isDesktopViewport() {
@@ -543,22 +497,8 @@ function handleDesktopLandingKeydown(event: KeyboardEvent) {
   if (isEditableTarget(event.target)) return
   if (showTokenModal.value) return
 
-  if (serviceEntitlementUiState.value === "valid") {
-    if (createRoomFlowState.value !== "idle") {
-      activateCreateTarget()
-      event.preventDefault()
-      void insertCreateRoomCharacter(event.key)
-      return
-    }
-    activateJoinTarget()
-    event.preventDefault()
-    void insertJoinRoomCharacter(event.key)
-    return
-  }
-
-  activateJoinTarget()
   event.preventDefault()
-  void insertJoinRoomCharacter(event.key)
+  void insertRoomCodeCharacter(event.key)
 }
 
 async function resolveEnteredToken(candidateToken: string) {
@@ -691,6 +631,30 @@ function openAdmin() {
   margin: calc(var(--space-1) * -1) 0 var(--space-1);
 }
 
+.landing__room-helper {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.landing__inline-link {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-accent);
+  font: inherit;
+  font-size: 0.92rem;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+}
+
+.landing__inline-link:hover {
+  color: color-mix(in srgb, var(--color-accent) 82%, white 18%);
+}
+
 :deep(.landing__form),
 .landing__form {
   display: flex;
@@ -821,6 +785,8 @@ function openAdmin() {
   margin-top: var(--space-8);
   padding-top: var(--space-6);
   border-top: 1px solid var(--color-border);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .landing__token-badge {
@@ -849,6 +815,8 @@ function openAdmin() {
   transition:
     color 0.15s ease,
     background-color 0.15s ease;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .landing__token-action:hover {
@@ -894,7 +862,43 @@ function openAdmin() {
 
 @media (max-width: 480px) {
   .landing {
-    padding: var(--space-6) var(--space-4);
+    padding: var(--space-6) var(--space-4) var(--space-8);
+  }
+
+  .landing__main,
+  .landing__footer {
+    max-width: none;
+  }
+
+  .landing__divider {
+    margin: var(--space-5) 0;
+  }
+
+  .landing__token-status {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: var(--space-2);
+  }
+
+  .landing__footer {
+    justify-content: flex-start;
+    padding-top: var(--space-6);
+    padding-bottom: 0;
+  }
+
+  .landing__footer-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .landing__modal {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .landing__modal-content {
+    max-width: none;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   }
 }
 </style>

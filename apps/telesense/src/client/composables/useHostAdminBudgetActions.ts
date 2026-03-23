@@ -7,6 +7,7 @@ type LoadingState =
   | "saving-label"
   | "saving-monthly"
   | "saving-remaining"
+  | "archiving-budget"
   | "minting"
 
 type ToastFn = (message: string, variant?: "success" | "error" | "info") => void
@@ -63,6 +64,7 @@ export function useHostAdminBudgetActions(options: {
   bytesToGiBString: (bytes: number) => string
   giBStringToBytes: (value: string) => number
   saveBudgetLabelValue: (budgetKey: string, label: string) => Promise<boolean>
+  onBudgetArchived?: (budgetKey: string) => void
 }) {
   const {
     t,
@@ -98,6 +100,7 @@ export function useHostAdminBudgetActions(options: {
     bytesToGiBString,
     giBStringToBytes,
     saveBudgetLabelValue,
+    onBudgetArchived,
   } = options
 
   function setEditingBudgetInput(el: Element | ComponentPublicInstance | null) {
@@ -358,6 +361,43 @@ export function useHostAdminBudgetActions(options: {
     }
   }
 
+  async function archiveBudget(budgetKey: string) {
+    if (!window.confirm(t("admin_budget_archive_confirm"))) return
+
+    loadingState.value = "archiving-budget"
+    lastError.value = ""
+    try {
+      const response = await adminFetch("/admin/entitlement/budget/archive", {
+        method: "POST",
+        body: JSON.stringify({ budgetKey }),
+      })
+      if (!response.ok) {
+        throw new Error(await response.text())
+      }
+
+      openBudgetMenuKey.value = ""
+      openRemainingOverrideKey.value = ""
+      if (selectedBudgetKey.value === budgetKey) {
+        selectedBudgetKey.value = ""
+        selectedAllowanceId.value = ""
+        budget.value = null
+        monthlyAllowance.value = null
+      }
+      delete budgetByKey.value[budgetKey]
+      delete monthlyAllowanceByBudgetKey.value[budgetKey]
+      mintedToken.value = ""
+      showMintedToken.value = false
+      await loadBudgetList()
+      onBudgetArchived?.(budgetKey)
+      show(t("admin_budget_archived"), "success")
+    } catch (error) {
+      lastError.value = error instanceof Error ? error.message : String(error)
+      show(lastError.value, "error")
+    } finally {
+      loadingState.value = "idle"
+    }
+  }
+
   return {
     setEditingBudgetInput,
     saveCurrentRemaining,
@@ -372,5 +412,6 @@ export function useHostAdminBudgetActions(options: {
     mintToken,
     toggleMintedToken,
     copyMintedToken,
+    archiveBudget,
   }
 }

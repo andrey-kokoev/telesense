@@ -13,7 +13,9 @@ import { useMetering } from "../composables/useMetering"
 
 interface LogEntry {
   timestamp: string
+  kind: string
   message: string
+  details?: Record<string, unknown>
 }
 
 type CallDisplayState =
@@ -64,12 +66,19 @@ function setLogsPanelOpen(nextOpen: boolean) {
   logsPanelState.value = nextOpen ? "open" : "closed"
 }
 
-function log(msg: string) {
-  console.log(msg)
+const MAX_LOG_ENTRIES = 200
+
+function log(message: string, kind = "note", details?: Record<string, unknown>) {
+  console.log(message, details ?? "")
   logs.value.push({
     timestamp: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
-    message: msg,
+    kind,
+    message,
+    details,
   })
+  if (logs.value.length > MAX_LOG_ENTRIES) {
+    logs.value.splice(0, logs.value.length - MAX_LOG_ENTRIES)
+  }
 }
 
 function leaveToLanding() {
