@@ -81,16 +81,19 @@ Cron is only the trigger; policy lives in the DO.
 
 ## Host Admin
 
-Host admin is intentionally separate from normal service use.
+Authority is intentionally layered, but entry is unified through one landing-page token field.
 
 Flow:
 
-1. operator goes to `/host-admin`
-2. pastes `HOST_ADMIN_BOOTSTRAP_TOKEN`
-3. browser exchanges it for a host-admin session token
-4. browser uses that session token for admin APIs
+1. user pastes one token into the landing page
+2. worker resolves whether it is:
+   - host-admin
+   - budget-admin
+   - service-entitlement
+3. browser stores the resulting session/access state
+4. if the token is admin-capable, the Admin button routes to the correct admin surface
 
-So the bootstrap token is not the long-lived browser credential.
+So bootstrap/admin tokens are not the same thing as the long-lived browser session credential.
 
 ## Media Flow
 

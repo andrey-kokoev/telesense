@@ -21,7 +21,10 @@ export interface AppState {
   browserInstanceId: string
   serviceEntitlementToken: string
   serviceEntitlementState: StoredServiceEntitlementState
+  hostAdminBootstrapToken: string
   hostAdminSessionToken: string
+  budgetAdminSessionToken: string
+  budgetAdminBudgetKey: string
   recentCalls: RecentCall[]
   roomParticipantCredentials: Record<string, RoomParticipantCredential>
   preferences: {
@@ -42,7 +45,10 @@ const defaultState: AppState = {
   browserInstanceId: generateBrowserInstanceId(),
   serviceEntitlementToken: "",
   serviceEntitlementState: "missing",
+  hostAdminBootstrapToken: "",
   hostAdminSessionToken: "",
+  budgetAdminSessionToken: "",
+  budgetAdminBudgetKey: "",
   recentCalls: [],
   roomParticipantCredentials: {},
   preferences: {
@@ -69,7 +75,10 @@ const appStateSchema = z.object({
   browserInstanceId: z.string().min(1),
   serviceEntitlementToken: z.string(),
   serviceEntitlementState: z.enum(["missing", "valid", "exhausted"]),
+  hostAdminBootstrapToken: z.string(),
   hostAdminSessionToken: z.string(),
+  budgetAdminSessionToken: z.string(),
+  budgetAdminBudgetKey: z.string(),
   recentCalls: z.array(recentCallSchema),
   roomParticipantCredentials: z.record(z.string(), roomParticipantCredentialSchema),
   preferences: z.object({
@@ -114,6 +123,22 @@ export function normalizeStoredAppState(raw: unknown): AppState {
             : input.hostToken,
       ),
   )
+  const hostAdminBootstrapToken = sanitizeCredentialToken(
+    z
+      .string()
+      .catch("")
+      .parse(
+        z.string().safeParse(input.hostAdminBootstrapToken).success
+          ? input.hostAdminBootstrapToken
+          : z.string().safeParse(input.hostAdminToken).success
+            ? input.hostAdminToken
+            : input.hostToken,
+      ),
+  )
+  const budgetAdminSessionToken = sanitizeCredentialToken(
+    z.string().catch("").parse(input.budgetAdminSessionToken),
+  )
+  const budgetAdminBudgetKey = z.string().catch("").parse(input.budgetAdminBudgetKey).trim()
 
   const serviceEntitlementState = z
     .enum(["missing", "valid", "exhausted"])
@@ -166,7 +191,10 @@ export function normalizeStoredAppState(raw: unknown): AppState {
     browserInstanceId,
     serviceEntitlementToken,
     serviceEntitlementState,
+    hostAdminBootstrapToken,
     hostAdminSessionToken,
+    budgetAdminSessionToken,
+    budgetAdminBudgetKey,
     recentCalls,
     roomParticipantCredentials,
     preferences: {
@@ -208,6 +236,9 @@ export function useAppStore() {
   // Auth
   const hasServiceEntitlementToken = computed(() => !!state.value.serviceEntitlementToken)
   const hasHostAdminSessionToken = computed(() => !!state.value.hostAdminSessionToken)
+  const hasBudgetAdminSessionToken = computed(
+    () => !!state.value.budgetAdminSessionToken && !!state.value.budgetAdminBudgetKey,
+  )
   const serviceEntitlementTokenVerified = computed(
     () => !!state.value.serviceEntitlementToken && state.value.serviceEntitlementState === "valid",
   )
@@ -228,12 +259,32 @@ export function useAppStore() {
     state.value.serviceEntitlementState = "missing"
   }
 
-  function setHostAdminSessionToken(token: string) {
+  function setHostAdminSessionToken(
+    token: string,
+    bootstrapToken = state.value.hostAdminBootstrapToken,
+  ) {
+    state.value.hostAdminBootstrapToken = sanitizeCredentialToken(bootstrapToken)
     state.value.hostAdminSessionToken = sanitizeCredentialToken(token)
+    state.value.budgetAdminSessionToken = ""
+    state.value.budgetAdminBudgetKey = ""
   }
 
   function clearHostAdminSessionToken() {
+    state.value.hostAdminBootstrapToken = ""
     state.value.hostAdminSessionToken = ""
+  }
+
+  function setBudgetAdminSession(token: string, budgetKey: string) {
+    if (state.value.hostAdminSessionToken) {
+      return
+    }
+    state.value.budgetAdminSessionToken = sanitizeCredentialToken(token)
+    state.value.budgetAdminBudgetKey = budgetKey.trim()
+  }
+
+  function clearBudgetAdminSession() {
+    state.value.budgetAdminSessionToken = ""
+    state.value.budgetAdminBudgetKey = ""
   }
 
   function getServiceEntitlementHeaders(): Record<string, string> {
@@ -245,6 +296,12 @@ export function useAppStore() {
   function getHostAdminHeaders(): Record<string, string> {
     return {
       "X-Host-Admin-Session": sanitizeCredentialToken(state.value.hostAdminSessionToken),
+    }
+  }
+
+  function getBudgetAdminHeaders(): Record<string, string> {
+    return {
+      "X-Budget-Admin-Session": sanitizeCredentialToken(state.value.budgetAdminSessionToken),
     }
   }
 
@@ -314,10 +371,14 @@ export function useAppStore() {
     browserInstanceId: computed(() => state.value.browserInstanceId),
     serviceEntitlementToken: computed(() => state.value.serviceEntitlementToken),
     serviceEntitlementState: computed(() => state.value.serviceEntitlementState),
+    hostAdminBootstrapToken: computed(() => state.value.hostAdminBootstrapToken),
     hostAdminSessionToken: computed(() => state.value.hostAdminSessionToken),
+    budgetAdminSessionToken: computed(() => state.value.budgetAdminSessionToken),
+    budgetAdminBudgetKey: computed(() => state.value.budgetAdminBudgetKey),
     serviceEntitlementTokenVerified,
     hasServiceEntitlementToken,
     hasHostAdminSessionToken,
+    hasBudgetAdminSessionToken,
     recentCalls,
     roomParticipantCredentials,
     preferences,
@@ -329,8 +390,11 @@ export function useAppStore() {
     clearServiceEntitlementToken,
     setHostAdminSessionToken,
     clearHostAdminSessionToken,
+    setBudgetAdminSession,
+    clearBudgetAdminSession,
     getServiceEntitlementHeaders,
     getHostAdminHeaders,
+    getBudgetAdminHeaders,
     addRecentCall,
     renameRecentCall,
     removeRecentCall,

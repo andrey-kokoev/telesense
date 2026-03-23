@@ -1,9 +1,24 @@
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue"
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  watch,
+  type ComponentPublicInstance,
+} from "vue"
 import { useAppStore } from "../composables/useAppStore"
 import { useI18n } from "../composables/useI18n"
 import { useToast } from "../composables/useToast"
 
-type LoadingState = "idle" | "loading" | "saving-label" | "saving-monthly" | "minting" | "rotating"
+type LoadingState =
+  | "idle"
+  | "loading"
+  | "saving-label"
+  | "saving-monthly"
+  | "saving-remaining"
+  | "minting"
 type AdminAccessState = "checking" | "authorized" | "unauthorized"
 
 type BudgetListItem = {
@@ -26,6 +41,7 @@ type MonthlyAllowanceListItem = {
 type BudgetResponse = {
   budgetKey: string
   budgetId: string
+  enabled: boolean
   allowance: {
     remainingBytes: number
     consumedBytes: number
@@ -48,9 +64,10 @@ type MonthlyAllowanceResponse = {
 }
 
 type MintResponse = {
-  serviceEntitlementToken: string
-  remainingBytes: number
+  budgetAdminToken: string
 }
+
+type CreateBudgetResponse = BudgetResponse
 
 const GIB = 1024 * 1024 * 1024
 
@@ -68,6 +85,7 @@ export default function useAdminView() {
   const budgetByKey = ref<Record<string, BudgetResponse>>({})
   const monthlyAllowanceByBudgetKey = ref<Record<string, MonthlyAllowanceResponse>>({})
   const openBudgetMenuKey = ref("")
+  const openRemainingOverrideKey = ref("")
   const editingBudgetKey = ref("")
   const editingBudgetLabel = ref("")
   const editingBudgetOriginalLabel = ref("")
@@ -79,6 +97,9 @@ export default function useAdminView() {
   const adminAccessState = ref<AdminAccessState>("checking")
   const hostAdminTokenInput = ref("")
   const budgetSearch = ref("")
+  const creatingBudget = ref(false)
+  const newBudgetKey = ref("")
+  const creatingBudgetInput = ref<HTMLInputElement | null>(null)
 
   const monthlyAllowanceForm = reactive({
     allowanceId: "global",
@@ -87,6 +108,7 @@ export default function useAdminView() {
     resetAmountGiB: "0",
     cronExpr: "0 0 1 * *",
   })
+  const currentRemainingGiB = ref("0")
 
   const hasHostAdminSessionToken = computed(() => !!store.hostAdminSessionToken.value)
   const filteredBudgets = computed(() => {
@@ -145,6 +167,10 @@ export default function useAdminView() {
     return budgetPolicyForKey(budgetKey)?.active ?? false
   }
 
+  function budgetIsActive(budgetKey: string) {
+    return budgetByKey.value[budgetKey]?.enabled ?? true
+  }
+
   function budgetPolicyBadgeLabel(budgetKey: string) {
     const policy = budgetPolicyForKey(budgetKey)
     if (!policy || !policy.active) return t("admin_status_inactive")
@@ -153,22 +179,13 @@ export default function useAdminView() {
     })
   }
 
-  function budgetStatusLabel(budgetKey: string) {
-    const lifecycle = budgetByKey.value[budgetKey]?.grace.lifecycle
-    switch (lifecycle) {
-      case "active":
-        return t("admin_status_active")
-      case "in_grace":
-        return t("admin_status_in_grace")
-      case "exhausted":
-        return t("admin_status_exhausted")
-      default:
-        return t("admin_status_loading")
-    }
-  }
-
   function goBack() {
     window.location.href = "/"
+  }
+
+  function openBudgetPage(budgetKey: string) {
+    if (editingBudgetKey.value === budgetKey) return
+    window.location.href = `/budget-admin/${encodeURIComponent(budgetKey)}`
   }
 
   function formatBytes(bytes: number | null | undefined) {
@@ -268,7 +285,7 @@ export default function useAdminView() {
         throw new Error(await exchange.text())
       }
       const exchangeData = (await exchange.json()) as { hostAdminSessionToken: string }
-      store.setHostAdminSessionToken(exchangeData.hostAdminSessionToken)
+      store.setHostAdminSessionToken(exchangeData.hostAdminSessionToken, bootstrapToken)
 
       const authorized = await verifyAdminAccess()
       if (!authorized) {
@@ -305,6 +322,75 @@ export default function useAdminView() {
     lastError.value = ""
   }
 
+  async function copyHostAdminToken() {
+    try {
+      const response = await adminFetch("/admin/auth/bootstrap")
+      if (!response.ok) {
+        throw new Error(await response.text())
+      }
+      const data = (await response.json()) as { hostAdminBootstrapToken: string }
+      const token = store.sanitizeCredentialToken(data.hostAdminBootstrapToken)
+      if (!token) {
+        throw new Error("Missing host admin bootstrap token")
+      }
+      store.setHostAdminSessionToken(store.hostAdminSessionToken.value, token)
+      await navigator.clipboard.writeText(token)
+      show(t("admin_bootstrap_token_copied"), "success")
+    } catch {
+      show(t("admin_token_copy_failed"), "error")
+    }
+  }
+
+  async function createBudget() {
+    const budgetKey = newBudgetKey.value.trim()
+    if (!budgetKey) return
+
+    loadingState.value = "loading"
+    lastError.value = ""
+    try {
+      const response = await adminFetch("/admin/entitlement/budget/create", {
+        method: "POST",
+        body: JSON.stringify({ budgetKey }),
+      })
+      if (!response.ok) {
+        throw new Error(await response.text())
+      }
+      const data = (await response.json()) as CreateBudgetResponse
+      creatingBudget.value = false
+      newBudgetKey.value = ""
+      await refreshAll()
+      openBudgetPage(data.budgetKey)
+    } catch (error) {
+      lastError.value = error instanceof Error ? error.message : String(error)
+      show(lastError.value, "error")
+    } finally {
+      loadingState.value = "idle"
+    }
+  }
+
+  function toggleCreateBudget() {
+    creatingBudget.value = !creatingBudget.value
+    if (!creatingBudget.value) {
+      newBudgetKey.value = ""
+      creatingBudgetInput.value = null
+      return
+    }
+    void nextTick(() => {
+      creatingBudgetInput.value?.focus()
+      creatingBudgetInput.value?.select()
+    })
+  }
+
+  function cancelCreateBudget() {
+    creatingBudget.value = false
+    newBudgetKey.value = ""
+    creatingBudgetInput.value = null
+  }
+
+  function setCreatingBudgetInput(el: Element | ComponentPublicInstance | null) {
+    creatingBudgetInput.value = resolveInputRef(el)
+  }
+
   async function loadMonthlyAllowanceList() {
     const response = await adminFetch("/admin/host/monthly-allowances")
     if (!response.ok) throw new Error(await response.text())
@@ -325,6 +411,7 @@ export default function useAdminView() {
     if (!response.ok) throw new Error(await response.text())
     budget.value = (await response.json()) as BudgetResponse
     budgetByKey.value = { ...budgetByKey.value, [budget.value.budgetKey]: budget.value }
+    currentRemainingGiB.value = bytesToGiBString(budget.value.allowance.remainingBytes)
   }
 
   async function loadMonthlyAllowance() {
@@ -417,9 +504,40 @@ export default function useAdminView() {
     await persistMonthlyAllowance(monthlyAllowanceForm.active, true)
   }
 
-  async function toggleMonthlyAllowanceActive() {
-    if (!monthlyAllowance.value) return
-    await persistMonthlyAllowance(!monthlyAllowanceForm.active, false)
+  async function saveCurrentRemaining() {
+    if (!selectedBudgetKey.value || !budget.value) return
+    loadingState.value = "saving-remaining"
+    lastError.value = ""
+    try {
+      const remainingBytes = giBStringToBytes(currentRemainingGiB.value)
+      if (!Number.isFinite(remainingBytes)) {
+        throw new Error(t("admin_budget_invalid_remaining"))
+      }
+      const response = await adminFetch("/admin/entitlement/budget/remaining", {
+        method: "POST",
+        body: JSON.stringify({
+          budgetKey: selectedBudgetKey.value,
+          remainingBytes,
+        }),
+      })
+      if (!response.ok) {
+        throw new Error(await response.text())
+      }
+      const data = (await response.json()) as BudgetResponse
+      budget.value = data
+      budgetByKey.value = {
+        ...budgetByKey.value,
+        [data.budgetKey]: data,
+      }
+      currentRemainingGiB.value = bytesToGiBString(data.allowance.remainingBytes)
+      openRemainingOverrideKey.value = ""
+      show(t("admin_budget_remaining_saved"), "success")
+    } catch (error) {
+      lastError.value = error instanceof Error ? error.message : String(error)
+      show(lastError.value, "error")
+    } finally {
+      loadingState.value = "idle"
+    }
   }
 
   async function toggleBudgetPolicyActive(budgetKey: string) {
@@ -468,6 +586,55 @@ export default function useAdminView() {
       }
       monthlyAllowanceForm.active = previousPolicy.active
     }
+  }
+
+  async function toggleBudgetActive(budgetKey: string) {
+    selectedBudgetKey.value = budgetKey
+    loadingState.value = "saving-remaining"
+    lastError.value = ""
+    try {
+      const response = await adminFetch("/admin/entitlement/budget/enabled", {
+        method: "POST",
+        body: JSON.stringify({
+          budgetKey,
+          enabled: !budgetIsActive(budgetKey),
+        }),
+      })
+      if (!response.ok) {
+        throw new Error(await response.text())
+      }
+      const data = (await response.json()) as BudgetResponse
+      budget.value = data
+      budgetByKey.value = {
+        ...budgetByKey.value,
+        [data.budgetKey]: data,
+      }
+    } catch (error) {
+      lastError.value = error instanceof Error ? error.message : String(error)
+      show(lastError.value, "error")
+    } finally {
+      loadingState.value = "idle"
+    }
+  }
+
+  async function openRemainingOverride(budgetKey: string) {
+    if (openRemainingOverrideKey.value === budgetKey) {
+      openRemainingOverrideKey.value = ""
+      return
+    }
+
+    selectedBudgetKey.value = budgetKey
+    openBudgetMenuKey.value = ""
+    if (selectedBudgetKey.value !== budgetKey || !budgetByKey.value[budgetKey]) {
+      await Promise.all([loadBudget(), loadMonthlyAllowance()])
+    } else {
+      budget.value = budgetByKey.value[budgetKey]
+      monthlyAllowance.value = monthlyAllowanceByBudgetKey.value[budgetKey] ?? null
+    }
+    currentRemainingGiB.value = bytesToGiBString(
+      monthlyAllowance.value?.resetAmountBytes ?? budget.value?.allowance.remainingBytes ?? 0,
+    )
+    openRemainingOverrideKey.value = budgetKey
   }
 
   async function openBudgetMenu(budgetKey: string) {
@@ -562,8 +729,8 @@ export default function useAdminView() {
     }
   }
 
-  function setEditingBudgetInput(el: Element | null) {
-    editingBudgetInput.value = el instanceof HTMLInputElement ? el : null
+  function setEditingBudgetInput(el: Element | ComponentPublicInstance | null) {
+    editingBudgetInput.value = resolveInputRef(el)
   }
 
   function handleDocumentClick(event: MouseEvent) {
@@ -576,6 +743,18 @@ export default function useAdminView() {
 
     if (!target.closest(".admin-budget__menu-wrap")) {
       openBudgetMenuKey.value = ""
+    }
+
+    if (!target.closest(".admin-budget__override-wrap")) {
+      openRemainingOverrideKey.value = ""
+    }
+
+    if (
+      creatingBudget.value &&
+      !target.closest(".admin-inline-create") &&
+      !target.closest(".admin-inline-action")
+    ) {
+      cancelCreateBudget()
     }
 
     if (
@@ -619,7 +798,7 @@ export default function useAdminView() {
     lastError.value = ""
     try {
       openBudgetMenuKey.value = ""
-      const response = await adminFetch("/admin/entitlement/mint", {
+      const response = await adminFetch("/admin/budget-admin/mint", {
         method: "POST",
         body: JSON.stringify({ budgetKey }),
       })
@@ -627,11 +806,11 @@ export default function useAdminView() {
         throw new Error(await response.text())
       }
       const data = (await response.json()) as MintResponse
-      mintedToken.value = data.serviceEntitlementToken
+      mintedToken.value = data.budgetAdminToken
       showMintedToken.value = false
       await Promise.all([loadBudgetList(), loadBudget()])
       try {
-        await navigator.clipboard.writeText(data.serviceEntitlementToken)
+        await navigator.clipboard.writeText(data.budgetAdminToken)
         show(t("admin_token_copied"), "success")
       } catch {
         show(t("admin_token_minted"), "success")
@@ -658,29 +837,6 @@ export default function useAdminView() {
     }
   }
 
-  async function rotateSecret(budgetKey = selectedBudgetKey.value) {
-    if (!budgetKey) return
-    loadingState.value = "rotating"
-    lastError.value = ""
-    try {
-      openBudgetMenuKey.value = ""
-      const response = await adminFetch("/admin/entitlement/rotate", {
-        method: "POST",
-        body: JSON.stringify({ budgetKey }),
-      })
-      if (!response.ok) {
-        throw new Error(await response.text())
-      }
-      await Promise.all([loadBudgetList(), loadBudget()])
-      show(t("admin_secret_rotated"), "success")
-    } catch (error) {
-      lastError.value = error instanceof Error ? error.message : String(error)
-      show(lastError.value, "error")
-    } finally {
-      loadingState.value = "idle"
-    }
-  }
-
   onMounted(() => {
     document.addEventListener("click", handleDocumentClick)
     void refreshAll()
@@ -701,20 +857,25 @@ export default function useAdminView() {
   return {
     adminAccessState,
     budgetByKey,
+    budgetIsActive,
     budgetPolicyBadgeLabel,
     budgetPolicyIsActive,
     budgetSearch,
-    budgetStatusLabel,
     budgetUsageSummary,
     budgets,
     cancelBudgetLabelEdit,
+    cancelCreateBudget,
     clearStoredHostAdminToken,
     commitBudgetLabel,
     copyMintedToken,
+    createBudget,
+    creatingBudget,
     editingBudgetKey,
     editingBudgetLabel,
     filteredBudgets,
     goBack,
+    copyHostAdminToken,
+    openBudgetPage,
     hasHostAdminSessionToken,
     hasMonthlyAllowanceChanges,
     hostAdminTokenInput,
@@ -723,18 +884,35 @@ export default function useAdminView() {
     mintToken,
     monthlyAllowanceForm,
     monthlyNextResetTooltip,
+    newBudgetKey,
+    openRemainingOverride,
+    openRemainingOverrideKey,
     openBudgetMenu,
     openBudgetMenuKey,
-    rotateSecret,
+    currentRemainingGiB,
     saveHostAdminToken,
+    saveCurrentRemaining,
     saveMonthlyAllowance,
+    setCreatingBudgetInput,
     setEditingBudgetInput,
     showMintedToken,
     startBudgetLabelEdit,
     t,
+    toggleCreateBudget,
+    toggleBudgetActive,
     toggleBudgetPolicyActive,
     toggleMintedToken,
     mintedToken,
     selectedBudgetKey,
   }
+}
+function resolveInputRef(el: Element | ComponentPublicInstance | null) {
+  if (el instanceof HTMLInputElement) return el
+  if (el instanceof Element) {
+    return el instanceof HTMLInputElement ? el : el.querySelector("input")
+  }
+  if (el && "$el" in el && el.$el instanceof Element) {
+    return el.$el instanceof HTMLInputElement ? el.$el : el.$el.querySelector("input")
+  }
+  return null
 }

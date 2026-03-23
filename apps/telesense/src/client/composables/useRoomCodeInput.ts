@@ -102,6 +102,29 @@ export function useRoomCodeInput(onSubmit?: () => void) {
     digits.value = digits.value.map((_, index) => normalized[index] || "")
   }
 
+  async function insertCharacter(nextValue: string) {
+    const normalized = normalizeRoomCode(nextValue)
+    const nextChar = normalized.slice(-1)
+    if (!nextChar) return
+
+    const index = digits.value.findIndex((digit) => digit === "")
+    const targetIndex = index === -1 ? digits.value.length - 1 : index
+    digits.value[targetIndex] = nextChar
+
+    const input = inputs.value[targetIndex]
+    if (input) {
+      input.value = nextChar
+    }
+
+    if (targetIndex < digits.value.length - 1) {
+      await nextTick()
+      focusInput(targetIndex + 1)
+    } else {
+      await nextTick()
+      focusInput(targetIndex)
+    }
+  }
+
   function clear() {
     digits.value = Array.from({ length: 6 }, () => "")
   }
@@ -116,6 +139,7 @@ export function useRoomCodeInput(onSubmit?: () => void) {
     onKeydown,
     onPaste,
     setValue,
+    insertCharacter,
     clear,
   }
 }

@@ -82,6 +82,8 @@ Browser
     -> Cloudflare Realtime API
 ```
 
+For named authority/delegation shapes, see [03-authority-topologies.md](./03-authority-topologies.md).
+
 ## Routing Model
 
 Current app surface:

@@ -35,7 +35,7 @@ This interactive script will:
 - Create or reuse the host-admin D1 database
 - Apply the host-admin D1 migration
 - Set all required worker secrets
-- Write a local `.setup-summary` with the host-admin bootstrap token for first `/host-admin` login
+- Write a local `.setup-summary` that explains the seeded authority tokens and how to use them through the single landing-page token field
 
 **Re-running**: The script is idempotent. It will reuse existing tokens and skip already-configured resources. Use `./scripts/setup.sh --force` to regenerate everything.
 
@@ -70,7 +70,9 @@ echo "your-host-admin-bootstrap-token" | vp exec wrangler secret put HOST_ADMIN_
 
 # Create and migrate host-admin D1
 vp exec wrangler d1 create telesense-host-admin
-vp exec wrangler d1 execute telesense-host-admin --file apps/telesense/migrations/0001_host_admin_registry.sql --config apps/telesense/wrangler.toml
+for file in apps/telesense/migrations/*.sql; do
+  vp exec wrangler d1 execute telesense-host-admin --file "$file" --config apps/telesense/wrangler.toml
+done
 ```
 
 > **Note**: The setup script sets `DO_NOT_ENFORCE_SERVICE_ENTITLEMENT=true` in `.dev.vars` for local development. This disables service-entitlement enforcement so you can test without sending the `X-Service-Entitlement-Token` header. Remove or set to `false` to test auth locally. Production requires the token.
@@ -96,15 +98,22 @@ This starts:
 
 **Expected**: Both tabs show local + remote video.
 
-## 4a. First Host Admin Login
+## 4a. First Token Entry
 
-After setup, use the host-admin bootstrap token once:
+After setup, open the app and paste one of the seeded tokens into the landing-page token field.
 
-1. Open http://localhost:5173/host-admin
-2. Paste the `Host Admin Token` from `.setup-summary`
-3. The app exchanges it for a host-admin session token stored in local storage
+The app resolves the token type server-side and behaves accordingly:
 
-After that, host-admin uses the session token, not the bootstrap token directly.
+1. `Host Admin Token`
+   - unlocks host admin
+   - also grants service access on the default budget
+2. `Budget Admin Token`
+   - unlocks budget admin for one budget
+   - also grants service access on that budget
+3. `Service Entitlement Token`
+   - grants normal service use only
+
+Admin-capable tokens make the footer Admin button appear after resolution.
 
 ## 5. Run Automated Tests
 

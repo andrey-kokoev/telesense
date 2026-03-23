@@ -27,7 +27,7 @@ The worker can see:
 - participant/session metadata
 - published track identifiers
 - signaling payloads
-- service-entitlement and host-admin auth headers
+- service-entitlement, host-admin, and budget-admin auth headers
 
 The worker cannot see:
 
@@ -74,7 +74,7 @@ X-Host-Admin-Session
 
 Flow:
 
-1. operator pastes `HOST_ADMIN_BOOTSTRAP_TOKEN` into `/host-admin`
+1. operator pastes `HOST_ADMIN_BOOTSTRAP_TOKEN` into the landing-page token field
 2. browser exchanges it at `POST /admin/auth/exchange`
 3. browser stores the returned host-admin session token
 4. admin routes require `X-Host-Admin-Session`
@@ -84,6 +84,29 @@ Relevant configuration:
 - `HOST_ADMIN_BOOTSTRAP_TOKEN`
   - setup-time bootstrap credential
 
+### Budget Admin
+
+Budget admin is budget-scoped, not deployment-scoped.
+
+Bootstrap:
+
+```http
+X-Budget-Admin-Token
+```
+
+Steady-state admin:
+
+```http
+X-Budget-Admin-Session
+```
+
+Flow:
+
+1. operator pastes a budget-admin token into the landing-page token field
+2. browser exchanges it at `POST /budget-admin/auth/exchange`
+3. browser stores the returned budget-admin session token
+4. budget-scoped admin routes accept `X-Budget-Admin-Session`
+
 ## 4. Security Boundaries
 
 ### Browser Compromise
@@ -92,6 +115,7 @@ If the browser profile is compromised, stored local credentials are compromised 
 
 - service-entitlement token if stored
 - host-admin session token if stored
+- budget-admin session token if stored
 - room participant secrets if stored
 
 ### Bootstrap Token Leakage
@@ -110,6 +134,7 @@ Current model is intentionally simple:
 
 - stateless service entitlement tokens
 - stateless host-admin session tokens
+- stateless budget-admin session tokens
 - no per-session server-side revocation store
 
 That means:
@@ -117,6 +142,7 @@ That means:
 - low infrastructure overhead
 - clean setup/deploy flow
 - but individual host-admin sessions are not separately revocable before expiry
+- and individual budget-admin sessions are not separately revocable before expiry
 
 ## Summary
 

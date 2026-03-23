@@ -16,6 +16,8 @@ import { Context, Hono } from "hono"
 import { logger } from "hono/logger"
 import { CallRoom } from "./call-room"
 import {
+  BUDGET_ADMIN_HEADER,
+  BUDGET_ADMIN_SESSION_HEADER,
   DEFAULT_MONTHLY_ALLOWANCE_RESET_BYTES,
   GLOBAL_ENTITLEMENT_BUDGET_NAME,
   GLOBAL_MONTHLY_ALLOWANCE_NAME,
@@ -24,13 +26,27 @@ import {
   SERVICE_ENTITLEMENT_HEADER,
 } from "./entitlement-constants"
 import { EntitlementBudget } from "./entitlement-budget"
-import { mintHostAdminSessionToken, verifyHostAdminSessionToken } from "./host-admin-auth"
+import {
+  mintBudgetAdminSessionToken,
+  mintBudgetAdminToken,
+  mintHostAdminSessionToken,
+  verifyBudgetAdminSessionToken,
+  verifyBudgetAdminToken,
+  verifyHostAdminSessionToken,
+} from "./host-admin-auth"
 import {
   findBudgetKeyByBudgetId,
+  getBudgetAdminTokenRegistry,
+  getEntitlementTokenRegistry,
   listBudgetRegistry,
+  listEntitlementTokensByBudgetKey,
   listMonthlyAllowanceRegistry,
+  updateEntitlementTokenActive,
+  updateEntitlementTokenLabel,
   updateBudgetRegistryLabel,
+  upsertBudgetAdminTokenRegistry,
   upsertBudgetRegistry,
+  upsertEntitlementTokenRegistry,
   upsertMonthlyAllowanceRegistry,
 } from "./host-admin-registry"
 import { MonthlyAllowance } from "./monthly-allowance"
@@ -156,6 +172,11 @@ async function ensureMonthlyAllowanceForBudget(
     allowanceId,
     ...effective,
   }
+}
+
+function buildTokenPreview(token: string): string {
+  if (token.length <= 18) return token
+  return `${token.slice(0, 8)}…${token.slice(-8)}`
 }
 
 // Type definitions
@@ -325,6 +346,115 @@ async function requireAdminSession(c: AppContext): Promise<Response | null> {
   )
 }
 
+async function requireBudgetAccess(
+  c: AppContext,
+  budgetKey: string,
+): Promise<{ kind: "host-admin" | "budget-admin" } | Response> {
+  if (isAuthDisabled(c.env)) {
+    return { kind: "host-admin" }
+  }
+
+  const hostAdminToken = c.req.header(HOST_ADMIN_SESSION_HEADER)
+  const hostVerification = await verifyHostAdminSessionToken(
+    hostAdminToken,
+    c.env.HOST_ADMIN_BOOTSTRAP_TOKEN,
+  )
+  if (hostVerification.valid) {
+    return { kind: "host-admin" }
+  }
+
+  const budgetAdminToken = c.req.header(BUDGET_ADMIN_SESSION_HEADER)
+  const budgetVerification = await verifyBudgetAdminSessionToken(
+    budgetAdminToken,
+    c.env.HOST_ADMIN_BOOTSTRAP_TOKEN,
+  )
+  if (budgetVerification.valid && budgetVerification.claims.budgetKey === budgetKey) {
+    return { kind: "budget-admin" }
+  }
+
+  return serviceEntitlementErrorResponse(
+    c,
+    "Budget admin session required",
+    budgetAdminToken || hostAdminToken
+      ? "BUDGET_ADMIN_SESSION_INVALID"
+      : "BUDGET_ADMIN_SESSION_REQUIRED",
+    budgetAdminToken || hostAdminToken ? 403 : 401,
+  )
+}
+
+async function getOrCreateBudgetAdminToken(env: Env, budgetKey: string): Promise<string> {
+  const existing = await getBudgetAdminTokenRegistry(env, budgetKey)
+  if (existing?.token) {
+    return existing.token
+  }
+
+  const token = await mintBudgetAdminToken(env.HOST_ADMIN_BOOTSTRAP_TOKEN, budgetKey)
+  await upsertBudgetAdminTokenRegistry(env, { budgetKey, token })
+  return token
+}
+
+async function mintServiceEntitlementTokenForBudget(
+  env: Env,
+  budgetKey: string,
+  label: string | null = null,
+) {
+  const budget = getEntitlementBudgetByKey(env, budgetKey)
+
+  const secretRes = await budget.fetch(new Request("http://do.internal/?action=getCurrentSecret"))
+  if (!secretRes.ok) {
+    const rotateRes = await budget.fetch(
+      new Request("http://do.internal/?action=rotateSecret", { method: "POST" }),
+    )
+    if (!rotateRes.ok) {
+      throw new Error("Failed to initialize budget secret")
+    }
+  }
+
+  const currentSecretRes = await budget.fetch(
+    new Request("http://do.internal/?action=getCurrentSecret"),
+  )
+  if (!currentSecretRes.ok) {
+    throw new Error("Failed to get budget secret")
+  }
+
+  const { version, secret } = (await currentSecretRes.json()) as { version: number; secret: string }
+  const budgetRes = await budget.fetch(new Request("http://do.internal/?action=getBudget"))
+  if (!budgetRes.ok) {
+    throw new Error("Failed to get budget data")
+  }
+  const budgetData = (await budgetRes.json()) as {
+    budgetId: string
+    remainingBytes: number
+    enabled?: boolean
+  }
+  await upsertBudgetRegistry(env, { budgetKey, budgetId: budgetData.budgetId })
+
+  const serviceEntitlementToken = await mintToken(budgetData.budgetId, version, secret)
+  const tokenClaims = parseToken(serviceEntitlementToken)?.claims
+  if (!tokenClaims) {
+    throw new Error("Failed to mint service entitlement token")
+  }
+
+  await upsertEntitlementTokenRegistry(env, {
+    tokenId: tokenClaims.tokenId,
+    budgetKey,
+    budgetId: budgetData.budgetId,
+    secretVersion: version,
+    tokenValue: serviceEntitlementToken,
+    tokenPreview: buildTokenPreview(serviceEntitlementToken),
+    label,
+  })
+
+  return {
+    serviceEntitlementToken,
+    tokenId: tokenClaims.tokenId,
+    budgetKey,
+    budgetId: budgetData.budgetId,
+    secretVersion: version,
+    remainingBytes: budgetData.remainingBytes,
+  }
+}
+
 async function verifyServiceEntitlementToken(
   env: Env,
   providedToken: string | null | undefined,
@@ -418,6 +548,24 @@ async function verifyServiceEntitlementToken(
     }
   }
 
+  if (env.HOST_ADMIN_DB) {
+    const tokenRecord = await getEntitlementTokenRegistry(env, verification.claims.tokenId)
+    if (
+      !tokenRecord ||
+      !tokenRecord.active ||
+      tokenRecord.budgetId !== parsed.budgetId ||
+      tokenRecord.budgetKey !== budgetKey ||
+      tokenRecord.secretVersion !== parsed.secretVersion
+    ) {
+      return {
+        ok: false,
+        status: 403,
+        error: "Invalid service entitlement token",
+        code: "SERVICE_ENTITLEMENT_INVALID",
+      }
+    }
+  }
+
   const budgetRes = await budget.fetch(new Request("http://do.internal/?action=getBudget"))
   if (!budgetRes.ok) {
     return {
@@ -427,7 +575,20 @@ async function verifyServiceEntitlementToken(
       code: "SERVICE_ENTITLEMENT_UNAVAILABLE",
     }
   }
-  const budgetData = (await budgetRes.json()) as { budgetId: string; remainingBytes: number }
+  const budgetData = (await budgetRes.json()) as {
+    budgetId: string
+    remainingBytes: number
+    enabled?: boolean
+  }
+
+  if (budgetData.enabled === false) {
+    return {
+      ok: false,
+      status: 403,
+      error: "Service entitlement budget disabled",
+      code: "SERVICE_ENTITLEMENT_DISABLED",
+    }
+  }
 
   if (budgetData.budgetId !== parsed.budgetId) {
     return {
@@ -490,6 +651,7 @@ async function getRoomStatus(
 type BudgetInspection = {
   budgetKey: string
   budgetId: string
+  enabled: boolean
   allowance: {
     remainingBytes: number
     consumedBytes: number
@@ -518,6 +680,7 @@ async function inspectBudget(env: Env, budgetKey: string): Promise<BudgetInspect
 
   const data = (await budgetRes.json()) as {
     budgetId: string
+    enabled?: boolean
     remainingBytes: number
     consumedBytes: number
     currentSecretVersion: number
@@ -536,6 +699,7 @@ async function inspectBudget(env: Env, budgetKey: string): Promise<BudgetInspect
   return {
     budgetKey,
     budgetId: data.budgetId,
+    enabled: data.enabled !== false,
     allowance: {
       remainingBytes: data.remainingBytes,
       consumedBytes: data.consumedBytes,
@@ -565,7 +729,7 @@ async function getKnownBudgets(env: Env) {
     {
       budgetKey: budget.budgetKey,
       budgetId: budget.budgetId,
-      label: "shared",
+      label: "Default budget",
       createdAt: Date.now(),
       updatedAt: Date.now(),
     },
@@ -1028,6 +1192,251 @@ app.get("/admin/auth/verify", async (c) => {
   return c.json({ ok: true })
 })
 
+app.get("/admin/auth/bootstrap", async (c) => {
+  const adminError = await requireAdminSession(c)
+  if (adminError) return adminError
+
+  return c.json({
+    hostAdminBootstrapToken: c.env.HOST_ADMIN_BOOTSTRAP_TOKEN,
+  })
+})
+
+app.post("/budget-admin/auth/exchange", async (c) => {
+  if (!isAuthDisabled(c.env)) {
+    const budgetAdminToken = c.req.header(BUDGET_ADMIN_HEADER)
+    const verification = await verifyBudgetAdminToken(
+      budgetAdminToken,
+      c.env.HOST_ADMIN_BOOTSTRAP_TOKEN,
+    )
+    if (!verification.valid) {
+      return serviceEntitlementErrorResponse(
+        c,
+        "Invalid budget admin token",
+        budgetAdminToken ? "BUDGET_ADMIN_INVALID" : "BUDGET_ADMIN_REQUIRED",
+        budgetAdminToken ? 403 : 401,
+      )
+    }
+
+    if (c.env.HOST_ADMIN_DB) {
+      const currentToken = await getBudgetAdminTokenRegistry(c.env, verification.claims.budgetKey)
+      if (!currentToken || currentToken.token !== budgetAdminToken?.trim()) {
+        return serviceEntitlementErrorResponse(
+          c,
+          "Invalid budget admin token",
+          "BUDGET_ADMIN_INVALID",
+          403,
+        )
+      }
+    }
+
+    const budgetAdminSessionToken = await mintBudgetAdminSessionToken(
+      c.env.HOST_ADMIN_BOOTSTRAP_TOKEN,
+      verification.claims.budgetKey,
+    )
+
+    return c.json({
+      ok: true,
+      budgetKey: verification.claims.budgetKey,
+      budgetAdminSessionToken,
+    })
+  }
+
+  const budgetAdminSessionToken = await mintBudgetAdminSessionToken(
+    c.env.HOST_ADMIN_BOOTSTRAP_TOKEN,
+    defaultBudgetKey(c.env),
+  )
+  return c.json({ ok: true, budgetKey: defaultBudgetKey(c.env), budgetAdminSessionToken })
+})
+
+app.get("/budget-admin/auth/verify", async (c) => {
+  const budgetKey = c.req.query("budgetKey")?.trim()
+  if (!budgetKey) {
+    return serviceEntitlementErrorResponse(c, "budgetKey required", "BAD_REQUEST", 400)
+  }
+
+  const access = await requireBudgetAccess(c, budgetKey)
+  if (access instanceof Response) return access
+
+  return c.json({ ok: true, budgetKey, access: access.kind })
+})
+
+app.post("/auth/resolve", async (c) => {
+  let body: { token?: string }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: "Invalid request body", code: "BAD_REQUEST" }, 400)
+  }
+
+  const token = body.token?.trim()
+  if (!token) {
+    return c.json({ error: "Token required", code: "BAD_REQUEST" }, 400)
+  }
+
+  if (isAuthDisabled(c.env) || token === c.env.HOST_ADMIN_BOOTSTRAP_TOKEN) {
+    const hostAdminSessionToken = await mintHostAdminSessionToken(c.env.HOST_ADMIN_BOOTSTRAP_TOKEN)
+    const entitlement = await mintServiceEntitlementTokenForBudget(
+      c.env,
+      defaultBudgetKey(c.env),
+      "host-admin",
+    )
+    return c.json({
+      ok: true,
+      kind: "host-admin",
+      hostAdminSessionToken,
+      serviceEntitlementToken: entitlement.serviceEntitlementToken,
+      budgetKey: entitlement.budgetKey,
+    })
+  }
+
+  const budgetAdminVerification = await verifyBudgetAdminToken(
+    token,
+    c.env.HOST_ADMIN_BOOTSTRAP_TOKEN,
+  )
+  if (budgetAdminVerification.valid) {
+    if (c.env.HOST_ADMIN_DB) {
+      const currentToken = await getBudgetAdminTokenRegistry(
+        c.env,
+        budgetAdminVerification.claims.budgetKey,
+      )
+      if (currentToken?.token === token) {
+        const entitlement = await mintServiceEntitlementTokenForBudget(
+          c.env,
+          budgetAdminVerification.claims.budgetKey,
+          "budget-admin",
+        )
+        const budgetAdminSessionToken = await mintBudgetAdminSessionToken(
+          c.env.HOST_ADMIN_BOOTSTRAP_TOKEN,
+          budgetAdminVerification.claims.budgetKey,
+        )
+        return c.json({
+          ok: true,
+          kind: "budget-admin",
+          budgetKey: budgetAdminVerification.claims.budgetKey,
+          budgetAdminSessionToken,
+          serviceEntitlementToken: entitlement.serviceEntitlementToken,
+        })
+      }
+    } else {
+      const entitlement = await mintServiceEntitlementTokenForBudget(
+        c.env,
+        budgetAdminVerification.claims.budgetKey,
+        "budget-admin",
+      )
+      const budgetAdminSessionToken = await mintBudgetAdminSessionToken(
+        c.env.HOST_ADMIN_BOOTSTRAP_TOKEN,
+        budgetAdminVerification.claims.budgetKey,
+      )
+      return c.json({
+        ok: true,
+        kind: "budget-admin",
+        budgetKey: budgetAdminVerification.claims.budgetKey,
+        budgetAdminSessionToken,
+        serviceEntitlementToken: entitlement.serviceEntitlementToken,
+      })
+    }
+  }
+
+  const entitlementVerification = await verifyServiceEntitlementToken(c.env, token)
+  if (entitlementVerification.ok) {
+    return c.json({
+      ok: true,
+      kind: "service-entitlement",
+      entitlementState: "valid",
+    })
+  }
+
+  if (entitlementVerification.status === 402) {
+    return c.json({
+      ok: true,
+      kind: "service-entitlement",
+      entitlementState: "exhausted",
+      error: entitlementVerification.error,
+    })
+  }
+
+  return c.json(
+    {
+      error: "Invalid token",
+      code: "TOKEN_INVALID",
+    },
+    403,
+  )
+})
+
+app.post("/admin/bootstrap/seed-credentials", async (c) => {
+  if (!isAuthDisabled(c.env)) {
+    const bootstrapToken = c.req.header(HOST_ADMIN_HEADER)
+    if (!bootstrapToken) {
+      return serviceEntitlementErrorResponse(
+        c,
+        "Host admin bootstrap token required",
+        "HOST_ADMIN_REQUIRED",
+        401,
+      )
+    }
+
+    if (bootstrapToken !== c.env.HOST_ADMIN_BOOTSTRAP_TOKEN) {
+      return serviceEntitlementErrorResponse(
+        c,
+        "Invalid host admin token",
+        "HOST_ADMIN_INVALID",
+        403,
+      )
+    }
+  }
+
+  const budgetKey = defaultBudgetKey(c.env)
+  const budgetData = await inspectBudget(c.env, budgetKey)
+  await ensureMonthlyAllowanceForBudget(c.env, budgetKey)
+
+  const budgetAdminToken = await getOrCreateBudgetAdminToken(c.env, budgetKey)
+
+  const budget = getEntitlementBudgetByKey(c.env, budgetKey)
+  const secretRes = await budget.fetch(new Request("http://do.internal/?action=getCurrentSecret"))
+  if (!secretRes.ok) {
+    const rotateRes = await budget.fetch(
+      new Request("http://do.internal/?action=rotateSecret", { method: "POST" }),
+    )
+    if (!rotateRes.ok) {
+      return c.json({ error: "Failed to initialize budget secret" }, 500)
+    }
+  }
+
+  const currentSecretRes = await budget.fetch(
+    new Request("http://do.internal/?action=getCurrentSecret"),
+  )
+  if (!currentSecretRes.ok) {
+    return c.json({ error: "Failed to get budget secret" }, 500)
+  }
+
+  const { version, secret } = (await currentSecretRes.json()) as { version: number; secret: string }
+  const serviceEntitlementToken = await mintToken(budgetData.budgetId, version, secret)
+  const tokenClaims = parseToken(serviceEntitlementToken)?.claims
+  if (!tokenClaims) {
+    return c.json({ error: "Failed to mint service entitlement token" }, 500)
+  }
+
+  await upsertEntitlementTokenRegistry(c.env, {
+    tokenId: tokenClaims.tokenId,
+    budgetKey,
+    budgetId: budgetData.budgetId,
+    secretVersion: version,
+    tokenValue: serviceEntitlementToken,
+    tokenPreview: buildTokenPreview(serviceEntitlementToken),
+    label: "seeded",
+  })
+
+  return c.json({
+    ok: true,
+    budgetKey,
+    budgetId: budgetData.budgetId,
+    hostAdminBootstrapToken: c.env.HOST_ADMIN_BOOTSTRAP_TOKEN,
+    budgetAdminToken,
+    serviceEntitlementToken,
+  })
+})
+
 // Rate limiting for call ID discovery (prevents brute force scanning)
 const DISCOVERY_RATE_LIMIT_WINDOW = 60 * 1000 // 1 minute
 const DISCOVERY_RATE_LIMIT_MAX = 60 // 60 discovery requests per minute per IP
@@ -1121,6 +1530,131 @@ app.onError((err, c) => {
 app.post("/admin/entitlement/mint", async (c) => {
   const env = c.env
 
+  let body: { budgetKey?: string } = {}
+  try {
+    if (c.req.header("Content-Length") || c.req.header("content-length")) {
+      body = await c.req.json()
+    }
+  } catch {
+    return c.json({ error: "Invalid request body", code: "BAD_REQUEST" }, 400)
+  }
+
+  const budgetKey = body.budgetKey?.trim() || defaultBudgetKey(env)
+  const access = await requireBudgetAccess(c, budgetKey)
+  if (access instanceof Response) return access
+
+  try {
+    return c.json(await mintServiceEntitlementTokenForBudget(env, budgetKey))
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 500)
+  }
+})
+
+app.get("/admin/entitlement/tokens", async (c) => {
+  const budgetKey = c.req.query("budgetKey")?.trim() || defaultBudgetKey(c.env)
+  const access = await requireBudgetAccess(c, budgetKey)
+  if (access instanceof Response) return access
+
+  return c.json({
+    tokens: await listEntitlementTokensByBudgetKey(c.env, budgetKey),
+  })
+})
+
+app.get("/admin/entitlement/tokens/value", async (c) => {
+  const budgetKey = c.req.query("budgetKey")?.trim() || defaultBudgetKey(c.env)
+  const tokenId = c.req.query("tokenId")?.trim()
+  if (!tokenId) {
+    return c.json({ error: "tokenId required", code: "BAD_REQUEST" }, 400)
+  }
+
+  const access = await requireBudgetAccess(c, budgetKey)
+  if (access instanceof Response) return access
+
+  const tokenRecord = await getEntitlementTokenRegistry(c.env, tokenId)
+  if (!tokenRecord || tokenRecord.budgetKey !== budgetKey) {
+    return c.json({ error: "Token not found", code: "NOT_FOUND" }, 404)
+  }
+
+  return c.json({
+    tokenId,
+    tokenValue: tokenRecord.tokenValue,
+    tokenPreview: tokenRecord.tokenPreview,
+  })
+})
+
+app.post("/admin/entitlement/tokens/label", async (c) => {
+  let body: { budgetKey?: string; tokenId?: string; label?: string | null }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: "Invalid request body", code: "BAD_REQUEST" }, 400)
+  }
+
+  const budgetKey = body.budgetKey?.trim() || defaultBudgetKey(c.env)
+  const tokenId = body.tokenId?.trim()
+  if (!tokenId) {
+    return c.json({ error: "tokenId required", code: "BAD_REQUEST" }, 400)
+  }
+
+  const access = await requireBudgetAccess(c, budgetKey)
+  if (access instanceof Response) return access
+
+  const tokenRecord = await getEntitlementTokenRegistry(c.env, tokenId)
+  if (!tokenRecord || tokenRecord.budgetKey !== budgetKey) {
+    return c.json({ error: "Token not found", code: "NOT_FOUND" }, 404)
+  }
+
+  await updateEntitlementTokenLabel(c.env, {
+    tokenId,
+    label: body.label?.trim() || null,
+  })
+
+  return c.json({
+    ok: true,
+    token: await getEntitlementTokenRegistry(c.env, tokenId),
+  })
+})
+
+app.post("/admin/entitlement/tokens/active", async (c) => {
+  let body: { budgetKey?: string; tokenId?: string; active?: boolean }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: "Invalid request body", code: "BAD_REQUEST" }, 400)
+  }
+
+  const budgetKey = body.budgetKey?.trim() || defaultBudgetKey(c.env)
+  const tokenId = body.tokenId?.trim()
+  if (!tokenId) {
+    return c.json({ error: "tokenId required", code: "BAD_REQUEST" }, 400)
+  }
+  if (typeof body.active !== "boolean") {
+    return c.json({ error: "active must be boolean", code: "BAD_REQUEST" }, 400)
+  }
+
+  const access = await requireBudgetAccess(c, budgetKey)
+  if (access instanceof Response) return access
+
+  const tokenRecord = await getEntitlementTokenRegistry(c.env, tokenId)
+  if (!tokenRecord || tokenRecord.budgetKey !== budgetKey) {
+    return c.json({ error: "Token not found", code: "NOT_FOUND" }, 404)
+  }
+
+  await updateEntitlementTokenActive(c.env, {
+    tokenId,
+    active: body.active,
+  })
+
+  return c.json({
+    ok: true,
+    token: await getEntitlementTokenRegistry(c.env, tokenId),
+  })
+})
+
+// Host admin: Mint budget-admin token scoped to one budget
+app.post("/admin/budget-admin/mint", async (c) => {
+  const env = c.env
+
   const adminError = await requireAdminSession(c)
   if (adminError) return adminError
 
@@ -1134,45 +1668,13 @@ app.post("/admin/entitlement/mint", async (c) => {
   }
 
   const budgetKey = body.budgetKey?.trim() || defaultBudgetKey(env)
-
-  const budget = getEntitlementBudgetByKey(env, budgetKey)
-
-  // Ensure budget has a secret
-  const secretRes = await budget.fetch(new Request("http://do.internal/?action=getCurrentSecret"))
-  if (!secretRes.ok) {
-    // No secret exists, rotate to create one
-    const rotateRes = await budget.fetch(
-      new Request("http://do.internal/?action=rotateSecret", { method: "POST" }),
-    )
-    if (!rotateRes.ok) {
-      return c.json({ error: "Failed to initialize budget secret" }, 500)
-    }
-  }
-
-  // Get current secret for minting
-  const currentSecretRes = await budget.fetch(
-    new Request("http://do.internal/?action=getCurrentSecret"),
-  )
-  if (!currentSecretRes.ok) {
-    return c.json({ error: "Failed to get budget secret" }, 500)
-  }
-
-  const { version, secret } = (await currentSecretRes.json()) as { version: number; secret: string }
-
-  // Get budget ID
-  const budgetRes = await budget.fetch(new Request("http://do.internal/?action=getBudget"))
-  const budgetData = (await budgetRes.json()) as { budgetId: string; remainingBytes: number }
-  await upsertBudgetRegistry(env, { budgetKey, budgetId: budgetData.budgetId })
-
-  // Mint token
-  const serviceEntitlementToken = await mintToken(budgetData.budgetId, version, secret)
+  const budgetData = await inspectBudget(env, budgetKey)
+  const budgetAdminToken = await getOrCreateBudgetAdminToken(env, budgetKey)
 
   return c.json({
-    serviceEntitlementToken,
+    budgetAdminToken,
     budgetKey,
     budgetId: budgetData.budgetId,
-    secretVersion: version,
-    remainingBytes: budgetData.remainingBytes,
   })
 })
 
@@ -1218,11 +1720,10 @@ app.post("/admin/entitlement/rotate", async (c) => {
 
 // Admin: Get budget inspection data
 app.get("/admin/entitlement/budget", async (c) => {
-  const adminError = await requireAdminSession(c)
-  if (adminError) return adminError
-
   const env = c.env
   const budgetKey = c.req.query("budgetKey")?.trim() || defaultBudgetKey(env)
+  const access = await requireBudgetAccess(c, budgetKey)
+  if (access instanceof Response) return access
 
   try {
     return c.json(await inspectBudget(env, budgetKey))
@@ -1261,9 +1762,6 @@ app.post("/admin/entitlement/budget/create", async (c) => {
 })
 
 app.post("/admin/entitlement/budget-label", async (c) => {
-  const adminError = await requireAdminSession(c)
-  if (adminError) return adminError
-
   let body: { budgetKey?: string; label?: string | null }
   try {
     body = await c.req.json()
@@ -1275,6 +1773,8 @@ app.post("/admin/entitlement/budget-label", async (c) => {
   if (!budgetKey) {
     return c.json({ error: "budgetKey required", code: "BAD_REQUEST" }, 400)
   }
+  const access = await requireBudgetAccess(c, budgetKey)
+  if (access instanceof Response) return access
 
   const label = body.label?.trim() || null
   await updateBudgetRegistryLabel(c.env, { budgetKey, label })
@@ -1286,11 +1786,90 @@ app.post("/admin/entitlement/budget-label", async (c) => {
   }
 })
 
-// Admin: Configure monthly allowance reset policy
-app.post("/admin/entitlement/monthly-allowance", async (c) => {
+app.post("/admin/entitlement/budget/remaining", async (c) => {
   const adminError = await requireAdminSession(c)
   if (adminError) return adminError
 
+  let body: { budgetKey?: string; remainingBytes?: number }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: "Invalid request body", code: "BAD_REQUEST" }, 400)
+  }
+
+  const budgetKey = body.budgetKey?.trim()
+  if (!budgetKey) {
+    return c.json({ error: "budgetKey required", code: "BAD_REQUEST" }, 400)
+  }
+  if (!Number.isFinite(body.remainingBytes) || (body.remainingBytes ?? 0) < 0) {
+    return c.json({ error: "remainingBytes must be >= 0", code: "BAD_REQUEST" }, 400)
+  }
+
+  try {
+    const monthlyAllowance = await ensureMonthlyAllowanceForBudget(c.env, budgetKey)
+    const currentBudget = await inspectBudget(c.env, budgetKey)
+    const configuredTotal =
+      monthlyAllowance.resetAmountBytes > 0
+        ? monthlyAllowance.resetAmountBytes
+        : currentBudget.allowance.remainingBytes + currentBudget.allowance.consumedBytes
+    const totalBytes = Math.max(configuredTotal, body.remainingBytes ?? 0)
+    const remainingBytes = Math.min(body.remainingBytes ?? 0, totalBytes)
+    const consumedBytes = Math.max(0, totalBytes - remainingBytes)
+
+    const budget = getEntitlementBudgetByKey(c.env, budgetKey)
+    const setRes = await budget.fetch(
+      new Request("http://do.internal/?action=setSnapshot", {
+        method: "POST",
+        body: JSON.stringify({ remainingBytes, consumedBytes }),
+      }),
+    )
+    if (!setRes.ok) {
+      throw new Error(await setRes.text())
+    }
+    return c.json(await inspectBudget(c.env, budgetKey))
+  } catch {
+    return c.json({ error: "Failed to set current remaining budget" }, 500)
+  }
+})
+
+app.post("/admin/entitlement/budget/enabled", async (c) => {
+  const adminError = await requireAdminSession(c)
+  if (adminError) return adminError
+
+  let body: { budgetKey?: string; enabled?: boolean }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: "Invalid request body", code: "BAD_REQUEST" }, 400)
+  }
+
+  const budgetKey = body.budgetKey?.trim()
+  if (!budgetKey) {
+    return c.json({ error: "budgetKey required", code: "BAD_REQUEST" }, 400)
+  }
+  if (typeof body.enabled !== "boolean") {
+    return c.json({ error: "enabled must be boolean", code: "BAD_REQUEST" }, 400)
+  }
+
+  try {
+    const budget = getEntitlementBudgetByKey(c.env, budgetKey)
+    const setRes = await budget.fetch(
+      new Request("http://do.internal/?action=setEnabled", {
+        method: "POST",
+        body: JSON.stringify({ enabled: body.enabled }),
+      }),
+    )
+    if (!setRes.ok) {
+      throw new Error(await setRes.text())
+    }
+    return c.json(await inspectBudget(c.env, budgetKey))
+  } catch {
+    return c.json({ error: "Failed to set budget enabled state" }, 500)
+  }
+})
+
+// Admin: Configure monthly allowance reset policy
+app.post("/admin/entitlement/monthly-allowance", async (c) => {
   let body: {
     allowanceId?: string
     budgetKey?: string
@@ -1321,6 +1900,8 @@ app.post("/admin/entitlement/monthly-allowance", async (c) => {
   }
 
   const budgetKey = body.budgetKey?.trim() || defaultBudgetKey(c.env)
+  const access = await requireBudgetAccess(c, budgetKey)
+  if (access instanceof Response) return access
   const allowanceId = body.allowanceId?.trim() || defaultMonthlyAllowanceId(c.env)
 
   const budget = getEntitlementBudgetByKey(c.env, budgetKey)
@@ -1373,10 +1954,9 @@ app.post("/admin/entitlement/monthly-allowance", async (c) => {
 
 // Admin: Inspect monthly allowance reset policy
 app.get("/admin/entitlement/monthly-allowance", async (c) => {
-  const adminError = await requireAdminSession(c)
-  if (adminError) return adminError
-
   const budgetKey = c.req.query("budgetKey")?.trim() || defaultBudgetKey(c.env)
+  const access = await requireBudgetAccess(c, budgetKey)
+  if (access instanceof Response) return access
   const allowanceId = c.req.query("allowanceId")?.trim()
 
   try {
@@ -2035,6 +2615,7 @@ app.post("/api/rooms/:roomId/meter", async (c) => {
 
   const chargeResult = (await chargeRes.json()) as {
     ok: boolean
+    reason?: "exhausted" | "disabled"
     remainingBytes?: number
     lifecycle?: "active" | "in_grace" | "exhausted"
     graceEndsAt?: number
@@ -2049,6 +2630,19 @@ app.post("/api/rooms/:roomId/meter", async (c) => {
       body: JSON.stringify(chargeResult),
     }),
   )
+
+  if (!chargeRes.ok && chargeResult.reason === "disabled") {
+    return c.json(
+      {
+        error: "Service budget disabled",
+        code: "SERVICE_BUDGET_DISABLED",
+        lifecycle: chargeResult.lifecycle,
+        graceEndsAt: chargeResult.graceEndsAt,
+        graceClaimedByRoomId: chargeResult.graceClaimedByRoomId,
+      },
+      403,
+    )
+  }
 
   if (!chargeRes.ok && chargeRes.status === 402) {
     return c.json(

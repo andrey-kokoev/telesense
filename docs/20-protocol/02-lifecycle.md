@@ -129,14 +129,20 @@ Admin termination:
 
 - host admin calls `POST /api/rooms/:roomId/terminate`
 
-## 10. Host Admin Lifecycle
+## 10. Token Resolution Lifecycle
 
-Host admin uses a two-step flow:
+Admin-capable tokens use a two-step exchange flow behind one landing-page token field:
 
-1. exchange `X-Host-Admin-Token` at `POST /admin/auth/exchange`
-2. use returned `X-Host-Admin-Session` for admin APIs
+1. browser submits the pasted token to `POST /auth/resolve`
+2. worker classifies it as:
+   - host-admin
+   - budget-admin
+   - service-entitlement
+3. if admin-capable, browser stores the returned admin session token
+4. if service-capable, browser stores the resolved service-entitlement token state
 
-Bootstrap token and admin session are intentionally separate:
+Bootstrap/admin tokens and browser sessions are intentionally separate:
 
 - bootstrap token is setup-time/operator credential
-- host-admin session is the browser’s working admin credential
+- budget-admin token is one-budget operator credential
+- browser sessions are the working admin credentials

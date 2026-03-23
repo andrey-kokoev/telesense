@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue"
 import AdminView from "./views/AdminView.vue"
+import BudgetAdminView from "./views/BudgetAdminView.vue"
 import LandingView from "./views/LandingView.vue"
 import CallView from "./views/CallView.vue"
 import ToastContainer from "./components/ToastContainer.vue"
@@ -18,6 +19,11 @@ const adminMode = computed(() => {
   const params = new URLSearchParams(location.search)
   return params.get("admin") === "1"
 })
+
+const budgetAdminKey = computed(() => {
+  const match = location.pathname.match(/^\/budget-admin\/([^/]+)$/)
+  return match ? decodeURIComponent(match[1]) : null
+})
 </script>
 
 <template>
@@ -25,6 +31,11 @@ const adminMode = computed(() => {
     <main>
       <Transition name="page" mode="out-in">
         <CallView v-if="roomId" :roomId="roomId" key="call" />
+        <BudgetAdminView
+          v-else-if="budgetAdminKey"
+          :budget-key="budgetAdminKey"
+          key="budget-admin"
+        />
         <AdminView v-else-if="adminMode" key="admin" />
         <LandingView v-else key="landing" />
       </Transition>

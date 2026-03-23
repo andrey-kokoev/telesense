@@ -12,6 +12,7 @@ export type SecretVersionRecord = {
 
 export type EntitlementBudgetState = {
   budgetId: string
+  enabled: boolean
   remainingBytes: number
   consumedBytes: number
   currentSecretVersion: number
@@ -34,7 +35,7 @@ export type ChargeResult =
     }
   | {
       ok: false
-      reason: "exhausted"
+      reason: "exhausted" | "disabled"
       remainingBytes: 0
       lifecycle: BudgetLifecycle
       graceEndsAt: number | null
@@ -44,6 +45,7 @@ export type ChargeResult =
 export class EntitlementBudget {
   private state: DurableObjectState
   private budgetId: string = ""
+  private enabled: boolean = true
   private remainingBytes: number = 0
   private consumedBytes: number = 0
   private currentSecretVersion: number = 0
@@ -64,6 +66,7 @@ export class EntitlementBudget {
 
     if (stored) {
       this.budgetId = stored.budgetId
+      this.enabled = stored.enabled ?? true
       this.remainingBytes = stored.remainingBytes
       this.consumedBytes = stored.consumedBytes
       this.currentSecretVersion = stored.currentSecretVersion
@@ -77,6 +80,7 @@ export class EntitlementBudget {
     } else {
       // New budget - generate ID and initialize
       this.budgetId = crypto.randomUUID()
+      this.enabled = true
       this.remainingBytes = 0
       this.consumedBytes = 0
       this.currentSecretVersion = 0
@@ -94,6 +98,7 @@ export class EntitlementBudget {
   private async persist() {
     await this.state.storage.put("budget", {
       budgetId: this.budgetId,
+      enabled: this.enabled,
       remainingBytes: this.remainingBytes,
       consumedBytes: this.consumedBytes,
       currentSecretVersion: this.currentSecretVersion,
@@ -117,8 +122,14 @@ export class EntitlementBudget {
         case "getBudget":
           return this.handleGetBudget()
 
+        case "setEnabled":
+          return this.handleSetEnabled(request)
+
         case "setAllowance":
           return this.handleSetAllowance(request)
+
+        case "setSnapshot":
+          return this.handleSetSnapshot(request)
 
         case "addAllowance":
           return this.handleAddAllowance(request)
@@ -157,6 +168,7 @@ export class EntitlementBudget {
     return new Response(
       JSON.stringify({
         budgetId: this.budgetId,
+        enabled: this.enabled,
         remainingBytes: this.remainingBytes,
         consumedBytes: this.consumedBytes,
         currentSecretVersion: this.currentSecretVersion,
@@ -176,6 +188,24 @@ export class EntitlementBudget {
     )
   }
 
+  private async handleSetEnabled(request: Request): Promise<Response> {
+    const body = (await request.json()) as { enabled: boolean }
+    if (typeof body.enabled !== "boolean") {
+      return new Response(JSON.stringify({ error: "Invalid enabled value" }), { status: 400 })
+    }
+
+    this.enabled = body.enabled
+    await this.persist()
+
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        enabled: this.enabled,
+      }),
+      { status: 200 },
+    )
+  }
+
   private async handleSetAllowance(request: Request): Promise<Response> {
     const body = (await request.json()) as { bytes: number }
     const bytes = body.bytes
@@ -190,6 +220,36 @@ export class EntitlementBudget {
     return new Response(JSON.stringify({ ok: true, remainingBytes: this.remainingBytes }), {
       status: 200,
     })
+  }
+
+  private async handleSetSnapshot(request: Request): Promise<Response> {
+    const body = (await request.json()) as { remainingBytes: number; consumedBytes: number }
+    const remainingBytes = body.remainingBytes
+    const consumedBytes = body.consumedBytes
+
+    if (
+      typeof remainingBytes !== "number" ||
+      remainingBytes < 0 ||
+      typeof consumedBytes !== "number" ||
+      consumedBytes < 0
+    ) {
+      return new Response(JSON.stringify({ error: "Invalid budget snapshot" }), { status: 400 })
+    }
+
+    this.remainingBytes = remainingBytes
+    this.consumedBytes = consumedBytes
+    this.graceEndsAt = null
+    this.graceClaimedByRoomId = null
+    await this.persist()
+
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        remainingBytes: this.remainingBytes,
+        consumedBytes: this.consumedBytes,
+      }),
+      { status: 200 },
+    )
   }
 
   private async handleAddAllowance(request: Request): Promise<Response> {
@@ -267,12 +327,13 @@ export class EntitlementBudget {
     if (!result.ok) {
       return new Response(
         JSON.stringify({
-          error: "Budget exhausted",
+          error: result.reason === "disabled" ? "Budget disabled" : "Budget exhausted",
+          reason: result.reason,
           graceEndsAt: result.graceEndsAt,
           graceClaimedByRoomId: result.graceClaimedByRoomId,
           lifecycle: result.lifecycle,
         }),
-        { status: 402 }, // PAYMENT_REQUIRED
+        { status: result.reason === "disabled" ? 403 : 402 },
       )
     }
 
@@ -295,6 +356,17 @@ export class EntitlementBudget {
   async charge(bytes: number, roomId: string): Promise<ChargeResult> {
     const now = Date.now()
     this.lastChargedAt = now
+
+    if (!this.enabled) {
+      return {
+        ok: false,
+        reason: "disabled",
+        remainingBytes: 0,
+        lifecycle: this.getLifecycle(now),
+        graceEndsAt: this.graceEndsAt,
+        graceClaimedByRoomId: this.graceClaimedByRoomId,
+      }
+    }
 
     // Check if already in grace and grace has expired
     if (this.graceEndsAt && now > this.graceEndsAt) {
@@ -375,7 +447,9 @@ export class EntitlementBudget {
   }
 
   private getLifecycle(now = Date.now()): BudgetLifecycle {
-    if (!this.graceEndsAt) return "active"
+    if (!this.graceEndsAt) {
+      return this.remainingBytes > 0 ? "active" : "exhausted"
+    }
     if (now < this.graceEndsAt) return "in_grace"
     return "exhausted"
   }
@@ -458,6 +532,10 @@ export class EntitlementBudget {
 
   getRemainingBytes(): number {
     return this.remainingBytes
+  }
+
+  isEnabled(): boolean {
+    return this.enabled
   }
 
   getCurrentSecretVersion(): number {

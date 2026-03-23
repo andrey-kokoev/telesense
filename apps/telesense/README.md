@@ -48,11 +48,10 @@ Edit `wrangler.toml`:
 
 - `REALTIME_APP_ID` - Your app ID
 - `GLOBAL_ENTITLEMENT_BUDGET_ID` - Shared budget name for current rollout
-- `SERVICE_ENTITLEMENT_ALLOWANCE_BYTES` - Bytes added to the shared budget per minted token
 - `GLOBAL_MONTHLY_ALLOWANCE_ID` - Shared monthly allowance policy name for current rollout
 - Bind `HOST_ADMIN_DB` to a D1 database to enable deployment-wide budget/allowance enumeration in host admin
 - `wrangler.toml` includes the binding stanza with a placeholder `database_id`; replace it with the real D1 id before deploy
-- Apply [0001_host_admin_registry.sql](/home/andrey/src/telesense/apps/telesense/migrations/0001_host_admin_registry.sql) to that database before using host admin
+- Apply all SQL files in [migrations](/home/andrey/src/telesense/apps/telesense/migrations) to that database before using host admin and token registries
 
 ## Identity Model
 
@@ -92,16 +91,29 @@ Multiple tabs are not supported for the same browser participant. Taking over fr
 
 - `POST /admin/auth/exchange` - Exchange `X-Host-Admin-Token` for a host-admin session token
 - `GET /admin/auth/verify` - Verify `X-Host-Admin-Session`
+- `POST /budget-admin/auth/exchange` - Exchange `X-Budget-Admin-Token` for a budget-admin session token
+- `GET /budget-admin/auth/verify` - Verify access to one budget
+- `POST /auth/resolve` - Resolve one pasted token into host-admin, budget-admin, or service-entitlement behavior
 
-### Admin APIs (require `X-Host-Admin-Session` header)
+### Host Admin APIs
 
 - `GET /admin/host/budgets` - Enumerate known budgets for host admin
 - `GET /admin/host/monthly-allowances` - Enumerate known monthly allowance policies for host admin
-- `POST /admin/entitlement/mint` - Mint a new service entitlement token for a selected budget
+- `POST /admin/budget-admin/mint` - Return the canonical budget-admin token for one budget
 - `POST /admin/entitlement/rotate` - Rotate a selected budget secret (invalidates old tokens)
 - `GET /admin/entitlement/budget?budgetKey=...` - Get full inspection data for a selected budget
 - `POST /admin/entitlement/monthly-allowance` - Configure a selected monthly allowance policy
 - `GET /admin/entitlement/monthly-allowance?allowanceId=...` - Inspect a selected monthly allowance policy
+
+### Budget-Scoped Admin APIs
+
+These routes accept either `X-Host-Admin-Session` or a matching `X-Budget-Admin-Session`.
+
+- `POST /admin/entitlement/mint` - Mint a new service entitlement token for a selected budget
+- `POST /admin/entitlement/budget-label` - Update a budget label
+- `GET /admin/entitlement/tokens?budgetKey=...` - List service entitlement tokens for one budget
+- `POST /admin/entitlement/tokens/label` - Update one service entitlement token label
+- `POST /admin/entitlement/tokens/active` - Activate or deactivate one service entitlement token
 
 ### Health
 
@@ -132,8 +144,10 @@ Multiple tabs are not supported for the same browser participant. Taking over fr
   - server-side secret used for minting and verifying service entitlement tokens
 - `HOST_ADMIN_BOOTSTRAP_TOKEN`
   - separate bootstrap credential used only to exchange for a host-admin session token
+- budget-admin tokens are canonical per budget and exchange into budget-admin sessions
 - host-admin routes require `X-Host-Admin-Session`, not the bootstrap token directly
-- the two are intentionally separate so browser admin bootstrap does not share the worker's mint/verify secret and does not remain the long-lived browser credential
+- the bootstrap secret and service-entitlement secret are intentionally separate so browser admin bootstrap does not share the worker's mint/verify secret and does not remain the long-lived browser credential
+- the landing page has one token entry field; the worker resolves whether the pasted token is host-admin, budget-admin, or service-entitlement
 
 ### Token Format
 
@@ -146,14 +160,14 @@ budgetId.secretVersion.claims.proof
 - `budgetId` - UUID identifying the budget (shared global budget in current rollout)
 - `budgetKey` - routable Durable Object name for the budget; host admin and room metering use this for routing
 - `secretVersion` - Incrementing integer, starts at 1
-- `claims` - Base64url-encoded JSON: `{ "tokenFormatVersion": 1, "issuedAt": 1234567890 }`
+- `claims` - Base64url-encoded JSON: `{ "tokenFormatVersion": 1, "issuedAt": 1234567890, "tokenId": "..." }`
 - `proof` - HMAC-SHA256(secret, `budgetId.secretVersion.claims`)
 
 ### Budget Model
 
 - One shared global budget per deployment
 - Budget tracks `remainingBytes` and `consumedBytes`
-- Each minted service entitlement token adds `SERVICE_ENTITLEMENT_ALLOWANCE_BYTES` to the shared budget
+- Many service entitlement tokens can share the same budget
 - 60-second metering ticks estimate egress usage
 - Grace period (15 minutes) when budget exhausted
 - New joins rejected during grace; room terminates at grace end

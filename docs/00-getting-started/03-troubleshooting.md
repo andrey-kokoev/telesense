@@ -57,13 +57,15 @@ vp dev
 
 ### "Missing service entitlement token" / "Invalid service entitlement token"
 
-**Cause**: `X-Service-Entitlement-Token` header missing or incorrect when trying to create a new room.
+**Cause**: The token entered on the landing page was not resolved into a valid service-entitlement state when trying to create a new room.
 
 **Solutions**:
 
 1. **Development**: Check `DO_NOT_ENFORCE_SERVICE_ENTITLEMENT=true` is in `.dev.vars` to disable service-entitlement enforcement locally
-2. **Production**: Ensure client sends a valid `X-Service-Entitlement-Token`
-3. Check browser devtools Network tab for the header value
+2. **Production**: Ensure the pasted token is:
+   - a valid service-entitlement token, or
+   - an admin-capable token that also grants service access
+3. Check browser devtools Network tab for `/auth/resolve` and `/api/auth/verify`
 
 ```bash
 # Temporarily disable auth for testing (dev only)

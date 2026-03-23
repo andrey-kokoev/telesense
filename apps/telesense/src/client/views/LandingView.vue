@@ -10,16 +10,17 @@
           :digits="createRoomCodeDigits"
           name="create-room-code"
           :show-inputs="createRoomFlowState !== 'idle'"
+          :inactive="isCreateRoomSectionInactive"
           :button-label="createRoomButtonLabel"
           button-class="landing__btn--primary"
           :button-disabled="isCreateRoomButtonDisabled"
           :button-icon="createRoomButtonIcon"
           :set-input-ref="setCreateRoomCodeInputRef"
-          :is-input-disabled="isCreateRoomCodeInputDisabled"
+          :is-input-disabled="isCreateRoomInputDisabled"
           @submit="submitCreateRoom"
           @paste="onCreateRoomCodePaste"
-          @input="onCreateRoomCodeInput"
-          @keydown="onCreateRoomCodeKeydown"
+          @input="handleCreateRoomCodeInput"
+          @keydown="handleCreateRoomCodeKeydown"
         />
 
         <div class="landing__divider">
@@ -30,15 +31,16 @@
           :title="t('landing_join_room')"
           :digits="roomCodeDigits"
           name="room-code"
+          :inactive="isJoinRoomSectionInactive"
           button-class="landing__btn--secondary"
           :button-label="t('landing_join')"
           :button-disabled="isJoinRoomButtonDisabled"
           :set-input-ref="setRoomCodeInputRef"
-          :is-input-disabled="isRoomCodeInputDisabled"
+          :is-input-disabled="isJoinRoomInputDisabled"
           @submit="joinExistingRoom"
           @paste="onRoomCodePaste"
-          @input="onRoomCodeInput"
-          @keydown="onRoomCodeKeydown"
+          @input="handleJoinRoomCodeInput"
+          @keydown="handleJoinRoomCodeKeydown"
         />
       </template>
 
@@ -75,13 +77,17 @@
             }}
           </p>
 
-          <form class="landing__form" @submit.prevent="saveServiceEntitlementToken">
+          <form class="landing__form" @submit.prevent="saveEnteredToken">
             <input
               v-model="tokenInput"
               type="password"
               class="landing__input"
               :placeholder="t('landing_enter_token_placeholder')"
               autocomplete="off"
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck="false"
+              inputmode="text"
             />
             <button
               type="submit"
@@ -120,29 +126,29 @@
     </main>
 
     <!-- Token Change Modal (for authenticated users) -->
-    <div v-if="showTokenModal" class="landing__modal" @click.self="showTokenModal = false">
+    <div v-if="showTokenModal" class="landing__modal" @click.self="closeTokenModal">
       <div class="landing__modal-content">
         <h3 class="landing__modal-title">{{ t("landing_change_token") }}</h3>
-        <form class="landing__form" @submit.prevent="updateToken">
+        <form class="landing__form" @submit.prevent="updateServiceEntitlementToken">
           <input
             v-model="tokenInput"
             type="password"
             class="landing__input"
             :placeholder="t('landing_enter_new_token_placeholder')"
             autocomplete="off"
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck="false"
+            inputmode="text"
           />
           <div class="landing__modal-actions">
-            <button
-              type="button"
-              class="landing__btn landing__btn--ghost"
-              @click="showTokenModal = false"
-            >
+            <button type="button" class="landing__btn landing__btn--ghost" @click="closeTokenModal">
               {{ t("landing_cancel") }}
             </button>
             <button
               type="submit"
               class="landing__btn landing__btn--primary"
-              :disabled="!tokenInput.trim()"
+              :disabled="!tokenInput.trim() || serviceEntitlementUiState === 'verifying'"
             >
               {{ t("landing_save") }}
             </button>
@@ -153,17 +159,9 @@
 
     <div v-if="serviceEntitlementUiState !== 'missing'" class="landing__token-status">
       <span class="landing__token-badge">
-        {{
-          serviceEntitlementUiState === "valid"
-            ? `✓ ${t("landing_token_set")}`
-            : serviceEntitlementUiState === "verifying"
-              ? `… ${t("landing_service_entitlement_verifying")}`
-              : serviceEntitlementUiState === "invalid"
-                ? `! ${t("landing_invalid_token")}`
-                : `! ${t("landing_service_entitlement_saved_exhausted")}`
-        }}
+        {{ tokenStatusLabel }}
       </span>
-      <button class="landing__token-action" @click="showTokenModal = true">
+      <button class="landing__token-action" @click="openTokenModal">
         <svg
           width="14"
           height="14"
@@ -177,7 +175,7 @@
         </svg>
         <span>{{ t("landing_change_token_action") }}</span>
       </button>
-      <button class="landing__token-action" @click="clearServiceEntitlementToken">
+      <button class="landing__token-action" @click="clearEnteredAccess">
         <svg
           width="14"
           height="14"
@@ -196,7 +194,7 @@
     <div class="landing__footer">
       <div class="landing__footer-actions">
         <button
-          v-if="hasHostAdminSessionToken"
+          v-if="hasHostAdminSessionToken || hasBudgetAdminSessionToken"
           class="landing__footer-admin"
           :aria-label="t('landing_admin')"
           :title="t('landing_admin')"
@@ -223,7 +221,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from "vue"
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import LandingHero from "../components/LandingHero.vue"
 import LanguageToggle from "../components/LanguageToggle.vue"
 import RecentRoomsSection from "../components/RecentRoomsSection.vue"
@@ -239,11 +237,17 @@ const {
   serviceEntitlementState,
   hasServiceEntitlementToken,
   hasHostAdminSessionToken,
+  hasBudgetAdminSessionToken,
+  budgetAdminBudgetKey,
   sanitizeCredentialToken,
   setServiceEntitlementToken,
+  setHostAdminSessionToken,
+  setBudgetAdminSession,
   recentCalls,
   addRecentCall,
   clearServiceEntitlementToken: clearStoredToken,
+  clearHostAdminSessionToken,
+  clearBudgetAdminSession,
   renameRecentCall,
   removeRecentCall,
 } = useAppStore()
@@ -266,6 +270,8 @@ const {
   onInput: onRoomCodeInput,
   onKeydown: onRoomCodeKeydown,
   onPaste: onRoomCodePaste,
+  clear: clearRoomCode,
+  insertCharacter: insertJoinRoomCharacter,
 } = useRoomCodeInput(joinExistingRoom)
 const {
   digits: createRoomCodeDigits,
@@ -277,6 +283,7 @@ const {
   onKeydown: onCreateRoomCodeKeydown,
   onPaste: onCreateRoomCodePaste,
   setValue: setCreateRoomCodeValue,
+  insertCharacter: insertCreateRoomCharacter,
   clear: clearCreateRoomCode,
 } = useRoomCodeInput(submitCreateRoom)
 const { roomAvailability, recentScrollEl, setRecentItemRef } =
@@ -284,9 +291,11 @@ const { roomAvailability, recentScrollEl, setRecentItemRef } =
 const showActiveRecentOnly = ref(false)
 type CreateRoomFlowState = "idle" | "editing" | "submitting"
 type JoinRoomFlowState = "editing" | "submitting"
+type ActiveCodeTarget = "join" | "create" | null
 
 const createRoomFlowState = ref<CreateRoomFlowState>("idle")
 const joinRoomFlowState = ref<JoinRoomFlowState>("editing")
+const activeCodeTarget = ref<ActiveCodeTarget>("join")
 
 const createRoomButtonLabel = computed(() =>
   createRoomFlowState.value === "idle"
@@ -302,6 +311,8 @@ const isCreateRoomButtonDisabled = computed(
 const isJoinRoomButtonDisabled = computed(
   () => joinRoomFlowState.value === "submitting" || roomIdInput.value.length !== 6,
 )
+const isCreateRoomSectionInactive = computed(() => activeCodeTarget.value === "join")
+const isJoinRoomSectionInactive = computed(() => activeCodeTarget.value === "create")
 const activeRecentCount = computed(
   () =>
     recentCalls.value.filter(
@@ -321,6 +332,24 @@ const serviceEntitlementUiState = computed<ServiceEntitlementUiState>(() => {
   }
   return serviceEntitlementState.value
 })
+const tokenStatusLabel = computed(() => {
+  if (serviceEntitlementUiState.value === "verifying") {
+    return `… ${t("landing_service_entitlement_verifying")}`
+  }
+  if (serviceEntitlementUiState.value === "invalid") {
+    return `! ${t("landing_invalid_token")}`
+  }
+  if (serviceEntitlementUiState.value === "exhausted") {
+    return `! ${t("landing_service_entitlement_saved_exhausted")}`
+  }
+  if (hasHostAdminSessionToken.value) {
+    return `✓ ${t("landing_host_admin_access_active")}`
+  }
+  if (hasBudgetAdminSessionToken.value) {
+    return `✓ ${t("landing_budget_admin_access_active")}`
+  }
+  return `✓ ${t("landing_token_set")}`
+})
 
 onMounted(() => {
   const params = new URLSearchParams(window.location.search)
@@ -333,16 +362,29 @@ onMounted(() => {
     window.history.replaceState({}, "", nextUrl)
   }
   focusRoomCodeInput(0)
+  window.addEventListener("keydown", handleDesktopLandingKeydown)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", handleDesktopLandingKeydown)
 })
 
 watch(createRoomIdInput, (value) => {
   if (createRoomFlowState.value === "submitting") return
   createRoomFlowState.value = value.length > 0 ? "editing" : "idle"
+  if (value.length > 0) {
+    activeCodeTarget.value = "create"
+  } else if (activeCodeTarget.value === "create") {
+    activeCodeTarget.value = "join"
+  }
 })
 
 watch(roomIdInput, () => {
   if (joinRoomFlowState.value === "submitting") return
   joinRoomFlowState.value = "editing"
+  if (roomIdInput.value.length > 0) {
+    activeCodeTarget.value = "join"
+  }
 })
 
 function generateCallId(): string {
@@ -368,6 +410,9 @@ async function submitCreateRoom() {
   if (createRoomFlowState.value === "submitting") return
 
   if (createRoomFlowState.value === "idle") {
+    activeCodeTarget.value = "create"
+    clearRoomCode()
+    joinRoomFlowState.value = "editing"
     const roomId = generateCallId()
     setCreateRoomCodeValue(roomId)
     createRoomFlowState.value = "editing"
@@ -383,6 +428,9 @@ async function submitCreateRoom() {
 
 function joinExistingRoom() {
   if (joinRoomFlowState.value === "submitting") return
+  activeCodeTarget.value = "join"
+  clearCreateRoomCode()
+  createRoomFlowState.value = "idle"
   const id = roomIdInput.value
   if (id.length !== 6) return
 
@@ -391,6 +439,42 @@ function joinExistingRoom() {
     addRecentCall(id)
   }
   goToRoom(id)
+}
+
+async function handleCreateRoomCodeInput(index: number, event: Event) {
+  if (activeCodeTarget.value !== "create") {
+    activeCodeTarget.value = "create"
+    clearRoomCode()
+    joinRoomFlowState.value = "editing"
+  }
+  await onCreateRoomCodeInput(index, event)
+}
+
+function handleCreateRoomCodeKeydown(index: number, event: KeyboardEvent) {
+  if (activeCodeTarget.value !== "create") {
+    activeCodeTarget.value = "create"
+    clearRoomCode()
+    joinRoomFlowState.value = "editing"
+  }
+  onCreateRoomCodeKeydown(index, event)
+}
+
+async function handleJoinRoomCodeInput(index: number, event: Event) {
+  if (activeCodeTarget.value !== "join") {
+    activeCodeTarget.value = "join"
+    clearCreateRoomCode()
+    createRoomFlowState.value = "idle"
+  }
+  await onRoomCodeInput(index, event)
+}
+
+function handleJoinRoomCodeKeydown(index: number, event: KeyboardEvent) {
+  if (activeCodeTarget.value !== "join") {
+    activeCodeTarget.value = "join"
+    clearCreateRoomCode()
+    createRoomFlowState.value = "idle"
+  }
+  onRoomCodeKeydown(index, event)
 }
 
 function goToRoom(roomId: string) {
@@ -440,39 +524,153 @@ function setRecentScrollRef(el: Element | null) {
   recentScrollEl.value = el instanceof HTMLElement ? el : null
 }
 
-async function verifyServiceEntitlementToken(candidateToken: string) {
-  const res = await fetch("/api/auth/verify", {
+function isCreateRoomInputDisabled(index: number) {
+  return isCreateRoomCodeInputDisabled(index)
+}
+
+function isJoinRoomInputDisabled(index: number) {
+  return isRoomCodeInputDisabled(index)
+}
+
+function isDesktopViewport() {
+  return typeof window !== "undefined" && window.matchMedia("(pointer:fine)").matches
+}
+
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false
+  if (target.closest(".landing__modal-content")) return true
+  const tagName = target.tagName
+  return (
+    tagName === "INPUT" ||
+    tagName === "TEXTAREA" ||
+    tagName === "SELECT" ||
+    target.isContentEditable
+  )
+}
+
+function handleDesktopLandingKeydown(event: KeyboardEvent) {
+  if (!isDesktopViewport()) return
+  if (event.defaultPrevented) return
+  if (event.ctrlKey || event.metaKey || event.altKey) return
+  if (event.key.length !== 1) return
+  if (!/[a-z0-9]/i.test(event.key)) return
+  if (isEditableTarget(event.target)) return
+  if (showTokenModal.value) return
+
+  if (serviceEntitlementUiState.value === "valid") {
+    if (createRoomFlowState.value !== "idle") {
+      activeCodeTarget.value = "create"
+      event.preventDefault()
+      void insertCreateRoomCharacter(event.key)
+      return
+    }
+    activeCodeTarget.value = "join"
+    event.preventDefault()
+    void insertJoinRoomCharacter(event.key)
+    return
+  }
+
+  activeCodeTarget.value = "join"
+  event.preventDefault()
+  void insertJoinRoomCharacter(event.key)
+}
+
+async function resolveEnteredToken(candidateToken: string) {
+  const res = await fetch("/auth/resolve", {
+    method: "POST",
     headers: {
-      "X-Service-Entitlement-Token": candidateToken,
+      "Content-Type": "application/json",
     },
+    body: JSON.stringify({ token: candidateToken }),
   })
 
-  const data = (await res.json().catch(() => ({}))) as { error?: string; code?: string }
+  const data = (await res.json().catch(() => ({}))) as
+    | {
+        kind?: "host-admin"
+        hostAdminSessionToken?: string
+        serviceEntitlementToken?: string
+        budgetKey?: string
+        error?: string
+      }
+    | {
+        kind?: "budget-admin"
+        budgetAdminSessionToken?: string
+        budgetKey?: string
+        serviceEntitlementToken?: string
+        error?: string
+      }
+    | {
+        kind?: "service-entitlement"
+        entitlementState?: "valid" | "exhausted"
+        error?: string
+      }
+
   return {
     ok: res.ok,
     status: res.status,
-    error: data.error || null,
+    data,
   }
 }
 
-async function saveServiceEntitlementToken() {
+async function saveEnteredToken() {
   const token = sanitizeCredentialToken(tokenInput.value)
   if (!token) return false
 
   transientServiceEntitlementUiState.value = "verifying"
-  const verification = await verifyServiceEntitlementToken(token)
-  if (!verification.ok && verification.status !== 402) {
+  const resolution = await resolveEnteredToken(token)
+  if (!resolution.ok) {
     transientServiceEntitlementUiState.value = "invalid"
-    show(verification.error || t("landing_invalid_token"), "error")
+    show(
+      ("error" in resolution.data && resolution.data.error) || t("landing_invalid_token"),
+      "error",
+    )
     return false
   }
 
-  setServiceEntitlementToken(token, verification.ok ? "valid" : "exhausted")
+  if (resolution.data.kind === "host-admin" && resolution.data.hostAdminSessionToken) {
+    setHostAdminSessionToken(resolution.data.hostAdminSessionToken, token)
+    if (resolution.data.serviceEntitlementToken) {
+      setServiceEntitlementToken(resolution.data.serviceEntitlementToken, "valid")
+    }
+    transientServiceEntitlementUiState.value = null
+    tokenInput.value = ""
+    show(t("admin_bootstrap_saved"), "success")
+    window.location.href = "/host-admin"
+    return true
+  }
+
+  if (
+    resolution.data.kind === "budget-admin" &&
+    resolution.data.budgetAdminSessionToken &&
+    resolution.data.budgetKey
+  ) {
+    setBudgetAdminSession(resolution.data.budgetAdminSessionToken, resolution.data.budgetKey)
+    if (resolution.data.serviceEntitlementToken) {
+      setServiceEntitlementToken(resolution.data.serviceEntitlementToken, "valid")
+    }
+    transientServiceEntitlementUiState.value = null
+    tokenInput.value = ""
+    show(t("budget_admin_unlocked"), "success")
+    window.location.href = `/budget-admin/${encodeURIComponent(resolution.data.budgetKey)}`
+    return true
+  }
+
+  const entitlementState =
+    resolution.data.kind === "service-entitlement" &&
+    resolution.data.entitlementState === "exhausted"
+      ? "exhausted"
+      : "valid"
+
+  setServiceEntitlementToken(token, entitlementState)
   transientServiceEntitlementUiState.value = null
   tokenInput.value = ""
 
-  if (verification.status === 402) {
-    show(verification.error || t("landing_service_entitlement_saved_exhausted"), "error")
+  if (entitlementState === "exhausted") {
+    show(
+      ("error" in resolution.data && resolution.data.error) ||
+        t("landing_service_entitlement_saved_exhausted"),
+      "error",
+    )
     return true
   }
 
@@ -481,20 +679,41 @@ async function saveServiceEntitlementToken() {
 }
 
 async function updateServiceEntitlementToken() {
-  const saved = await saveServiceEntitlementToken()
+  const saved = await saveEnteredToken()
   if (saved) {
-    showTokenModal.value = false
+    closeTokenModal()
   }
 }
 
-function clearServiceEntitlementToken() {
+function clearEnteredAccess() {
   clearStoredToken()
+  clearHostAdminSessionToken()
+  clearBudgetAdminSession()
   transientServiceEntitlementUiState.value = null
   tokenInput.value = ""
 }
 
+function openTokenModal() {
+  transientServiceEntitlementUiState.value = null
+  showTokenModal.value = true
+}
+
+function closeTokenModal() {
+  if (serviceEntitlementUiState.value !== "verifying") {
+    transientServiceEntitlementUiState.value = null
+  }
+  showTokenModal.value = false
+}
+
 function openAdmin() {
-  window.location.href = "/host-admin"
+  if (hasHostAdminSessionToken.value) {
+    window.location.href = "/host-admin"
+    return
+  }
+
+  if (hasBudgetAdminSessionToken.value && budgetAdminBudgetKey.value) {
+    window.location.href = `/budget-admin/${encodeURIComponent(budgetAdminBudgetKey.value)}`
+  }
 }
 </script>
 

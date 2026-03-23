@@ -20,6 +20,7 @@ describe("service entitlement tokens", () => {
     expect(extractClaims(token)).toEqual({
       tokenFormatVersion: TOKEN_FORMAT_VERSION,
       issuedAt: 1_700_000_000,
+      tokenId: expect.any(String),
     })
 
     await expect(verifyTokenWithSecret(token, "test-secret")).resolves.toEqual({
@@ -29,6 +30,7 @@ describe("service entitlement tokens", () => {
       claims: {
         tokenFormatVersion: TOKEN_FORMAT_VERSION,
         issuedAt: 1_700_000_000,
+        tokenId: expect.any(String),
       },
     })
   })
@@ -54,6 +56,7 @@ describe("service entitlement tokens", () => {
       JSON.stringify({
         tokenFormatVersion: TOKEN_FORMAT_VERSION,
         issuedAt: 1_700_000_999,
+        tokenId: parsed?.claims.tokenId,
       }),
     )
       .replace(/\+/g, "-")

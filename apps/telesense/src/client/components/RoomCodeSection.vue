@@ -23,7 +23,11 @@
             @keydown="emit('keydown', index, $event)"
           />
           <span
-            v-if="index === digits.findIndex((digit) => digit === '') && digits[index] === ''"
+            v-if="
+              !inactive &&
+              index === digits.findIndex((digit) => digit === '') &&
+              digits[index] === ''
+            "
             class="landing__code-caret landing-code-caret"
             aria-hidden="true"
             >_</span
@@ -45,6 +49,7 @@ withDefaults(
     digits: string[]
     name: string
     showInputs?: boolean
+    inactive?: boolean
     buttonLabel: string
     buttonClass: string
     buttonDisabled: boolean
@@ -54,6 +59,7 @@ withDefaults(
   }>(),
   {
     showInputs: true,
+    inactive: false,
   },
 )
 

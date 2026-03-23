@@ -19,7 +19,8 @@ docs/
 │
 ├── 10-architecture/             # System design
 │   ├── 01-overview.md           # Component architecture
-│   └── 02-media-flow.md         # Packet-level details
+│   ├── 02-media-flow.md         # Packet-level details
+│   └── 03-authority-topologies.md # Role and token delegation patterns
 │
 ├── 20-protocol/                 # API documentation
 │   ├── 01-api-reference.md      # All endpoints
@@ -88,8 +89,8 @@ This "pull model" means browsers **ask** Cloudflare for subscription Offers.
 **Understanding Decisions?**
 
 1. [Architecture](./10-architecture/01-overview.md) - Current system structure
-2. [API Reference](./20-protocol/01-api-reference.md) - Current route surface
-3. [How It Works](./00-getting-started/02-how-it-works.md) - Current conceptual model
+2. [Authority Topologies](./10-architecture/03-authority-topologies.md) - Role and token sharing models
+3. [API Reference](./20-protocol/01-api-reference.md) - Current route surface
 
 ## Contributing
 

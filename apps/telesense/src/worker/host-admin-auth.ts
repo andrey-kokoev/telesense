@@ -1,5 +1,8 @@
 const HOST_ADMIN_SESSION_FORMAT_VERSION = 1
 const HOST_ADMIN_SESSION_TTL_SECONDS = 30 * 24 * 60 * 60
+const BUDGET_ADMIN_TOKEN_FORMAT_VERSION = 1
+const BUDGET_ADMIN_SESSION_FORMAT_VERSION = 1
+const BUDGET_ADMIN_SESSION_TTL_SECONDS = 30 * 24 * 60 * 60
 
 type HostAdminSessionClaims = {
   tokenFormatVersion: number
@@ -10,6 +13,29 @@ type HostAdminSessionClaims = {
 
 type HostAdminSessionVerificationResult =
   | { valid: true; claims: HostAdminSessionClaims }
+  | { valid: false; reason: string }
+
+type BudgetAdminTokenClaims = {
+  tokenFormatVersion: number
+  purpose: "budget-admin"
+  budgetKey: string
+  issuedAt: number
+}
+
+type BudgetAdminTokenVerificationResult =
+  | { valid: true; claims: BudgetAdminTokenClaims }
+  | { valid: false; reason: string }
+
+type BudgetAdminSessionClaims = {
+  tokenFormatVersion: number
+  purpose: "budget-admin-session"
+  budgetKey: string
+  issuedAt: number
+  expiresAt: number
+}
+
+type BudgetAdminSessionVerificationResult =
+  | { valid: true; claims: BudgetAdminSessionClaims }
   | { valid: false; reason: string }
 
 function base64urlEncode(data: string): string {
@@ -75,6 +101,121 @@ export async function mintHostAdminSessionToken(secret: string): Promise<string>
   const payload = base64urlEncode(JSON.stringify(claims))
   const proof = await sign(secret, payload)
   return `${payload}.${proof}`
+}
+
+export async function mintBudgetAdminToken(secret: string, budgetKey: string): Promise<string> {
+  const now = Math.floor(Date.now() / 1000)
+  const claims: BudgetAdminTokenClaims = {
+    tokenFormatVersion: BUDGET_ADMIN_TOKEN_FORMAT_VERSION,
+    purpose: "budget-admin",
+    budgetKey,
+    issuedAt: now,
+  }
+  const payload = base64urlEncode(JSON.stringify(claims))
+  const proof = await sign(secret, payload)
+  return `${payload}.${proof}`
+}
+
+export async function verifyBudgetAdminToken(
+  token: string | null | undefined,
+  secret: string,
+): Promise<BudgetAdminTokenVerificationResult> {
+  const value = token?.trim()
+  if (!value) {
+    return { valid: false, reason: "Missing token" }
+  }
+
+  const parts = value.split(".")
+  if (parts.length !== 2) {
+    return { valid: false, reason: "Malformed token" }
+  }
+
+  const [payload, proof] = parts
+  let claims: BudgetAdminTokenClaims
+  try {
+    claims = JSON.parse(base64urlDecode(payload)) as BudgetAdminTokenClaims
+  } catch {
+    return { valid: false, reason: "Malformed claims" }
+  }
+
+  if (
+    claims.tokenFormatVersion !== BUDGET_ADMIN_TOKEN_FORMAT_VERSION ||
+    claims.purpose !== "budget-admin" ||
+    typeof claims.budgetKey !== "string" ||
+    !claims.budgetKey.trim() ||
+    typeof claims.issuedAt !== "number"
+  ) {
+    return { valid: false, reason: "Invalid claims" }
+  }
+
+  const proofValid = await verify(secret, payload, proof)
+  if (!proofValid) {
+    return { valid: false, reason: "Invalid proof" }
+  }
+
+  return { valid: true, claims }
+}
+
+export async function mintBudgetAdminSessionToken(
+  secret: string,
+  budgetKey: string,
+): Promise<string> {
+  const now = Math.floor(Date.now() / 1000)
+  const claims: BudgetAdminSessionClaims = {
+    tokenFormatVersion: BUDGET_ADMIN_SESSION_FORMAT_VERSION,
+    purpose: "budget-admin-session",
+    budgetKey,
+    issuedAt: now,
+    expiresAt: now + BUDGET_ADMIN_SESSION_TTL_SECONDS,
+  }
+  const payload = base64urlEncode(JSON.stringify(claims))
+  const proof = await sign(secret, payload)
+  return `${payload}.${proof}`
+}
+
+export async function verifyBudgetAdminSessionToken(
+  token: string | null | undefined,
+  secret: string,
+): Promise<BudgetAdminSessionVerificationResult> {
+  const value = token?.trim()
+  if (!value) {
+    return { valid: false, reason: "Missing token" }
+  }
+
+  const parts = value.split(".")
+  if (parts.length !== 2) {
+    return { valid: false, reason: "Malformed token" }
+  }
+
+  const [payload, proof] = parts
+  let claims: BudgetAdminSessionClaims
+  try {
+    claims = JSON.parse(base64urlDecode(payload)) as BudgetAdminSessionClaims
+  } catch {
+    return { valid: false, reason: "Malformed claims" }
+  }
+
+  if (
+    claims.tokenFormatVersion !== BUDGET_ADMIN_SESSION_FORMAT_VERSION ||
+    claims.purpose !== "budget-admin-session" ||
+    typeof claims.budgetKey !== "string" ||
+    !claims.budgetKey.trim() ||
+    typeof claims.issuedAt !== "number" ||
+    typeof claims.expiresAt !== "number"
+  ) {
+    return { valid: false, reason: "Invalid claims" }
+  }
+
+  const proofValid = await verify(secret, payload, proof)
+  if (!proofValid) {
+    return { valid: false, reason: "Invalid proof" }
+  }
+
+  if (claims.expiresAt <= Math.floor(Date.now() / 1000)) {
+    return { valid: false, reason: "Expired" }
+  }
+
+  return { valid: true, claims }
 }
 
 export async function verifyHostAdminSessionToken(

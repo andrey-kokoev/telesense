@@ -129,6 +129,18 @@ Requires:
 X-Service-Entitlement-Token: {service_entitlement_token}
 ```
 
+### POST /auth/resolve
+
+Resolve a pasted access token into one of the supported authority types.
+
+The worker classifies the token and returns the appropriate result:
+
+- `host-admin`
+- `budget-admin`
+- `service-entitlement`
+
+This is the backend path behind the single landing-page token entry field.
+
 ## Host Admin Auth APIs
 
 ### POST /admin/auth/exchange
@@ -160,9 +172,37 @@ Requires:
 X-Host-Admin-Session: {host_admin_session_token}
 ```
 
+## Budget Admin Auth APIs
+
+### POST /budget-admin/auth/exchange
+
+Exchange a canonical budget-admin token for a budget-admin session token.
+
+Requires:
+
+```http
+X-Budget-Admin-Token: {budget_admin_token}
+```
+
+### GET /budget-admin/auth/verify
+
+Verify that the current session has access to one budget.
+
+Requires either:
+
+```http
+X-Host-Admin-Session: {host_admin_session_token}
+```
+
+or:
+
+```http
+X-Budget-Admin-Session: {budget_admin_session_token}
+```
+
 ## Host Admin APIs
 
-All endpoints below require `X-Host-Admin-Session`.
+Host-admin routes enumerate and operate across deployment budgets.
 
 ### GET /admin/host/budgets
 
@@ -174,7 +214,7 @@ Enumerate known monthly allowance policies from the registry.
 
 ### POST /admin/entitlement/mint
 
-Mint a new service entitlement token for a selected budget and add allowance.
+Mint a new service entitlement token for a selected budget.
 
 ### POST /admin/entitlement/rotate
 
@@ -195,6 +235,18 @@ Configure a monthly allowance policy.
 ### GET /admin/entitlement/monthly-allowance?allowanceId=...
 
 Inspect one monthly allowance policy.
+
+### GET /admin/entitlement/tokens?budgetKey=...
+
+List service entitlement tokens for one budget.
+
+### POST /admin/entitlement/tokens/label
+
+Update one service entitlement token label.
+
+### POST /admin/entitlement/tokens/active
+
+Activate or deactivate one service entitlement token.
 
 ## Health
 

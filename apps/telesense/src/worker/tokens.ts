@@ -8,6 +8,7 @@ export const TOKEN_FORMAT_VERSION = 1
 export type TokenClaims = {
   tokenFormatVersion: number
   issuedAt: number
+  tokenId: string
 }
 
 export type ParsedToken = {
@@ -108,6 +109,7 @@ export async function mintToken(
   const fullClaims: TokenClaims = {
     tokenFormatVersion: TOKEN_FORMAT_VERSION,
     issuedAt: Math.floor(Date.now() / 1000),
+    tokenId: crypto.randomUUID(),
     ...claims,
   }
 
@@ -140,6 +142,12 @@ export function parseToken(token: string): ParsedToken | null {
     const claims = JSON.parse(claimsJson) as TokenClaims
 
     if (claims.tokenFormatVersion !== TOKEN_FORMAT_VERSION) {
+      return null
+    }
+    if (typeof claims.tokenId !== "string" || claims.tokenId.trim() === "") {
+      return null
+    }
+    if (typeof claims.issuedAt !== "number" || !Number.isFinite(claims.issuedAt)) {
       return null
     }
 

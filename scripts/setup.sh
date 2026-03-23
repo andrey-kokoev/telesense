@@ -45,8 +45,11 @@ APP_DIR="$ROOT_DIR/apps/telesense"
 WRANGLER_CONFIG="$APP_DIR/wrangler.toml"
 DEV_VARS="$APP_DIR/.dev.vars"
 ENV_FILE="$APP_DIR/.env"
-MIGRATION_FILE="$APP_DIR/migrations/0001_host_admin_registry.sql"
+MIGRATIONS_DIR="$APP_DIR/migrations"
 SETUP_SUMMARY_FILE="$ROOT_DIR/.setup-summary"
+DEPLOYED_URL=""
+BUDGET_ADMIN_TOKEN=""
+SERVICE_ENTITLEMENT_SEEDED_TOKEN=""
 
 BLUE='\033[0;34m'
 GREEN='\033[0;32m'
@@ -122,6 +125,9 @@ write_setup_summary() {
   local app_id="$1"
   local host_admin_db_id="$2"
   local host_admin_token="$3"
+  local budget_admin_token="${4:-}"
+  local service_entitlement_token="${5:-}"
+  local deployed_url="${6:-}"
 
   if [[ "$DRY_RUN" == true ]]; then
     say "${BLUE}[dry-run] Would write $SETUP_SUMMARY_FILE${NC}"
@@ -135,12 +141,59 @@ telesense setup summary
 Calls App ID: $app_id
 HOST_ADMIN_DB: $host_admin_db_id
 
-Host Admin Token
+What To Do First
 ----------------
+Open the app at:
+  ${deployed_url:-<deployed-app-url>}
+
+There is one token entry field on the landing page.
+Paste any one of the tokens below into that same field.
+The app will detect what kind of token it is and route the user appropriately.
+
+Authority Levels
+----------------
+1. Host Admin Token
+   - Highest authority for this deployment.
+   - Unlocks host administration for all budgets.
+   - Also grants service access on the default budget.
+   - After entry, the Admin button opens host admin.
+
+2. Budget Admin Token
+   - Admin authority for one budget only.
+   - Can manage that budget and mint service entitlement tokens for it.
+   - Also grants service access on that same budget.
+   - After entry, the Admin button opens that budget's admin page.
+
+3. Service Entitlement Token
+   - Service-use token only.
+   - Allows room creation/use against one budget.
+   - Does not expose admin surfaces.
+
+Seeded Tokens
+-------------
+Host Admin Token
 $host_admin_token
 
-Use this token on first host-admin startup at:
-  /host-admin
+Budget Admin Token
+${budget_admin_token:-Not seeded}
+
+Initial Service Entitlement Token
+${service_entitlement_token:-Not seeded}
+
+How The App Behaves
+-------------------
+- Enter Host Admin Token:
+  unlocks deployment admin and service access on the default budget.
+- Enter Budget Admin Token:
+  unlocks budget admin and service access on that budget.
+- Enter Service Entitlement Token:
+  enables normal room creation/use only.
+
+Operational Notes
+-----------------
+- Budget admin token is canonical per budget.
+- Service entitlement tokens are budget-scoped and can be labeled, activated, and deactivated from budget admin.
+- Rotating a budget secret invalidates all service entitlement tokens for that budget.
 EOF
 }
 
@@ -149,9 +202,13 @@ extract_json_value_with_node() {
   local expr="$2"
   node - <<'NODE' "$json_input" "$expr"
 const [jsonInput, expr] = process.argv.slice(2)
-const value = Function("data", `return ${expr}`)(JSON.parse(jsonInput))
-if (value === undefined || value === null) process.exit(1)
-process.stdout.write(String(value))
+try {
+  const value = Function("data", `return ${expr}`)(JSON.parse(jsonInput))
+  if (value === undefined || value === null) process.exit(1)
+  process.stdout.write(String(value))
+} catch {
+  process.exit(1)
+}
 NODE
 }
 
@@ -197,11 +254,59 @@ maybe_deploy() {
 
   if [[ "$should_deploy" == true ]]; then
     say "${BLUE}Deploying telesense...${NC}"
-    run_or_echo vp run deploy
+    if [[ "$DRY_RUN" == true ]]; then
+      say "${BLUE}[dry-run] Would deploy telesense and capture deployed URL${NC}"
+    else
+      local deploy_output
+      deploy_output="$(vp run --filter telesense ship 2>&1)"
+      printf '%s\n' "$deploy_output"
+      DEPLOYED_URL="$(printf '%s\n' "$deploy_output" | grep -oE 'https://[A-Za-z0-9._/-]+' | head -1 || true)"
+    fi
     say "${GREEN}✓ Deploy step completed${NC}"
   else
     say "${BLUE}Skipping deploy step${NC}"
   fi
+}
+
+seed_initial_credentials() {
+  if [[ "$DRY_RUN" == true ]]; then
+    BUDGET_ADMIN_TOKEN="dry-run-budget-admin-token"
+    SERVICE_ENTITLEMENT_SEEDED_TOKEN="dry-run-service-entitlement-token"
+    say "${BLUE}[dry-run] Would seed budget-admin and service-entitlement tokens${NC}"
+    return
+  fi
+
+  if [[ -z "$DEPLOYED_URL" ]]; then
+    say "${YELLOW}Could not determine deployed URL; skipping seeded credential minting${NC}"
+    return
+  fi
+
+  say "${BLUE}Seeding initial budget-admin and service-entitlement tokens...${NC}"
+  local seed_response
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    if seed_response="$(
+      curl -sS -X POST \
+        -H "X-Host-Admin-Token: $HOST_ADMIN_BOOTSTRAP_TOKEN" \
+        "${DEPLOYED_URL%/}/admin/bootstrap/seed-credentials"
+    )"; then
+      break
+    fi
+    sleep 2
+  done
+
+  if [[ -z "$seed_response" ]]; then
+    say "${YELLOW}Could not seed initial credentials yet; skipping${NC}"
+    return
+  fi
+
+  BUDGET_ADMIN_TOKEN="$(extract_json_value_with_node "$seed_response" "data.budgetAdminToken" || true)"
+  SERVICE_ENTITLEMENT_SEEDED_TOKEN="$(extract_json_value_with_node "$seed_response" "data.serviceEntitlementToken" || true)"
+  if [[ -z "$BUDGET_ADMIN_TOKEN" || -z "$SERVICE_ENTITLEMENT_SEEDED_TOKEN" ]]; then
+    say "${YELLOW}Credential seeding endpoint did not return the expected tokens; skipping${NC}"
+    return
+  fi
+  say "${GREEN}✓ Seeded budget-admin and service-entitlement tokens${NC}"
 }
 
 resolve_mode() {
@@ -234,6 +339,7 @@ say ""
 require_command vp
 require_command openssl
 require_command node
+require_command curl
 
 cd "$ROOT_DIR"
 
@@ -357,9 +463,11 @@ else
 fi
 say "${GREEN}✓ Bound HOST_ADMIN_DB ($HOST_ADMIN_DB_ID) in wrangler.toml${NC}"
 
-say "${BLUE}Applying host-admin D1 migration...${NC}"
-run_or_echo vp exec wrangler d1 execute "$HOST_ADMIN_DB_NAME" --file "$MIGRATION_FILE" --config "$WRANGLER_CONFIG" >/dev/null
-say "${GREEN}✓ Applied D1 schema from $(basename "$MIGRATION_FILE")${NC}"
+say "${BLUE}Applying host-admin D1 migrations...${NC}"
+for migration_file in "$MIGRATIONS_DIR"/*.sql; do
+  run_or_echo vp exec wrangler d1 execute "$HOST_ADMIN_DB_NAME" --file "$migration_file" --config "$WRANGLER_CONFIG" >/dev/null
+done
+say "${GREEN}✓ Applied D1 schema from $(basename "$MIGRATIONS_DIR")${NC}"
 say ""
 
 say "${BLUE}Setting Cloudflare worker secrets...${NC}"
@@ -375,11 +483,6 @@ fi
 say "${GREEN}✓ Updated CF_CALLS_SECRET, SERVICE_ENTITLEMENT_TOKEN, and HOST_ADMIN_BOOTSTRAP_TOKEN in Cloudflare${NC}"
 say ""
 
-say "${BLUE}Writing setup summary...${NC}"
-write_setup_summary "$APP_ID" "$HOST_ADMIN_DB_ID" "$HOST_ADMIN_BOOTSTRAP_TOKEN"
-say "${GREEN}✓ Setup summary available at $SETUP_SUMMARY_FILE${NC}"
-say ""
-
 say "${BLUE}Running verification...${NC}"
 run_or_echo vp check
 say "${GREEN}✓ Project check passed${NC}"
@@ -393,6 +496,12 @@ say "${GREEN}Configured:${NC}"
 say "  Calls App ID: $APP_ID"
 say "  Host Admin Token: $HOST_ADMIN_BOOTSTRAP_TOKEN"
 say "  HOST_ADMIN_DB: $HOST_ADMIN_DB_NAME ($HOST_ADMIN_DB_ID)"
+if [[ -n "$BUDGET_ADMIN_TOKEN" ]]; then
+  say "  Budget Admin Token: $BUDGET_ADMIN_TOKEN"
+fi
+if [[ -n "$SERVICE_ENTITLEMENT_SEEDED_TOKEN" ]]; then
+  say "  Service Entitlement Token: $SERVICE_ENTITLEMENT_SEEDED_TOKEN"
+fi
 say ""
 say "${GREEN}Notes:${NC}"
 say "  - Host-admin registry seeding happens automatically on first host-admin access or scheduled monthly processing."
@@ -403,14 +512,24 @@ fi
 say ""
 say "${GREEN}Next steps:${NC}"
 maybe_deploy
+seed_initial_credentials
+write_setup_summary \
+  "$APP_ID" \
+  "$HOST_ADMIN_DB_ID" \
+  "$HOST_ADMIN_BOOTSTRAP_TOKEN" \
+  "$BUDGET_ADMIN_TOKEN" \
+  "$SERVICE_ENTITLEMENT_SEEDED_TOKEN" \
+  "$DEPLOYED_URL"
+say "${GREEN}✓ Setup summary available at $SETUP_SUMMARY_FILE${NC}"
+say ""
 if [[ "$MODE" == "local-dev" ]]; then
   say "  1. Run locally: vp dev"
-  say "  2. Open host admin locally at: http://localhost:5173/host-admin"
+  say "  2. Open http://localhost:5173 and enter one of the seeded tokens in the landing token field"
   say "  3. Run E2E tests: vp run test"
 else
   say "  1. Open the deployed app"
-  say "  2. Go to /host-admin and paste the Host Admin Token from $SETUP_SUMMARY_FILE"
-  say "  3. Configure labels, monthly allowances, and mint service entitlement tokens"
+  say "  2. Paste one of the seeded tokens into the landing token field"
+  say "  3. Use the Admin button only after entering a host-admin or budget-admin token"
 fi
 say ""
 say "${BLUE}To reconfigure, run: ./scripts/setup.sh --force${NC}"
