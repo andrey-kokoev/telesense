@@ -391,6 +391,23 @@ export async function updateEntitlementTokenActive(
   }
 }
 
+export async function deleteEntitlementTokenRegistry(env: RegistryEnv, tokenId: string) {
+  const db = env.HOST_ADMIN_DB
+  if (!db) return
+
+  try {
+    await db
+      .prepare(
+        `DELETE FROM entitlement_tokens
+         WHERE token_id = ?1`,
+      )
+      .bind(tokenId)
+      .run()
+  } catch (error) {
+    console.warn("[host-admin-registry] Failed to delete entitlement token", error)
+  }
+}
+
 export async function getBudgetAdminTokenRegistry(
   env: RegistryEnv,
   budgetKey: string,

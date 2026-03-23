@@ -30,37 +30,6 @@
   gap: 0.75rem;
 }
 
-.admin-home {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.75rem;
-  height: 2.75rem;
-  flex: none;
-  padding: 0;
-  border: 1px solid var(--ui-border);
-  border-radius: 0.9rem;
-  background: var(--admin-surface);
-  color: var(--ui-text);
-  cursor: pointer;
-  transition:
-    border-color 140ms ease,
-    background-color 140ms ease,
-    color 140ms ease;
-  margin-top: 0.05rem;
-}
-
-.admin-home:hover {
-  border-color: color-mix(in srgb, var(--ui-primary) 40%, var(--ui-border) 60%);
-  background: var(--admin-surface-hover);
-}
-
-.admin-home__icon {
-  width: 1.5rem;
-  height: 1.5rem;
-  display: block;
-}
-
 .admin-kicker {
   margin: 0;
   font-size: 0.75rem;

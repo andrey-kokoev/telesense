@@ -219,6 +219,8 @@ export const messages = {
     budget_admin_token_list_title: "Entitlement tokens",
     budget_admin_token_list_subtitle:
       "These are the service-access tokens this budget issues. Label them and turn them on or off individually.",
+    budget_admin_token_delete: "Delete token",
+    budget_admin_token_deleted: "Token deleted",
     budget_admin_no_tokens: "No entitlement tokens yet.",
     budget_admin_token_label_placeholder: "Token label",
     budget_admin_token_label_saved: "Token label updated",

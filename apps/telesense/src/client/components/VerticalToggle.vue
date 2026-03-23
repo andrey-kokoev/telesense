@@ -54,7 +54,6 @@ defineEmits<{
   background: color-mix(in srgb, var(--ui-bg) 82%, var(--ui-text) 18%);
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.2);
   transform: translateY(0);
-  margin-left: 0.03rem;
 }
 
 .vertical-toggle--active {

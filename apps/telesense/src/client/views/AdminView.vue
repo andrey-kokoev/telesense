@@ -2,9 +2,7 @@
   <div class="admin-view">
     <header class="admin-hero">
       <div class="admin-hero__copy">
-        <button class="admin-home" :aria-label="t('admin_home')" @click="goBack">
-          <img class="admin-home__icon" src="/favicon.svg" alt="" aria-hidden="true" />
-        </button>
+        <HomeLogoButton :aria-label="t('admin_home')" @click="goBack" />
         <div>
           <p class="admin-kicker">{{ t("admin_host_operations") }}</p>
           <h1 class="admin-hero__title">{{ t("admin_title") }}</h1>
@@ -431,12 +429,13 @@
 
 <script lang="ts">
 import { defineComponent } from "vue"
+import HomeLogoButton from "../components/HomeLogoButton.vue"
 import VerticalToggle from "../components/VerticalToggle.vue"
 import useAdminView from "./AdminView"
 
 export default defineComponent({
   name: "AdminView",
-  components: { VerticalToggle },
+  components: { HomeLogoButton, VerticalToggle },
   setup: useAdminView,
 })
 </script>

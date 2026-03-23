@@ -2,9 +2,7 @@
   <div class="budget-admin">
     <header class="budget-admin__hero">
       <div class="budget-admin__copy">
-        <button class="budget-admin__home" :aria-label="t('admin_home')" @click="goHome">
-          <img class="budget-admin__home-icon" src="/favicon.svg" alt="" aria-hidden="true" />
-        </button>
+        <HomeLogoButton :aria-label="t('admin_home')" @click="goHome" />
         <div>
           <p class="budget-admin__kicker">{{ t("budget_admin_kicker") }}</p>
           <h1 class="budget-admin__title">{{ budgetLabel }}</h1>
@@ -104,101 +102,32 @@
           </button>
         </div>
 
-        <div
+        <BudgetAdminTokenRow
           v-for="token in entitlementTokens"
           :key="token.tokenId"
-          class="budget-admin__token-row"
-        >
-          <VerticalToggle
-            :active="token.active"
-            :title="
-              token.active
-                ? t('budget_admin_token_disable_tooltip')
-                : t('budget_admin_token_enable_tooltip')
-            "
-            :aria-label="
-              token.active
-                ? t('budget_admin_token_disable_tooltip')
-                : t('budget_admin_token_enable_tooltip')
-            "
-            dim-inactive
-            @click="toggleEntitlementToken(token)"
-          />
-
-          <div class="budget-admin__token-main">
-            <div class="budget-admin__token-line">
-              <template v-if="editingTokenId === token.tokenId">
-                <form
-                  class="budget-admin__token-label-edit"
-                  @submit.prevent="commitEntitlementTokenLabel(token)"
-                >
-                  <input
-                    :ref="
-                      (el) => {
-                        if (editingTokenId === token.tokenId) setEditingTokenInput(el)
-                      }
-                    "
-                    :value="tokenDraftLabels[token.tokenId] ?? token.label ?? ''"
-                    class="budget-admin__token-label-input"
-                    type="text"
-                    spellcheck="false"
-                    :placeholder="t('budget_admin_token_label_placeholder')"
-                    @input="setTokenDraftLabel(token.tokenId, $event)"
-                    @click.stop
-                    @blur="commitEntitlementTokenLabel(token)"
-                    @keydown.enter.prevent="commitEntitlementTokenLabel(token)"
-                    @keydown.esc.prevent="cancelEntitlementTokenLabelEdit"
-                  />
-                </form>
-              </template>
-              <button
-                v-else
-                class="budget-admin__token-label-display"
-                type="button"
-                :title="t('admin_budget_rename')"
-                @click.stop="startEntitlementTokenLabelEdit(token)"
-              >
-                {{ token.label || t("budget_admin_token_label_placeholder") }}
-              </button>
-              <code
-                v-if="token.tokenPreview"
-                class="budget-admin__token-id"
-                :title="token.tokenPreview"
-              >
-                {{ token.tokenPreview }}
-              </code>
-              <span v-else class="budget-admin__token-id budget-admin__token-id--muted">
-                {{ t("budget_admin_token_preview_unavailable") }}
-              </span>
-              <button
-                type="button"
-                class="budget-admin__icon-button budget-admin__icon-button--copy"
-                :title="t('admin_copy_token')"
-                :aria-label="t('admin_copy_token')"
-                @click="copyEntitlementToken(token)"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <rect
-                    x="9"
-                    y="9"
-                    width="10"
-                    height="10"
-                    rx="2"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  />
-                  <path
-                    d="M7 15H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v1"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </div>
+          :token="token"
+          :draft-label="tokenDraftLabels[token.tokenId] ?? token.label ?? ''"
+          :is-editing="editingTokenId === token.tokenId"
+          :enable-tooltip="t('budget_admin_token_enable_tooltip')"
+          :disable-tooltip="t('budget_admin_token_disable_tooltip')"
+          :rename-title="t('admin_budget_rename')"
+          :label-placeholder="t('budget_admin_token_label_placeholder')"
+          :unavailable-label="t('budget_admin_token_preview_unavailable')"
+          :copy-title="t('admin_copy_token')"
+          :delete-title="t('budget_admin_token_delete')"
+          :set-input-ref="
+            (el) => {
+              if (editingTokenId === token.tokenId) setEditingTokenInput(el)
+            }
+          "
+          @toggle-active="toggleEntitlementToken"
+          @start-label-edit="startEntitlementTokenLabelEdit"
+          @cancel-label="cancelEntitlementTokenLabelEdit"
+          @commit-label="commitEntitlementTokenLabel"
+          @input-label="setTokenDraftLabel(token.tokenId, $event)"
+          @copy="copyEntitlementToken"
+          @delete="deleteEntitlementToken"
+        />
       </div>
     </section>
   </div>
@@ -213,10 +142,13 @@ import {
   ref,
   type ComponentPublicInstance,
 } from "vue"
-import VerticalToggle from "../components/VerticalToggle.vue"
+import BudgetAdminTokenRow from "../components/BudgetAdminTokenRow.vue"
+import HomeLogoButton from "../components/HomeLogoButton.vue"
 import { useAppStore } from "../composables/useAppStore"
+import { useEntitlementTokenActions } from "../composables/useEntitlementTokenActions"
 import { useI18n } from "../composables/useI18n"
 import { useToast } from "../composables/useToast"
+import type { EntitlementTokenRecord } from "../types/entitlementTokens"
 
 type AccessState = "checking" | "authorized" | "unauthorized"
 type BudgetResponse = {
@@ -235,18 +167,6 @@ type MonthlyAllowanceResponse = {
   lastResetAt: number | null
   lifecycle: "inactive" | "scheduled" | "due"
 }
-type EntitlementTokenRecord = {
-  tokenId: string
-  budgetKey: string
-  budgetId: string
-  secretVersion: number
-  tokenPreview: string | null
-  label: string | null
-  active: boolean
-  createdAt: number
-  updatedAt: number
-}
-
 const props = defineProps<{ budgetKey: string }>()
 const store = useAppStore()
 const { t } = useI18n()
@@ -560,58 +480,6 @@ function cancelEntitlementTokenLabelEdit() {
   editingTokenOriginalLabel.value = ""
 }
 
-function resetEntitlementTokenLabel(token: EntitlementTokenRecord) {
-  tokenDraftLabels.value[token.tokenId] = token.label ?? ""
-}
-
-async function saveEntitlementTokenLabel(token: EntitlementTokenRecord) {
-  const nextLabel = (tokenDraftLabels.value[token.tokenId] ?? "").trim()
-  const currentLabel = token.label ?? ""
-  if (nextLabel === currentLabel) return
-
-  try {
-    const response = await adminFetch("/admin/entitlement/tokens/label", {
-      method: "POST",
-      body: JSON.stringify({
-        budgetKey: props.budgetKey,
-        tokenId: token.tokenId,
-        label: nextLabel || null,
-      }),
-    })
-    if (!response.ok) throw new Error(await response.text())
-    const data = (await response.json()) as { token: EntitlementTokenRecord | null }
-    if (data.token) {
-      entitlementTokens.value = entitlementTokens.value.map((item) =>
-        item.tokenId === data.token?.tokenId ? data.token : item,
-      )
-      tokenDraftLabels.value[token.tokenId] = data.token.label ?? ""
-    }
-    show(t("budget_admin_token_label_saved"), "success")
-  } catch (error) {
-    resetEntitlementTokenLabel(token)
-    lastError.value = error instanceof Error ? error.message : String(error)
-    show(lastError.value, "error")
-  }
-}
-
-async function copyEntitlementToken(token: EntitlementTokenRecord) {
-  try {
-    const response = await adminFetch(
-      `/admin/entitlement/tokens/value?budgetKey=${encodeURIComponent(props.budgetKey)}&tokenId=${encodeURIComponent(token.tokenId)}`,
-    )
-    if (!response.ok) throw new Error(await response.text())
-    const data = (await response.json()) as { tokenValue: string | null }
-    if (!data.tokenValue) {
-      throw new Error("Token value unavailable")
-    }
-    await navigator.clipboard.writeText(data.tokenValue)
-    show(t("admin_token_copied"), "success")
-  } catch (error) {
-    lastError.value = error instanceof Error ? error.message : String(error)
-    show(t("admin_token_copy_failed"), "error")
-  }
-}
-
 async function commitEntitlementTokenLabel(token: EntitlementTokenRecord) {
   if (editingTokenId.value !== token.tokenId) return
   editingTokenId.value = ""
@@ -619,36 +487,23 @@ async function commitEntitlementTokenLabel(token: EntitlementTokenRecord) {
   await saveEntitlementTokenLabel(token)
 }
 
-async function toggleEntitlementToken(token: EntitlementTokenRecord) {
-  const previous = token.active
-  entitlementTokens.value = entitlementTokens.value.map((item) =>
-    item.tokenId === token.tokenId ? { ...item, active: !item.active } : item,
-  )
-
-  try {
-    const response = await adminFetch("/admin/entitlement/tokens/active", {
-      method: "POST",
-      body: JSON.stringify({
-        budgetKey: props.budgetKey,
-        tokenId: token.tokenId,
-        active: !previous,
-      }),
-    })
-    if (!response.ok) throw new Error(await response.text())
-    const data = (await response.json()) as { token: EntitlementTokenRecord | null }
-    if (data.token) {
-      entitlementTokens.value = entitlementTokens.value.map((item) =>
-        item.tokenId === data.token?.tokenId ? data.token : item,
-      )
-    }
-  } catch (error) {
-    entitlementTokens.value = entitlementTokens.value.map((item) =>
-      item.tokenId === token.tokenId ? { ...item, active: previous } : item,
-    )
-    lastError.value = error instanceof Error ? error.message : String(error)
-    show(lastError.value, "error")
-  }
-}
+const {
+  saveEntitlementTokenLabel,
+  copyEntitlementToken,
+  deleteEntitlementToken,
+  toggleEntitlementToken,
+} = useEntitlementTokenActions({
+  budgetKey: props.budgetKey,
+  adminFetch,
+  t,
+  show,
+  lastError,
+  entitlementTokens,
+  tokenDraftLabels,
+  editingTokenId,
+  editingTokenOriginalLabel,
+  editingTokenInput,
+})
 
 function handleDocumentClick(event: MouseEvent) {
   const target = event.target
@@ -701,22 +556,6 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: baseline;
   gap: 0.75rem;
-}
-
-.budget-admin__home {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  border: 1px solid var(--ui-border);
-  border-radius: 0.85rem;
-  background: var(--budget-admin-surface);
-}
-
-.budget-admin__home-icon {
-  width: 1.4rem;
-  height: 1.4rem;
 }
 
 .budget-admin__host-link {
@@ -823,6 +662,10 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
+.budget-admin__icon-button--delete {
+  color: color-mix(in srgb, #9d3023 80%, var(--ui-text) 20%);
+}
+
 .budget-admin__create-token-header {
   margin-left: auto;
 }
@@ -898,94 +741,5 @@ onBeforeUnmount(() => {
 
 .budget-admin__token-empty-copy {
   margin: 0;
-}
-
-.budget-admin__token-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 0.75rem;
-  align-items: center;
-  padding: 0.75rem 0;
-  border-top: 1px solid color-mix(in srgb, var(--ui-border) 75%, white 25%);
-}
-
-.budget-admin__token-main {
-  min-width: 0;
-}
-
-.budget-admin__token-line {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-}
-
-.budget-admin__token-label-edit {
-  display: block;
-  flex: none;
-}
-
-.budget-admin__token-label-display {
-  min-width: 0;
-  flex: none;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--ui-text);
-  font: inherit;
-  font-weight: 600;
-  text-align: left;
-  cursor: text;
-  text-decoration-line: underline;
-  text-decoration-style: dotted;
-  text-decoration-color: color-mix(in srgb, var(--ui-text-muted) 75%, transparent 25%);
-  text-underline-offset: 0.18em;
-}
-
-.budget-admin__token-label-input {
-  min-width: 0;
-  width: min(18rem, 100%);
-  padding: 0;
-  border: 0;
-  border-bottom: 1px dotted color-mix(in srgb, var(--ui-text-muted) 75%, transparent 25%);
-  background: transparent;
-  color: var(--ui-text);
-  font: inherit;
-  font-weight: 600;
-}
-
-.budget-admin__token-label-input:focus {
-  outline: none;
-  border-bottom-color: var(--ui-primary);
-}
-
-.budget-admin__token-id,
-.budget-admin__token-version {
-  color: var(--ui-text-muted);
-  font-family:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
-    monospace;
-  font-size: 0.78rem;
-}
-
-.budget-admin__token-id {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  opacity: 0.7;
-}
-
-.budget-admin__token-meta {
-  display: contents;
-}
-
-.budget-admin__token-state {
-  color: #1f6f43;
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-
-.budget-admin__token-state--off {
-  color: var(--ui-text-muted);
 }
 </style>
