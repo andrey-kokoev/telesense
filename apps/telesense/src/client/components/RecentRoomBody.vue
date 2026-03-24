@@ -142,18 +142,18 @@ defineExpose({
 .landing__recent-status-dot {
   width: 0.45rem;
   height: 0.45rem;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-text-tertiary);
   opacity: 0.55;
 }
 
 .landing__recent-status-dot--available {
-  background: var(--ui-success);
+  background: var(--color-success);
 }
 
 .landing__recent-status-dot--queued,
 .landing__recent-status-dot--checking {
-  background: color-mix(in srgb, var(--color-text-tertiary) 72%, var(--ui-success) 28%);
+  background: color-mix(in srgb, var(--color-text-tertiary) 72%, var(--color-success) 28%);
   opacity: 0.75;
 }
 

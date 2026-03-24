@@ -339,9 +339,9 @@ defineEmits<{
   gap: 0.5rem;
   padding: 0.7rem 0.95rem;
   border-radius: 0.8rem;
-  border: 1px solid var(--ui-border);
+  border: 1px solid var(--color-border);
   background: var(--admin-surface);
-  color: var(--ui-text);
+  color: var(--color-text-primary);
   font: inherit;
   cursor: pointer;
   transition:
@@ -351,7 +351,7 @@ defineEmits<{
 }
 
 .admin-btn:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--ui-primary) 40%, var(--ui-border) 60%);
+  border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-border) 60%);
   background: var(--admin-surface-hover);
 }
 
@@ -387,10 +387,10 @@ defineEmits<{
   justify-content: center;
   min-width: 2rem;
   padding: 0.3rem 0.65rem;
-  border-radius: 999px;
-  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
   background: var(--admin-surface);
-  color: var(--ui-text-muted);
+  color: var(--color-text-secondary);
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -415,7 +415,7 @@ defineEmits<{
 }
 
 .admin-field__label {
-  color: var(--ui-text-muted);
+  color: var(--color-text-secondary);
   font-size: 0.8rem;
   font-weight: 600;
 }
@@ -438,10 +438,10 @@ defineEmits<{
   align-items: center;
   justify-content: center;
   padding: 0.14rem 0.45rem;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--ui-primary) 32%, var(--ui-border) 68%);
-  background: color-mix(in srgb, var(--ui-primary) 10%, var(--admin-surface) 90%);
-  color: var(--ui-text-muted);
+  border-radius: var(--radius-full);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 32%, var(--color-border) 68%);
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--admin-surface) 90%);
+  color: var(--color-text-secondary);
   font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.03em;
@@ -451,10 +451,10 @@ defineEmits<{
 
 .admin-input {
   width: 100%;
-  border: 1px solid var(--ui-border);
+  border: 1px solid var(--color-border);
   border-radius: 0.8rem;
   background: var(--admin-surface);
-  color: var(--ui-text);
+  color: var(--color-text-primary);
   font: inherit;
   padding: 0.75rem 0.9rem;
 }
@@ -466,7 +466,7 @@ defineEmits<{
 
 .admin-input:focus {
   outline: none;
-  border-color: color-mix(in srgb, var(--ui-primary) 50%, var(--ui-border) 50%);
+  border-color: color-mix(in srgb, var(--color-accent) 50%, var(--color-border) 50%);
 }
 
 .admin-info {
@@ -478,7 +478,7 @@ defineEmits<{
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--ui-text-muted);
+  color: var(--color-text-secondary);
   cursor: help;
 }
 
@@ -486,7 +486,7 @@ defineEmits<{
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--ui-text-muted);
+  color: var(--color-text-secondary);
   font: inherit;
   cursor: pointer;
 }
@@ -504,7 +504,7 @@ defineEmits<{
 
 .admin-token-result__value {
   margin: 0;
-  color: var(--ui-text-muted);
+  color: var(--color-text-secondary);
   font-family:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
     monospace;
@@ -514,7 +514,7 @@ defineEmits<{
 }
 
 .admin-budget {
-  border: 1px solid var(--ui-border);
+  border: 1px solid var(--color-border);
   border-radius: 1rem;
   background: var(--admin-surface);
 }
@@ -563,7 +563,7 @@ defineEmits<{
 }
 
 .admin-budget__identity strong {
-  color: var(--ui-text);
+  color: var(--color-text-primary);
 }
 
 .admin-budget__label {
@@ -572,7 +572,7 @@ defineEmits<{
   cursor: text;
   text-decoration-line: underline;
   text-decoration-style: dotted;
-  text-decoration-color: color-mix(in srgb, var(--ui-text-muted) 75%, transparent 25%);
+  text-decoration-color: var(--color-text-secondary-faded);
   text-underline-offset: 0.18em;
 }
 
@@ -587,20 +587,20 @@ defineEmits<{
   max-width: 18rem;
   padding: 0;
   border: 0;
-  border-bottom: 1px dotted color-mix(in srgb, var(--ui-text-muted) 75%, transparent 25%);
+  border-bottom: 1px dotted var(--color-text-secondary-faded);
   background: transparent;
-  color: var(--ui-text);
+  color: var(--color-text-primary);
   font: inherit;
   font-weight: 700;
 }
 
 .admin-budget__label-input:focus {
   outline: none;
-  border-bottom-color: var(--ui-primary);
+  border-bottom-color: var(--color-accent);
 }
 
 .admin-budget__identity span {
-  color: var(--ui-text-muted);
+  color: var(--color-text-secondary);
   font-size: 0.85rem;
   font-family:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
@@ -612,7 +612,7 @@ defineEmits<{
   gap: 0.25rem;
   justify-items: center;
   text-align: center;
-  color: var(--ui-text-muted);
+  color: var(--color-text-secondary);
   font-size: 0.78rem;
 }
 
@@ -620,8 +620,8 @@ defineEmits<{
   width: 4.25rem;
   height: 0.35rem;
   overflow: hidden;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--ui-border) 76%, var(--admin-surface) 24%);
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--color-border) 76%, var(--admin-surface) 24%);
 }
 
 .admin-budget__usage-fill {
@@ -648,7 +648,7 @@ defineEmits<{
   align-items: center;
   gap: 0.4rem;
   padding: 0.45rem;
-  border: 1px solid var(--ui-border);
+  border: 1px solid var(--color-border);
   border-radius: 0.85rem;
   background: var(--admin-surface);
   box-shadow: var(--admin-shadow);
@@ -665,7 +665,7 @@ defineEmits<{
 }
 
 .admin-budget__override-unit {
-  color: var(--ui-text-muted);
+  color: var(--color-text-secondary);
   font-size: 0.85rem;
   white-space: nowrap;
 }
@@ -698,7 +698,7 @@ defineEmits<{
   display: grid;
   gap: 0.15rem;
   padding: 0.35rem;
-  border: 1px solid var(--ui-border);
+  border: 1px solid var(--color-border);
   border-radius: 0.85rem;
   background: var(--admin-surface);
   box-shadow: var(--admin-shadow);
@@ -708,7 +708,7 @@ defineEmits<{
   display: grid;
   gap: 0.65rem;
   padding: 0.2rem 0.2rem 0.45rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border) 75%, transparent 25%);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 75%, transparent 25%);
   margin-bottom: 0.2rem;
 }
 
@@ -720,7 +720,7 @@ defineEmits<{
 
 .admin-budget__menu-footer {
   padding: 0.35rem 0.2rem 0.2rem;
-  border-top: 1px solid color-mix(in srgb, var(--ui-border) 75%, transparent 25%);
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 75%, transparent 25%);
 }
 
 .admin-budget__menu-item {
@@ -732,7 +732,7 @@ defineEmits<{
   border: 0;
   border-radius: 0.65rem;
   background: transparent;
-  color: var(--ui-text);
+  color: var(--color-text-primary);
   font: inherit;
   font-size: 0.88rem;
   text-align: left;
@@ -745,10 +745,10 @@ defineEmits<{
 }
 
 .admin-budget__menu-item--danger {
-  color: var(--ui-danger);
+  color: var(--color-danger);
 }
 
 .admin-budget__menu-item--danger:hover {
-  background: color-mix(in srgb, var(--ui-danger) 10%, var(--admin-surface-hover));
+  background: color-mix(in srgb, var(--color-danger) 10%, var(--admin-surface-hover));
 }
 </style>

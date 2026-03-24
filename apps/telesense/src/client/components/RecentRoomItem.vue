@@ -351,7 +351,7 @@ onBeforeUnmount(() => {
 .landing__recent-item--deleting {
   background: color-mix(
     in srgb,
-    var(--ui-danger) var(--recent-swipe-tint, 16%),
+    var(--color-danger) var(--recent-swipe-tint, 16%),
     var(--color-bg-tertiary)
   );
 }
@@ -389,7 +389,7 @@ onBeforeUnmount(() => {
   right: 0;
   background: color-mix(
     in srgb,
-    var(--ui-danger) var(--recent-swipe-tint, 16%),
+    var(--color-danger) var(--recent-swipe-tint, 16%),
     var(--color-bg-tertiary)
   );
 }
@@ -415,7 +415,7 @@ onBeforeUnmount(() => {
 .landing__recent-item--swipe-ready .landing__recent-swipe-action--delete {
   background: color-mix(
     in srgb,
-    var(--ui-danger) max(var(--recent-swipe-tint, 22%), 34%),
+    var(--color-danger) max(var(--recent-swipe-tint, 22%), 34%),
     var(--color-bg-tertiary)
   );
 }
@@ -431,7 +431,7 @@ onBeforeUnmount(() => {
 .landing__recent-item--swipe-ready.landing__recent-item--deleting {
   background: color-mix(
     in srgb,
-    var(--ui-danger) max(var(--recent-swipe-tint, 22%), 34%),
+    var(--color-danger) max(var(--recent-swipe-tint, 22%), 34%),
     var(--color-bg-tertiary)
   );
 }

@@ -120,13 +120,13 @@ const emit = defineEmits<{
 .landing__recent-filter-dot {
   width: 0.55rem;
   height: 0.55rem;
-  border-radius: 999px;
-  background: var(--ui-success);
+  border-radius: var(--radius-full);
+  background: var(--color-success);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-border) 82%, transparent);
 }
 
 .landing__recent-filter--active .landing__recent-filter-dot {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-success) 26%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success) 26%, transparent);
 }
 
 .landing__recent-filter-label {
@@ -136,7 +136,7 @@ const emit = defineEmits<{
 }
 
 .landing__recent-filter-count {
-  font-family: "Geist Mono", var(--font-mono);
+  font-family: var(--font-mono-display);
   font-size: 0.75rem;
   line-height: 1;
 }
@@ -149,9 +149,7 @@ const emit = defineEmits<{
   background: var(--color-bg-primary);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
-  box-shadow:
-    inset 0 2px 5px rgb(0 0 0 / 0.08),
-    inset 0 1px 0 rgb(255 255 255 / 0.22);
+  box-shadow: var(--shadow-inset);
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--color-text-tertiary) 45%, var(--color-bg-tertiary))
     transparent;
@@ -168,7 +166,7 @@ const emit = defineEmits<{
 .landing__recent-scroll::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--color-text-tertiary) 45%, var(--color-bg-tertiary));
   border: 2px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background-clip: padding-box;
 }
 

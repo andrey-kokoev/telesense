@@ -209,7 +209,7 @@ async function copyDiagnostics() {
             aria-label="Remote participant video feed"
             :style="remoteZoomStyle"
             :class="{
-              'call-desktop__video--hidden':
+              'video--hidden':
                 isWaitingForRemote ||
                 isRemoteVideoOff ||
                 isRemoteDisconnected ||
@@ -359,7 +359,7 @@ async function copyDiagnostics() {
         >
           <span class="call-desktop__log-time muted">{{ entry.timestamp }}</span>
           <span>{{ entry.message }}</span>
-          <pre v-if="entry.details" class="call-desktop__log-details">{{
+          <pre v-if="entry.details" class="log-details">{{
             JSON.stringify(entry.details, null, 2)
           }}</pre>
         </div>
@@ -424,7 +424,7 @@ async function copyDiagnostics() {
 .call-desktop__menu-button,
 .call-desktop__sidebar-close {
   border: none;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-bg-secondary);
   color: color-mix(in srgb, var(--color-text-primary) 78%, var(--color-accent) 22%);
   padding: 0.8rem 1rem;
@@ -507,10 +507,6 @@ async function copyDiagnostics() {
   box-shadow: 0 10px 30px rgb(0 0 0 / 0.3);
 }
 
-.call-desktop__video--hidden {
-  opacity: 0;
-}
-
 .call-desktop__sidebar {
   width: min(38rem, calc(100vw - 4rem));
   max-height: min(70vh, 36rem);
@@ -544,16 +540,5 @@ async function copyDiagnostics() {
   justify-content: center;
   padding: 2rem;
   background: rgb(0 0 0 / 0.24);
-}
-
-.call-desktop__log-details {
-  margin: 0.35rem 0 0;
-  padding: 0.6rem 0.75rem;
-  border-radius: 0.75rem;
-  background: color-mix(in srgb, var(--color-bg-tertiary) 88%, transparent);
-  color: var(--color-text-secondary);
-  font-size: 0.75rem;
-  white-space: pre-wrap;
-  word-break: break-word;
 }
 </style>

@@ -134,7 +134,9 @@ export function useRoomCodeInput(
     if (!nextChar) return
 
     const index = digits.value.findIndex((digit) => digit === "")
-    const targetIndex = index === -1 ? digits.value.length - 1 : index
+    if (index === -1) return
+
+    const targetIndex = index
     digits.value[targetIndex] = nextChar
 
     const input = inputs.value[targetIndex]

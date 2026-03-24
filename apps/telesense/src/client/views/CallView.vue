@@ -385,8 +385,8 @@ onBeforeUnmount(() => {
 }
 
 .call-view__modal-button--primary {
-  background: var(--ui-primary);
-  border-color: var(--ui-primary);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
   color: var(--color-accent-foreground);
 }
 

@@ -172,12 +172,24 @@ const {
 
 <style scoped>
 .budget-admin {
-  --budget-admin-surface: color-mix(in srgb, var(--ui-bg) 90%, var(--ui-text) 10%);
-  --budget-admin-surface-soft: color-mix(in srgb, var(--ui-bg) 94%, var(--ui-text) 6%);
-  --budget-admin-surface-hover: color-mix(in srgb, var(--ui-bg) 84%, var(--ui-text) 16%);
+  --budget-admin-surface: color-mix(
+    in srgb,
+    var(--color-bg-primary) 90%,
+    var(--color-text-primary) 10%
+  );
+  --budget-admin-surface-soft: color-mix(
+    in srgb,
+    var(--color-bg-primary) 94%,
+    var(--color-text-primary) 6%
+  );
+  --budget-admin-surface-hover: color-mix(
+    in srgb,
+    var(--color-bg-primary) 84%,
+    var(--color-text-primary) 16%
+  );
   min-height: 100vh;
   padding: 2rem 1rem 3rem;
-  background: color-mix(in srgb, var(--ui-bg) 96%, var(--ui-text) 4%);
+  background: color-mix(in srgb, var(--color-bg-primary) 96%, var(--color-text-primary) 4%);
 }
 
 .budget-admin__hero,
@@ -199,10 +211,10 @@ const {
 
 .budget-admin__host-link {
   margin-left: auto;
-  border: 1px solid var(--ui-border);
-  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
   background: var(--budget-admin-surface);
-  color: var(--ui-text-muted);
+  color: var(--color-text-secondary);
   font: inherit;
   padding: 0.45rem 0.8rem;
   cursor: pointer;
@@ -212,7 +224,7 @@ const {
 .budget-admin__subtitle,
 .budget-admin__hint,
 .budget-admin__meta {
-  color: var(--ui-text-muted);
+  color: var(--color-text-secondary);
 }
 
 .budget-admin__kicker {
@@ -225,7 +237,7 @@ const {
 .budget-admin__title {
   margin: 0;
   font-size: 2rem;
-  color: var(--ui-text);
+  color: var(--color-text-primary);
 }
 
 .budget-admin__subtitle {
@@ -239,7 +251,7 @@ const {
   display: grid;
   gap: 0.9rem;
   padding: 1.1rem;
-  border: 1px solid var(--ui-border);
+  border: 1px solid var(--color-border);
   border-radius: 1rem;
   background: var(--budget-admin-surface);
 }
@@ -264,15 +276,15 @@ const {
   display: flex;
   align-items: center;
   gap: 0.8rem;
-  color: var(--ui-text-muted);
+  color: var(--color-text-secondary);
   font-size: 0.85rem;
 }
 
 .budget-admin__input {
-  border: 1px solid var(--ui-border);
+  border: 1px solid var(--color-border);
   border-radius: 0.75rem;
   background: var(--budget-admin-surface);
-  color: var(--ui-text);
+  color: var(--color-text-primary);
   font: inherit;
   padding: 0.65rem 0.8rem;
 }
@@ -280,10 +292,10 @@ const {
 .budget-admin__button,
 .budget-admin__text-button,
 .budget-admin__icon-button {
-  border: 1px solid var(--ui-border);
+  border: 1px solid var(--color-border);
   border-radius: 0.75rem;
   background: var(--budget-admin-surface);
-  color: var(--ui-text);
+  color: var(--color-text-primary);
   font: inherit;
   padding: 0.65rem 0.8rem;
   cursor: pointer;
@@ -296,13 +308,13 @@ const {
   height: 1.9rem;
   width: auto;
   padding: 0 0.65rem;
-  border-radius: 999px;
-  color: var(--ui-text-muted);
+  border-radius: var(--radius-full);
+  color: var(--color-text-secondary);
   white-space: nowrap;
 }
 
 .budget-admin__icon-button--delete {
-  color: color-mix(in srgb, #9d3023 80%, var(--ui-text) 20%);
+  color: color-mix(in srgb, #9d3023 80%, var(--color-text-primary) 20%);
 }
 
 .budget-admin__create-token-header {
@@ -310,7 +322,7 @@ const {
 }
 
 .budget-admin__status {
-  color: var(--ui-text);
+  color: var(--color-text-primary);
   font-weight: 600;
 }
 
@@ -322,8 +334,8 @@ const {
   width: 100%;
   height: 0.35rem;
   overflow: hidden;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--ui-border) 76%, var(--budget-admin-surface) 24%);
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--color-border) 76%, var(--budget-admin-surface) 24%);
 }
 
 .budget-admin__usage-fill {
@@ -337,7 +349,7 @@ const {
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--ui-text-muted);
+  color: var(--color-text-secondary);
 }
 
 .budget-admin__token-list {
@@ -357,14 +369,14 @@ const {
 }
 
 .budget-admin__token-list-title {
-  color: var(--ui-text);
+  color: var(--color-text-primary);
   font-size: 0.88rem;
   font-weight: 600;
 }
 
 .budget-admin__token-list-subtitle {
   margin: 0;
-  color: var(--ui-text-muted);
+  color: var(--color-text-secondary);
   font-size: 0.85rem;
 }
 
@@ -374,7 +386,7 @@ const {
   justify-content: start;
   align-items: start;
   gap: 0.6rem;
-  color: var(--ui-text-muted);
+  color: var(--color-text-secondary);
   font-size: 0.9rem;
 }
 

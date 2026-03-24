@@ -27,7 +27,7 @@ defineProps<{ subtitle: string }>()
 .landing__title {
   font-size: 2.5rem;
   font-weight: 700;
-  font-family: "Geist Mono", var(--font-mono);
+  font-family: var(--font-mono-display);
   color: var(--color-text-primary);
   opacity: 0.8;
   margin: 0;
@@ -64,7 +64,7 @@ defineProps<{ subtitle: string }>()
 }
 
 .landing__subtitle {
-  font-family: "Geist Mono", var(--font-mono);
+  font-family: var(--font-mono-display);
   font-size: 1rem;
   color: var(--color-text-secondary);
   letter-spacing: 0.04ch;

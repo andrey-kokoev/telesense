@@ -104,9 +104,7 @@ function handleInputKeydown(index: number, event: KeyboardEvent) {
   background: var(--color-bg-primary);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
-  box-shadow:
-    inset 0 2px 5px rgb(0 0 0 / 0.08),
-    inset 0 1px 0 rgb(255 255 255 / 0.22);
+  box-shadow: var(--shadow-inset);
 }
 
 .landing__code-input-wrap {
@@ -118,7 +116,7 @@ function handleInputKeydown(index: number, event: KeyboardEvent) {
   aspect-ratio: 1;
   padding: 0;
   font-size: 1.35rem;
-  font-family: "Geist Mono", var(--font-mono);
+  font-family: var(--font-mono-display);
   font-weight: 500;
   line-height: 1;
   text-align: center;

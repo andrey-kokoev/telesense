@@ -28,10 +28,10 @@ defineEmits<{
   height: 2.75rem;
   flex: none;
   padding: 0;
-  border: 1px solid var(--ui-border);
+  border: 1px solid var(--color-border);
   border-radius: 0.9rem;
-  background: color-mix(in srgb, var(--ui-bg) 90%, var(--ui-text) 10%);
-  color: var(--ui-text);
+  background: color-mix(in srgb, var(--color-bg-primary) 90%, var(--color-text-primary) 10%);
+  color: var(--color-text-primary);
   cursor: pointer;
   transition:
     border-color 140ms ease,
@@ -41,8 +41,8 @@ defineEmits<{
 }
 
 .home-logo-button:hover {
-  border-color: color-mix(in srgb, var(--ui-primary) 40%, var(--ui-border) 60%);
-  background: color-mix(in srgb, var(--ui-bg) 84%, var(--ui-text) 16%);
+  border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-border) 60%);
+  background: color-mix(in srgb, var(--color-bg-primary) 84%, var(--color-text-primary) 16%);
 }
 
 .home-logo-button__icon {

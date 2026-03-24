@@ -68,7 +68,7 @@ function selectLanguage(nextLocale: Locale) {
   min-width: 2.5rem;
   height: 2.5rem;
   padding: 0 0.55rem;
-  font-family: "Geist Mono", var(--font-mono);
+  font-family: var(--font-mono-display);
   font-size: 0.72rem;
   letter-spacing: 0.04em;
   color: var(--color-text-secondary);
@@ -136,7 +136,7 @@ function selectLanguage(nextLocale: Locale) {
 }
 
 .language-toggle__option-code {
-  font-family: "Geist Mono", var(--font-mono);
+  font-family: var(--font-mono-display);
   font-size: 0.72rem;
   color: var(--color-text-secondary);
 }

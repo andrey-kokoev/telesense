@@ -3,15 +3,6 @@
     {
       "path": ".",
     },
-    {
-      "path": "../realtime-examples",
-    },
-    {
-      "path": "../feedback-gitops",
-    },
-    {
-      "path": "../harmonia",
-    },
   ],
   "settings": {},
 }

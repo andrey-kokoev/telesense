@@ -239,7 +239,7 @@ async function copyDiagnostics() {
           aria-label="Remote participant video feed"
           :style="remoteZoomStyle"
           :class="{
-            'call-mobile__video--hidden':
+            'video--hidden':
               isWaitingForRemote ||
               isRemoteVideoOff ||
               isRemoteDisconnected ||
@@ -451,7 +451,7 @@ async function copyDiagnostics() {
       >
         <span class="call-mobile__log-time muted">{{ entry.timestamp }}</span>
         <span>{{ entry.message }}</span>
-        <pre v-if="entry.details" class="call-mobile__log-details">{{
+        <pre v-if="entry.details" class="log-details">{{
           JSON.stringify(entry.details, null, 2)
         }}</pre>
       </div>
@@ -543,10 +543,6 @@ async function copyDiagnostics() {
   bottom: 0.9rem;
 }
 
-.call-mobile__video--hidden {
-  opacity: 0;
-}
-
 .call-mobile__bottom-bar {
   position: fixed;
   left: 0;
@@ -573,7 +569,7 @@ async function copyDiagnostics() {
   border: none;
   background: none;
   color: color-mix(in srgb, var(--color-text-primary) 70%, var(--color-accent) 18%);
-  font-family: "Geist Mono", var(--font-mono);
+  font-family: var(--font-mono-display);
   font-size: 0.7rem;
   font-weight: 500;
   line-height: 1;
@@ -623,7 +619,7 @@ async function copyDiagnostics() {
   width: 2rem;
   height: 2rem;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-bg-secondary);
   color: var(--color-text-secondary);
 }
@@ -638,16 +634,5 @@ async function copyDiagnostics() {
   padding: 0.4rem;
   border-radius: 1rem;
   overflow-anchor: none;
-}
-
-.call-mobile__log-details {
-  margin: 0.35rem 0 0;
-  padding: 0.55rem 0.7rem;
-  border-radius: 0.75rem;
-  background: color-mix(in srgb, var(--color-bg-tertiary) 88%, transparent);
-  color: var(--color-text-secondary);
-  font-size: 0.72rem;
-  white-space: pre-wrap;
-  word-break: break-word;
 }
 </style>

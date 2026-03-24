@@ -35,17 +35,17 @@ const { toasts } = useToast()
 }
 
 .toast-success {
-  background: var(--ui-success);
+  background: var(--color-success);
   color: white;
 }
 
 .toast-error {
-  background: var(--ui-error);
+  background: var(--color-error);
   color: white;
 }
 
 .toast-info {
-  background: var(--color-tan-800);
+  background: var(--color-info);
   color: white;
 }
 

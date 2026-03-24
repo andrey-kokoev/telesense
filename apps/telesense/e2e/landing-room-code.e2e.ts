@@ -40,7 +40,7 @@ test.describe("Landing room code entry", () => {
     await expect(inputs.nth(5)).toHaveValue("F")
   })
 
-  test("shows a resolved primary action when a missing room code is entered", async ({ page }) => {
+  test("shows create room when a missing room code is entered in dev mode", async ({ page }) => {
     await page.route("**/api/rooms/*/status", async (route) => {
       await route.fulfill({
         status: 200,
@@ -64,6 +64,6 @@ test.describe("Landing room code entry", () => {
 
     const primaryAction = page.locator(".landing__main .landing__btn").first()
     await expect(primaryAction).toBeVisible()
-    await expect(primaryAction).toHaveText("Enter token to create rooms")
+    await expect(primaryAction).toHaveText("Create room")
   })
 })

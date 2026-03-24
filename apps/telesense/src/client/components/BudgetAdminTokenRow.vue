@@ -153,7 +153,7 @@ defineEmits<{
   gap: 0.75rem;
   align-items: center;
   padding: 0.75rem 0;
-  border-top: 1px solid color-mix(in srgb, var(--ui-border) 75%, white 25%);
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 75%, white 25%);
 }
 
 .budget-admin-token-row__main {
@@ -178,14 +178,14 @@ defineEmits<{
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--ui-text);
+  color: var(--color-text-primary);
   font: inherit;
   font-weight: 600;
   text-align: left;
   cursor: text;
   text-decoration-line: underline;
   text-decoration-style: dotted;
-  text-decoration-color: color-mix(in srgb, var(--ui-text-muted) 75%, transparent 25%);
+  text-decoration-color: var(--color-text-secondary-faded);
   text-underline-offset: 0.18em;
 }
 
@@ -194,20 +194,20 @@ defineEmits<{
   width: min(18rem, 100%);
   padding: 0;
   border: 0;
-  border-bottom: 1px dotted color-mix(in srgb, var(--ui-text-muted) 75%, transparent 25%);
+  border-bottom: 1px dotted var(--color-text-secondary-faded);
   background: transparent;
-  color: var(--ui-text);
+  color: var(--color-text-primary);
   font: inherit;
   font-weight: 600;
 }
 
 .budget-admin-token-row__label-input:focus {
   outline: none;
-  border-bottom-color: var(--ui-primary);
+  border-bottom-color: var(--color-accent);
 }
 
 .budget-admin-token-row__token-id {
-  color: var(--ui-text-muted);
+  color: var(--color-text-secondary);
   font-family:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
     monospace;
@@ -223,16 +223,16 @@ defineEmits<{
 }
 
 .budget-admin-token-row__icon-button {
-  border: 1px solid var(--ui-border);
+  border: 1px solid var(--color-border);
   border-radius: 0.75rem;
-  background: color-mix(in srgb, var(--ui-bg) 90%, var(--ui-text) 10%);
-  color: var(--ui-text);
+  background: color-mix(in srgb, var(--color-bg-primary) 90%, var(--color-text-primary) 10%);
+  color: var(--color-text-primary);
   font: inherit;
   padding: 0.65rem 0.8rem;
   cursor: pointer;
 }
 
 .budget-admin-token-row__icon-button--delete {
-  color: color-mix(in srgb, #9d3023 80%, var(--ui-text) 20%);
+  color: color-mix(in srgb, #9d3023 80%, var(--color-text-primary) 20%);
 }
 </style>

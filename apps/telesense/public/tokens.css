@@ -22,24 +22,6 @@
   --color-tan-400: #be986b;
   --color-tan-500: #a9794c;
 
-  --ui-primary: var(--color-yellow-600);
-  --ui-primary-hover: #c45f02;
-  --ui-secondary: var(--color-orange-500);
-  --ui-secondary-hover: #e66d00;
-  --ui-bg: var(--color-tan-50);
-  --ui-bg-elevated: white;
-  --ui-surface: var(--color-tan-100);
-  --ui-surface-hover: var(--color-tan-200);
-  --ui-text: #1a1a1a;
-  --ui-text-muted: #666;
-  --ui-border: var(--color-tan-200);
-  --ui-border-hover: var(--color-tan-300);
-  --ui-error: #dc2626;
-  --ui-error-hover: #b91c1c;
-  --ui-danger: var(--ui-error);
-  --ui-danger-hover: var(--ui-error-hover);
-  --ui-success: #16a34a;
-
   --color-bg-primary: var(--color-tan-50);
   --color-bg-secondary: #fef9f2;
   --color-bg-tertiary: var(--color-tan-100);
@@ -54,6 +36,14 @@
   --color-accent-foreground: #fff;
   --color-accent-alpha: rgb(221 112 2 / 0.1);
   --color-success-alpha: rgb(22 163 74 / 0.1);
+  --color-error: #dc2626;
+  --color-error-hover: #b91c1c;
+  --color-danger: var(--color-error);
+  --color-danger-hover: var(--color-error-hover);
+  --color-success: #16a34a;
+  --color-info: #4f3621;
+  --color-info-hover: #3d2a1a;
+  --color-text-secondary-faded: color-mix(in srgb, var(--color-text-secondary) 70%, transparent);
 
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -72,8 +62,10 @@
   --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-inset: inset 0 2px 5px rgb(0 0 0 / 0.08), inset 0 1px 0 rgb(255 255 255 / 0.22);
 
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --font-mono-display: "Geist Mono", var(--font-mono);
 }
 
 :root.dark {
@@ -99,19 +91,8 @@
   --color-accent-hover: var(--color-yellow-600);
   --color-accent-foreground: #120d06;
   --color-accent-alpha: rgb(255 176 32 / 0.2);
-
-  --ui-bg: #0f0d0a;
-  --ui-bg-elevated: #1a1814;
-  --ui-surface: #2a2620;
-  --ui-surface-hover: #3a3530;
-  --ui-text: #f5f3ef;
-  --ui-text-muted: #b8b0a8;
-  --ui-border: #3a3530;
-  --ui-border-hover: #5a5045;
-  --ui-primary: var(--color-yellow-500);
-  --ui-primary-hover: var(--color-yellow-600);
-  --ui-danger: var(--ui-error);
-  --ui-danger-hover: var(--ui-error-hover);
+  --color-info: #8d6f57;
+  --color-info-hover: #a9794c;
 
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
   --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.4), 0 1px 2px -1px rgb(0 0 0 / 0.4);

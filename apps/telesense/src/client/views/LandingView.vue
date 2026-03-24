@@ -54,7 +54,7 @@
           <input
             v-model="tokenInput"
             type="password"
-            class="landing__input"
+            class="input"
             :placeholder="tokenModalPlaceholder"
             autocomplete="off"
             autocapitalize="off"
@@ -63,12 +63,12 @@
             inputmode="text"
           />
           <div class="landing__modal-actions">
-            <button type="button" class="landing__btn landing__btn--ghost" @click="closeTokenModal">
+            <button type="button" class="btn btn-ghost" @click="closeTokenModal">
               {{ t("landing_cancel") }}
             </button>
             <button
               type="submit"
-              class="landing__btn landing__btn--primary"
+              class="btn btn-primary"
               :disabled="!tokenInput.trim() || serviceEntitlementUiState === 'verifying'"
             >
               {{ t("landing_save") }}
@@ -203,6 +203,7 @@ const {
 const { roomAvailability, recentScrollEl, setRecentItemRef } =
   useRecentRoomAvailability(recentCalls)
 const showActiveRecentOnly = ref(false)
+const unauthenticatedCreateAllowed = ref(false)
 
 const activeRecentCount = computed(
   () =>
@@ -245,7 +246,9 @@ const {
     window.location.href = path
   },
 })
-const canCreateRooms = computed(() => serviceEntitlementUiState.value === "valid")
+const canCreateRooms = computed(
+  () => serviceEntitlementUiState.value === "valid" || unauthenticatedCreateAllowed.value,
+)
 const {
   roomActionButtonLabel,
   roomActionButtonClass,
@@ -289,11 +292,21 @@ onMounted(() => {
   }
   focusRoomCodeInput(0)
   window.addEventListener("keydown", handleDesktopLandingKeydown)
+  void detectUnauthenticatedCreateAccess()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", handleDesktopLandingKeydown)
 })
+
+async function detectUnauthenticatedCreateAccess() {
+  try {
+    const response = await fetch("/api/auth/verify")
+    unauthenticatedCreateAllowed.value = response.ok
+  } catch {
+    unauthenticatedCreateAllowed.value = false
+  }
+}
 
 function goToRoom(roomId: string) {
   window.location.href = `/?room=${roomId}`
@@ -362,11 +375,6 @@ function handleDesktopLandingKeydown(event: KeyboardEvent) {
   if (event.defaultPrevented) return
   if (isEditableTarget(event.target)) return
   if (showTokenModal.value) return
-  if (isInvalidRoomCodeCharacter(event)) {
-    event.preventDefault()
-    show(t("landing_room_code_invalid_character"), "error")
-    return
-  }
   if (!roomCodeCharacter) return
 
   event.preventDefault()
@@ -533,104 +541,6 @@ function openAdmin() {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-}
-
-:deep(.landing__input),
-.landing__input {
-  width: 100%;
-  padding: var(--space-3) var(--space-4);
-  font-size: 1rem;
-  font-family: inherit;
-  color: var(--color-text-primary);
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  outline: none;
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
-}
-
-:deep(.landing__input:focus),
-.landing__input:focus {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px var(--color-accent-alpha);
-}
-
-:deep(.landing__input::placeholder),
-.landing__input::placeholder {
-  color: var(--color-text-tertiary);
-}
-
-:deep(.landing__btn),
-.landing__btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  font-size: 1rem;
-  font-weight: 500;
-  font-family: inherit;
-  border: none;
-  border-radius: var(--radius-lg);
-  cursor: pointer;
-  transition:
-    background-color 0.15s ease,
-    transform 0.1s ease,
-    opacity 0.15s ease;
-}
-
-:deep(.landing__btn:disabled),
-.landing__btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-:deep(.landing__btn:active:not(:disabled)),
-.landing__btn:active:not(:disabled) {
-  transform: scale(0.98);
-}
-
-:deep(.landing__btn--primary),
-.landing__btn--primary {
-  background: var(--color-accent);
-  color: var(--color-accent-foreground);
-}
-
-:deep(.landing__btn--primary:hover:not(:disabled)),
-.landing__btn--primary:hover:not(:disabled) {
-  background: var(--color-accent-hover);
-}
-
-:deep(.landing__btn--secondary),
-.landing__btn--secondary {
-  background: var(--color-bg-tertiary);
-  color: var(--color-text-primary);
-  border: 1px solid var(--color-border);
-}
-
-:deep(.landing__btn--secondary:hover:not(:disabled)),
-.landing__btn--secondary:hover:not(:disabled) {
-  background: var(--color-bg-hover);
-}
-
-:deep(.landing__btn--ghost),
-.landing__btn--ghost {
-  background: transparent;
-  color: var(--color-text-secondary);
-}
-
-:deep(.landing__btn--ghost:hover:not(:disabled)),
-.landing__btn--ghost:hover:not(:disabled) {
-  background: var(--color-bg-secondary);
-  color: var(--color-text-primary);
-}
-
-:deep(.landing__btn-icon),
-.landing__btn-icon {
-  font-size: 1.25rem;
-  line-height: 1;
 }
 
 .landing__divider {
