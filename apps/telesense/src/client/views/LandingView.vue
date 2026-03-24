@@ -19,18 +19,10 @@
         @blur="handleRoomCodeBlur"
       />
 
-      <div v-if="roomEntryHelperText || shouldShowEnterTokenPrompt" class="landing__room-helper">
+      <div v-if="roomEntryHelperText" class="landing__room-helper">
         <p v-if="roomEntryHelperText" class="landing__hint">
           {{ roomEntryHelperText }}
         </p>
-        <button
-          v-if="shouldShowEnterTokenPrompt"
-          type="button"
-          class="landing__inline-link"
-          @click="openTokenModal"
-        >
-          {{ t("landing_enter_token_prompt_action") }}
-        </button>
       </div>
 
       <!-- Recent Calls -->
@@ -57,13 +49,13 @@
     <!-- Token Change Modal (for authenticated users) -->
     <div v-if="showTokenModal" class="landing__modal" @click.self="closeTokenModal">
       <div class="landing__modal-content">
-        <h3 class="landing__modal-title">{{ t("landing_change_token") }}</h3>
+        <h3 class="landing__modal-title">{{ tokenModalTitle }}</h3>
         <form class="landing__form" @submit.prevent="updateServiceEntitlementToken">
           <input
             v-model="tokenInput"
             type="password"
             class="landing__input"
-            :placeholder="t('landing_enter_new_token_placeholder')"
+            :placeholder="tokenModalPlaceholder"
             autocomplete="off"
             autocapitalize="off"
             autocorrect="off"
@@ -213,6 +205,13 @@ const { roomAvailability, recentScrollEl, setRecentItemRef } =
 const showActiveRecentOnly = ref(false)
 type RoomLookupState = "idle" | "checking" | "exists" | "missing" | "error"
 type RoomActionState = "idle" | "submitting"
+type RoomEntryState =
+  | "incomplete"
+  | "checking"
+  | "joinable"
+  | "creatable"
+  | "token_required"
+  | "error"
 
 const roomLookupState = ref<RoomLookupState>("idle")
 const roomActionState = ref<RoomActionState>("idle")
@@ -234,45 +233,57 @@ const displayedRecentCalls = computed(() =>
 )
 const canCreateRooms = computed(() => serviceEntitlementUiState.value === "valid")
 const hasCompleteRoomCode = computed(() => roomIdInput.value.length === 6)
+const roomEntryState = computed<RoomEntryState>(() => {
+  if (!hasCompleteRoomCode.value) return "incomplete"
+  if (roomLookupState.value === "checking") return "checking"
+  if (roomLookupState.value === "exists") return "joinable"
+  if (roomLookupState.value === "error") return "error"
+  if (roomLookupState.value === "missing" && canCreateRooms.value) return "creatable"
+  if (roomLookupState.value === "missing") return "token_required"
+  return "checking"
+})
 const roomActionButtonLabel = computed(() => {
-  if (!hasCompleteRoomCode.value) return t("landing_enter_room_code")
-  if (roomLookupState.value === "checking") return t("landing_checking_room")
-  if (roomLookupState.value === "exists") return t("landing_join_room_action")
+  if (roomEntryState.value === "incomplete") return t("landing_enter_room_code")
+  if (roomEntryState.value === "checking") return t("landing_checking_room")
+  if (roomEntryState.value === "joinable") return t("landing_join_room_action")
+  if (roomEntryState.value === "token_required") return t("landing_enter_token_prompt_action")
+  if (roomEntryState.value === "error") return t("landing_try_again")
   return t("landing_create_room_action")
 })
-const roomActionButtonClass = computed(() =>
-  roomLookupState.value === "exists" ? "landing__btn--secondary" : "landing__btn--primary",
-)
+const roomActionButtonClass = computed(() => {
+  if (roomEntryState.value === "joinable" || roomEntryState.value === "error") {
+    return "landing__btn--secondary"
+  }
+  return "landing__btn--primary"
+})
 const isRoomActionButtonDisabled = computed(() => {
   if (roomActionState.value === "submitting") return true
-  if (!hasCompleteRoomCode.value) return true
-  if (roomLookupState.value === "checking") return true
-  if (roomLookupState.value === "missing" && !canCreateRooms.value) return true
-  return false
+  return roomEntryState.value === "incomplete" || roomEntryState.value === "checking"
 })
 const roomEntryHelperText = computed(() => {
   if (roomIdInput.value.length === 0) return ""
-  if (!hasCompleteRoomCode.value) return t("landing_room_code_helper")
-  if (roomLookupState.value === "checking") return t("landing_checking_room_hint")
-  if (roomLookupState.value === "exists") return t("landing_room_found_hint")
-  if (roomLookupState.value === "error") return t("landing_room_check_failed")
-  if (roomLookupState.value === "missing" && canCreateRooms.value) {
-    return t("landing_room_not_found_create_hint")
-  }
-  if (roomLookupState.value === "missing" && hasServiceEntitlementToken.value) {
+  if (roomEntryState.value === "incomplete") return t("landing_room_code_helper")
+  if (roomEntryState.value === "checking") return t("landing_checking_room_hint")
+  if (roomEntryState.value === "joinable") return t("landing_room_found_hint")
+  if (roomEntryState.value === "creatable") return t("landing_room_not_found_create_hint")
+  if (roomEntryState.value === "error") return t("landing_room_check_failed")
+  if (roomEntryState.value === "token_required" && hasServiceEntitlementToken.value) {
     return serviceEntitlementUiState.value === "verifying"
       ? t("landing_service_entitlement_verifying_hint")
       : t("landing_service_entitlement_exhausted_hint")
   }
-  if (roomLookupState.value === "missing") return ""
+  if (roomEntryState.value === "token_required") return t("landing_token_required_hint")
   return ""
 })
-const shouldShowEnterTokenPrompt = computed(
-  () =>
-    hasCompleteRoomCode.value &&
-    roomLookupState.value === "missing" &&
-    !canCreateRooms.value &&
-    serviceEntitlementUiState.value !== "verifying",
+const tokenModalTitle = computed(() =>
+  roomEntryState.value === "token_required"
+    ? t("landing_enter_token_prompt_action")
+    : t("landing_change_token"),
+)
+const tokenModalPlaceholder = computed(() =>
+  roomEntryState.value === "token_required"
+    ? t("landing_enter_token_hint")
+    : t("landing_enter_new_token_placeholder"),
 )
 const {
   tokenInput,
@@ -419,14 +430,19 @@ async function submitRoomAction() {
     return
   }
 
-  if (roomLookupState.value === "missing" && canCreateRooms.value) {
+  if (roomEntryState.value === "creatable") {
     roomActionState.value = "submitting"
     await createNewRoom()
     return
   }
 
-  if (roomLookupState.value === "missing" && !canCreateRooms.value) {
+  if (roomEntryState.value === "token_required") {
     openTokenModal()
+    return
+  }
+
+  if (roomEntryState.value === "error") {
+    await checkEnteredRoomAvailability()
   }
 }
 
