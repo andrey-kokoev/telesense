@@ -1,4 +1,6 @@
 import { nextTick, type ComponentPublicInstance, type Ref } from "vue"
+import { useHostAdminPolicyActions } from "./useHostAdminPolicyActions"
+import { useHostAdminRemainingActions } from "./useHostAdminRemainingActions"
 import type { BudgetListItem, BudgetResponse, MonthlyAllowanceResponse } from "../types/hostAdmin"
 
 type LoadingState =
@@ -107,89 +109,38 @@ export function useHostAdminBudgetActions(options: {
     editingBudgetInput.value = resolveInputRef(el)
   }
 
-  async function saveCurrentRemaining() {
-    if (!selectedBudgetKey.value || !budget.value) return
-    loadingState.value = "saving-remaining"
-    lastError.value = ""
-    try {
-      const remainingBytes = giBStringToBytes(currentRemainingGiB.value)
-      if (!Number.isFinite(remainingBytes)) {
-        throw new Error(t("admin_budget_invalid_remaining"))
-      }
-      const response = await adminFetch("/admin/entitlement/budget/remaining", {
-        method: "POST",
-        body: JSON.stringify({
-          budgetKey: selectedBudgetKey.value,
-          remainingBytes,
-        }),
-      })
-      if (!response.ok) {
-        throw new Error(await response.text())
-      }
-      const data = (await response.json()) as BudgetResponse
-      budget.value = data
-      budgetByKey.value = {
-        ...budgetByKey.value,
-        [data.budgetKey]: data,
-      }
-      currentRemainingGiB.value = bytesToGiBString(data.allowance.remainingBytes)
-      openRemainingOverrideKey.value = ""
-      show(t("admin_budget_remaining_saved"), "success")
-    } catch (error) {
-      lastError.value = error instanceof Error ? error.message : String(error)
-      show(lastError.value, "error")
-    } finally {
-      loadingState.value = "idle"
-    }
-  }
+  const { saveCurrentRemaining, openRemainingOverride } = useHostAdminRemainingActions({
+    t,
+    show,
+    adminFetch,
+    selectedBudgetKey,
+    budget,
+    monthlyAllowance,
+    budgetByKey,
+    monthlyAllowanceByBudgetKey,
+    openBudgetMenuKey,
+    openRemainingOverrideKey,
+    currentRemainingGiB,
+    lastError,
+    loadingState,
+    loadBudget,
+    loadMonthlyAllowance,
+    bytesToGiBString,
+    giBStringToBytes,
+  })
 
-  async function toggleBudgetPolicyActive(budgetKey: string) {
-    const existing = budgetPolicyForKey(budgetKey)
-    selectedBudgetKey.value = budgetKey
-    const response = await adminFetch(
-      `/admin/entitlement/monthly-allowance?budgetKey=${encodeURIComponent(budgetKey)}${
-        existing ? `&allowanceId=${encodeURIComponent(existing.allowanceId)}` : ""
-      }`,
-    )
-    if (!response.ok) {
-      lastError.value = await response.text()
-      return
-    }
-
-    const data = (await response.json()) as MonthlyAllowanceResponse
-    monthlyAllowance.value = data
-    selectedAllowanceId.value = data.allowanceId
-    monthlyAllowanceForm.allowanceId = data.allowanceId
-    monthlyAllowanceForm.budgetKey = data.budgetKey
-    monthlyAllowanceForm.active = data.active
-    monthlyAllowanceForm.resetAmountGiB = bytesToGiBString(data.resetAmountBytes)
-    monthlyAllowanceForm.cronExpr = data.cronExpr
-
-    const nextActive = !data.active
-    const previousPolicy = { ...data }
-
-    monthlyAllowance.value = {
-      ...data,
-      active: nextActive,
-      lifecycle: nextActive ? "scheduled" : "inactive",
-    }
-    monthlyAllowanceByBudgetKey.value = {
-      ...monthlyAllowanceByBudgetKey.value,
-      [data.budgetKey]: monthlyAllowance.value,
-    }
-    monthlyAllowanceForm.active = nextActive
-
-    try {
-      await persistMonthlyAllowance(nextActive, false)
-    } catch {
-      monthlyAllowance.value = previousPolicy
-      monthlyAllowanceByBudgetKey.value = {
-        ...monthlyAllowanceByBudgetKey.value,
-        [previousPolicy.budgetKey]: previousPolicy,
-      }
-      monthlyAllowanceForm.active = previousPolicy.active
-    }
-  }
+  const { toggleBudgetPolicyActive } = useHostAdminPolicyActions({
+    adminFetch,
+    selectedBudgetKey,
+    selectedAllowanceId,
+    monthlyAllowance,
+    monthlyAllowanceByBudgetKey,
+    monthlyAllowanceForm,
+    lastError,
+    persistMonthlyAllowance,
+    budgetPolicyForKey,
+    bytesToGiBString,
+  })
 
   async function toggleBudgetActive(budgetKey: string) {
     selectedBudgetKey.value = budgetKey
@@ -218,26 +169,6 @@ export function useHostAdminBudgetActions(options: {
     } finally {
       loadingState.value = "idle"
     }
-  }
-
-  async function openRemainingOverride(budgetKey: string) {
-    if (openRemainingOverrideKey.value === budgetKey) {
-      openRemainingOverrideKey.value = ""
-      return
-    }
-
-    selectedBudgetKey.value = budgetKey
-    openBudgetMenuKey.value = ""
-    if (selectedBudgetKey.value !== budgetKey || !budgetByKey.value[budgetKey]) {
-      await Promise.all([loadBudget(), loadMonthlyAllowance()])
-    } else {
-      budget.value = budgetByKey.value[budgetKey]
-      monthlyAllowance.value = monthlyAllowanceByBudgetKey.value[budgetKey] ?? null
-    }
-    currentRemainingGiB.value = bytesToGiBString(
-      monthlyAllowance.value?.resetAmountBytes ?? budget.value?.allowance.remainingBytes ?? 0,
-    )
-    openRemainingOverrideKey.value = budgetKey
   }
 
   async function openBudgetMenu(budgetKey: string) {

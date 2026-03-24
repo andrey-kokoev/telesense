@@ -5,7 +5,7 @@ import {
   verifyBudgetAdminToken,
 } from "./host-admin-auth"
 
-type AuthResolveEnv = {
+export type AuthResolveEnv = {
   HOST_ADMIN_BOOTSTRAP_TOKEN: string
   HOST_ADMIN_DB?: D1Database
 }

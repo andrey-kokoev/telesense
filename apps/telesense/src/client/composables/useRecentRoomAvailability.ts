@@ -1,5 +1,14 @@
 import { onBeforeUnmount, ref, watch, type Ref } from "vue"
 import { useIntersectionObserver } from "@vueuse/core"
+import { getRoomStatuses } from "../lib/roomStatusClient"
+import {
+  applyRecentRoomAvailabilityResults,
+  beginRecentRoomAvailabilityBatch,
+  canQueueRecentRoomAvailability,
+  markQueuedRecentRoomAvailability,
+  resetRecentRoomAvailability,
+  syncRecentRoomAvailabilityState,
+} from "./recentRoomAvailabilityState"
 import type { RecentCall } from "./useAppStore"
 
 export type Availability = "available" | "unavailable" | "unchecked" | "queued" | "checking"
@@ -26,11 +35,10 @@ export function useRecentRoomAvailability(recentCalls: Ref<RecentCall[]>) {
   watch(
     recentCalls,
     () => {
-      const nextAvailability: Record<string, Availability> = {}
-      for (const room of recentCalls.value) {
-        nextAvailability[room.id] = roomAvailability.value[room.id] ?? "unchecked"
-      }
-      roomAvailability.value = nextAvailability
+      roomAvailability.value = syncRecentRoomAvailabilityState(
+        recentCalls.value.map((room) => room.id),
+        roomAvailability.value,
+      )
 
       if (!hasRunInitialBatch.value) {
         for (const room of recentCalls.value.slice(0, INITIAL_BATCH_LIMIT)) {
@@ -67,54 +75,40 @@ export function useRecentRoomAvailability(recentCalls: Ref<RecentCall[]>) {
   }
 
   function queueRoomAvailabilityCheck(roomId: string, source: "initial" | "visible") {
-    if ((roomAvailability.value[roomId] ?? "unchecked") !== "unchecked") return
-    if (inFlightRoomIds.has(roomId)) return
+    if (!canQueueRecentRoomAvailability(roomAvailability.value, inFlightRoomIds, roomId)) return
 
-    queuedRoomIds.add(roomId)
-    roomAvailability.value[roomId] = "queued"
+    roomAvailability.value = markQueuedRecentRoomAvailability(
+      roomAvailability.value,
+      queuedRoomIds,
+      roomId,
+    )
     void runAvailabilityBatch(source === "initial" ? INITIAL_BATCH_LIMIT : VISIBILITY_BATCH_LIMIT)
   }
 
   async function runAvailabilityBatch(batchLimit = VISIBILITY_BATCH_LIMIT) {
     if (isBatchRunning.value) return
 
-    const roomIds = Array.from(queuedRoomIds).slice(0, batchLimit)
+    const batch = beginRecentRoomAvailabilityBatch(
+      roomAvailability.value,
+      queuedRoomIds,
+      inFlightRoomIds,
+      batchLimit,
+    )
+    const roomIds = batch.roomIds
     if (roomIds.length === 0) return
 
     isBatchRunning.value = true
-    for (const roomId of roomIds) {
-      queuedRoomIds.delete(roomId)
-      inFlightRoomIds.add(roomId)
-      roomAvailability.value[roomId] = "checking"
-    }
+    roomAvailability.value = batch.availability
 
     try {
-      const res = await fetch("/api/rooms/status", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roomIds }),
-      })
-
-      if (res.ok) {
-        const data = (await res.json()) as {
-          rooms?: Record<string, { exists?: boolean }>
-        }
-
-        for (const roomId of roomIds) {
-          roomAvailability.value[roomId] = data.rooms?.[roomId]?.exists
-            ? "available"
-            : "unavailable"
-        }
-      }
-      if (!res.ok) {
-        for (const roomId of roomIds) {
-          roomAvailability.value[roomId] = "unchecked"
-        }
-      }
+      const statuses = await getRoomStatuses(roomIds)
+      roomAvailability.value = applyRecentRoomAvailabilityResults(
+        roomAvailability.value,
+        roomIds,
+        statuses,
+      )
     } catch {
-      for (const roomId of roomIds) {
-        roomAvailability.value[roomId] = "unchecked"
-      }
+      roomAvailability.value = resetRecentRoomAvailability(roomAvailability.value, roomIds)
     } finally {
       for (const roomId of roomIds) {
         inFlightRoomIds.delete(roomId)

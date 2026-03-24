@@ -13,6 +13,7 @@
         <template v-if="isEditing">
           <form
             class="budget-admin-token-row__label-edit"
+            data-budget-token-label-edit
             @submit.prevent="$emit('commit-label', token)"
           >
             <input
@@ -33,6 +34,7 @@
         <button
           v-else
           class="budget-admin-token-row__label-display"
+          data-budget-token-label-display
           type="button"
           :title="renameTitle"
           @click.stop="$emit('start-label-edit', token)"

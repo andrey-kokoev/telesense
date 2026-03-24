@@ -1,7 +1,7 @@
 import { computed, nextTick, ref } from "vue"
 
-export function normalizeRoomCode(value: string) {
-  return value.replace(/[^A-Z0-9]/gi, "").toUpperCase()
+export function normalizeRoomCode(value: string | null | undefined) {
+  return (typeof value === "string" ? value : "").replace(/[^A-Z0-9]/gi, "").toUpperCase()
 }
 
 function roomCodeCharacterFromKeyboardEvent(event: KeyboardEvent) {
@@ -12,7 +12,7 @@ function roomCodeCharacterFromKeyboardEvent(event: KeyboardEvent) {
 
 function isInvalidRoomCodeCharacter(event: KeyboardEvent) {
   if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return false
-  if (event.key.length !== 1) return false
+  if (typeof event.key !== "string" || event.key.length !== 1) return false
   return !normalizeRoomCode(event.key)
 }
 
