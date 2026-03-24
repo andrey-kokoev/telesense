@@ -202,7 +202,12 @@ const {
   onPaste: onRoomCodePaste,
   clear: clearRoomCode,
   insertCharacter: insertRoomCodeCharacter,
-} = useRoomCodeInput(submitRoomAction)
+} = useRoomCodeInput({
+  onSubmit: submitRoomAction,
+  onInvalidCharacter: () => {
+    show(t("landing_room_code_invalid_character"), "error")
+  },
+})
 const { roomAvailability, recentScrollEl, setRecentItemRef } =
   useRecentRoomAvailability(recentCalls)
 const showActiveRecentOnly = ref(false)
@@ -357,8 +362,18 @@ async function handleRoomCodeInput(index: number, event: Event) {
   }
 }
 
-function handleRoomCodeKeydown(index: number, event: KeyboardEvent) {
+async function handleRoomCodeKeydown(index: number, event: KeyboardEvent) {
   onRoomCodeKeydown(index, event)
+
+  if (event.defaultPrevented && roomIdInput.value.length === 6) {
+    await checkEnteredRoomAvailability()
+    return
+  }
+
+  if (roomIdInput.value.length < 6) {
+    roomLookupState.value = "idle"
+    lastCheckedRoomId = ""
+  }
 }
 
 async function handleRoomCodeBlur() {
@@ -408,6 +423,10 @@ async function submitRoomAction() {
     roomActionState.value = "submitting"
     await createNewRoom()
     return
+  }
+
+  if (roomLookupState.value === "missing" && !canCreateRooms.value) {
+    openTokenModal()
   }
 }
 
@@ -490,28 +509,30 @@ function isEditableTarget(target: EventTarget | null) {
 function roomCodeCharacterFromKeyboardEvent(event: KeyboardEvent) {
   if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return ""
 
-  const normalizedKey = event.key
+  return event.key
     .replace(/[^A-Z0-9]/gi, "")
     .toUpperCase()
     .slice(-1)
-  if (normalizedKey) return normalizedKey
+}
 
-  const letterMatch = /^Key([A-Z])$/.exec(event.code)
-  if (letterMatch) return letterMatch[1]
-
-  const digitMatch = /^Digit([0-9])$/.exec(event.code)
-  if (digitMatch) return digitMatch[1]
-
-  return ""
+function isInvalidRoomCodeCharacter(event: KeyboardEvent) {
+  if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return false
+  if (event.key.length !== 1) return false
+  return !roomCodeCharacterFromKeyboardEvent(event)
 }
 
 function handleDesktopLandingKeydown(event: KeyboardEvent) {
   const roomCodeCharacter = roomCodeCharacterFromKeyboardEvent(event)
   if (!isDesktopViewport()) return
   if (event.defaultPrevented) return
-  if (!roomCodeCharacter) return
   if (isEditableTarget(event.target)) return
   if (showTokenModal.value) return
+  if (isInvalidRoomCodeCharacter(event)) {
+    event.preventDefault()
+    show(t("landing_room_code_invalid_character"), "error")
+    return
+  }
+  if (!roomCodeCharacter) return
 
   event.preventDefault()
   void insertRoomCodeCharacter(roomCodeCharacter)

@@ -22,7 +22,7 @@
             class="landing__code-input"
             :disabled="isInputDisabled(index)"
             @input="emit('input', index, $event)"
-            @keydown="emit('keydown', index, $event)"
+            @keydown="handleInputKeydown(index, $event)"
             @blur="emit('blur')"
           />
           <span
@@ -37,7 +37,13 @@
           >
         </div>
       </div>
-      <button type="submit" class="landing__btn" :class="buttonClass" :disabled="buttonDisabled">
+      <button
+        ref="submitButton"
+        type="submit"
+        class="landing__btn"
+        :class="buttonClass"
+        :disabled="buttonDisabled"
+      >
         <span v-if="buttonIcon" class="landing__btn-icon">{{ buttonIcon }}</span>
         <span>{{ buttonLabel }}</span>
       </button>
@@ -46,7 +52,9 @@
 </template>
 
 <script setup lang="ts">
-withDefaults(
+import { ref } from "vue"
+
+const props = withDefaults(
   defineProps<{
     title: string
     digits: string[]
@@ -73,6 +81,18 @@ const emit = defineEmits<{
   (e: "keydown", index: number, event: KeyboardEvent): void
   (e: "blur"): void
 }>()
+
+const submitButton = ref<HTMLButtonElement | null>(null)
+
+function handleInputKeydown(index: number, event: KeyboardEvent) {
+  if (event.key === "Tab" && !event.shiftKey && index === props.digits.length - 1) {
+    event.preventDefault()
+    submitButton.value?.focus()
+    return
+  }
+
+  emit("keydown", index, event)
+}
 </script>
 
 <style scoped>

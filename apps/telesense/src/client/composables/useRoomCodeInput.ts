@@ -7,19 +7,22 @@ export function normalizeRoomCode(value: string) {
 function roomCodeCharacterFromKeyboardEvent(event: KeyboardEvent) {
   if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return ""
 
-  const normalizedKey = normalizeRoomCode(event.key).slice(-1)
-  if (normalizedKey) return normalizedKey
-
-  const letterMatch = /^Key([A-Z])$/.exec(event.code)
-  if (letterMatch) return letterMatch[1]
-
-  const digitMatch = /^Digit([0-9])$/.exec(event.code)
-  if (digitMatch) return digitMatch[1]
-
-  return ""
+  return normalizeRoomCode(event.key).slice(-1)
 }
 
-export function useRoomCodeInput(onSubmit?: () => void) {
+function isInvalidRoomCodeCharacter(event: KeyboardEvent) {
+  if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return false
+  if (event.key.length !== 1) return false
+  return !normalizeRoomCode(event.key)
+}
+
+export function useRoomCodeInput(
+  options: {
+    onSubmit?: () => void
+    onInvalidCharacter?: () => void
+  } = {},
+) {
+  const { onSubmit, onInvalidCharacter } = options
   const digits = ref<string[]>(Array.from({ length: 6 }, () => ""))
   const inputs = ref<Array<HTMLInputElement | null>>([])
   const value = computed(() => digits.value.join(""))
@@ -81,6 +84,12 @@ export function useRoomCodeInput(onSubmit?: () => void) {
       if (index < digits.value.length - 1) {
         void nextTick(() => focusInput(index + 1))
       }
+      return
+    }
+
+    if (isInvalidRoomCodeCharacter(event)) {
+      event.preventDefault()
+      onInvalidCharacter?.()
       return
     }
 

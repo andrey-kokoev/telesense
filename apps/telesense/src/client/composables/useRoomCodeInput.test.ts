@@ -27,7 +27,7 @@ describe("useRoomCodeInput", () => {
 
   test("replaces a filled digit on keydown and advances focus", async () => {
     const onSubmit = vi.fn()
-    const roomCode = useRoomCodeInput(onSubmit)
+    const roomCode = useRoomCodeInput({ onSubmit })
     const firstInput = new MockInputElement()
     const secondInput = new MockInputElement()
 
@@ -53,7 +53,7 @@ describe("useRoomCodeInput", () => {
 
   test("submits on enter", () => {
     const onSubmit = vi.fn()
-    const roomCode = useRoomCodeInput(onSubmit)
+    const roomCode = useRoomCodeInput({ onSubmit })
 
     roomCode.onKeydown(0, {
       key: "Enter",

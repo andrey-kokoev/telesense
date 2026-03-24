@@ -39,4 +39,23 @@ test.describe("Landing room code entry", () => {
     await expect(inputs.nth(4)).toHaveValue("E")
     await expect(inputs.nth(5)).toHaveValue("F")
   })
+
+  test("shows token prompt when a missing room code is entered without token access", async ({
+    page,
+  }) => {
+    await page.goto("/")
+
+    const inputs = page.locator(".landing__code-input")
+    await expect(inputs).toHaveCount(6)
+
+    await inputs.first().click()
+    await page.keyboard.press("Z")
+    await page.keyboard.press("X")
+    await page.keyboard.press("Q")
+    await page.keyboard.press("W")
+    await page.keyboard.press("V")
+    await page.keyboard.press("B")
+
+    await expect(page.getByRole("button", { name: "Enter token to create rooms" })).toBeVisible()
+  })
 })

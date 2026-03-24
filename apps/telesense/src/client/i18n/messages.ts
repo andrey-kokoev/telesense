@@ -60,6 +60,7 @@ export const messages = {
     landing_create_room_action: "Create room",
     landing_enter_room_code: "Enter room code",
     landing_room_code_helper: "Enter all 6 letters to continue.",
+    landing_room_code_invalid_character: "Room codes use only A-Z and 0-9",
     landing_checking_room: "Checking…",
     landing_checking_room_hint: "Checking whether this room is already active.",
     landing_room_found_hint: "Room found. You can join it now.",
