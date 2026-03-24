@@ -342,8 +342,9 @@ function isEditableTarget(target: EventTarget | null) {
 
 function roomCodeCharacterFromKeyboardEvent(event: KeyboardEvent) {
   if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return ""
+  if (typeof event.key !== "string" || event.key.length !== 1) return ""
 
-  return (typeof event.key === "string" ? event.key : "")
+  return event.key
     .replace(/[^A-Z0-9]/gi, "")
     .toUpperCase()
     .slice(-1)
