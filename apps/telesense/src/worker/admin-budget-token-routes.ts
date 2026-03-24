@@ -60,6 +60,7 @@ export function registerAdminBudgetTokenRoutes<TEnv extends WorkerAdminEnv>(
     badRequest,
     readJsonBody,
     requiredTrimmedField,
+    upsertBudgetRegistry,
     requireAdminSession,
     requireBudgetAccess,
     inspectBudget,
@@ -317,21 +318,19 @@ export function registerAdminBudgetTokenRoutes<TEnv extends WorkerAdminEnv>(
 
     try {
       const budgetData = await inspectBudget(c.env, budgetKey)
+      const label = body.label?.trim() || null
+      await upsertBudgetRegistry?.(c.env, {
+        budgetKey,
+        budgetId: budgetData.budgetId,
+        label,
+      })
       const existingToken = await getReusableServiceEntitlementTokenForBudget(c.env, budgetKey)
       const serviceEntitlementToken =
         existingToken ??
         (await mintServiceEntitlementTokenForBudget(c.env, budgetKey, "Example token label"))
           .serviceEntitlementToken
-      const label = body.label?.trim() || null
-      if (label !== null) {
-        await updateBudgetRegistryLabel(c.env, { budgetKey, label })
-        return c.json({
-          ...(await inspectBudget(c.env, budgetKey)),
-          serviceEntitlementToken,
-        })
-      }
       return c.json({
-        ...budgetData,
+        ...(label !== null ? await inspectBudget(c.env, budgetKey) : budgetData),
         serviceEntitlementToken,
       })
     } catch {
@@ -350,6 +349,12 @@ export function registerAdminBudgetTokenRoutes<TEnv extends WorkerAdminEnv>(
     if (access instanceof Response) return access
 
     const label = body.label?.trim() || null
+    const budgetData = await inspectBudget(c.env, budgetKey)
+    await upsertBudgetRegistry?.(c.env, {
+      budgetKey,
+      budgetId: budgetData.budgetId,
+      label,
+    })
     await updateBudgetRegistryLabel(c.env, { budgetKey, label })
 
     try {

@@ -31,6 +31,26 @@ type MonthlyAllowanceRegistryRow = {
   updated_at: number
 }
 
+type EntitlementTokenRegistryRow = {
+  token_id: string
+  budget_key: string
+  budget_id: string
+  secret_version: number
+  token_value: string | null
+  token_preview: string | null
+  label: string | null
+  active: number
+  created_at: number
+  updated_at: number
+}
+
+type BudgetAdminTokenRegistryRow = {
+  budget_key: string
+  token: string
+  created_at: number
+  updated_at: number
+}
+
 class MemoryD1PreparedStatement {
   private bindings: unknown[] = []
 
@@ -61,6 +81,8 @@ class MemoryD1PreparedStatement {
 class MemoryD1Database {
   budgets = new Map<string, BudgetRegistryRow>()
   monthlyAllowances = new Map<string, MonthlyAllowanceRegistryRow>()
+  entitlementTokens = new Map<string, EntitlementTokenRegistryRow>()
+  budgetAdminTokens = new Map<string, BudgetAdminTokenRegistryRow>()
 
   prepare(query: string) {
     return new MemoryD1PreparedStatement(this, query)
@@ -104,18 +126,157 @@ class MemoryD1Database {
         created_at: existing?.created_at ?? createdAt,
         updated_at: updatedAt,
       })
+      return
+    }
+
+    if (query.includes("INSERT INTO entitlement_tokens")) {
+      const [
+        tokenId,
+        budgetKey,
+        budgetId,
+        secretVersion,
+        tokenValue,
+        tokenPreview,
+        label,
+        active,
+        createdAt,
+        updatedAt,
+      ] = bindings as [
+        string,
+        string,
+        string,
+        number,
+        string | null,
+        string | null,
+        string | null,
+        number,
+        number,
+        number,
+      ]
+      const existing = this.entitlementTokens.get(tokenId)
+      this.entitlementTokens.set(tokenId, {
+        token_id: tokenId,
+        budget_key: budgetKey,
+        budget_id: budgetId,
+        secret_version: secretVersion,
+        token_value: tokenValue ?? existing?.token_value ?? null,
+        token_preview: tokenPreview ?? existing?.token_preview ?? null,
+        label: label ?? existing?.label ?? null,
+        active,
+        created_at: existing?.created_at ?? createdAt,
+        updated_at: updatedAt,
+      })
+      return
+    }
+
+    if (query.includes("INSERT INTO budget_admin_tokens")) {
+      const [budgetKey, token, createdAt, updatedAt] = bindings as [string, string, number, number]
+      const existing = this.budgetAdminTokens.get(budgetKey)
+      this.budgetAdminTokens.set(budgetKey, {
+        budget_key: budgetKey,
+        token,
+        created_at: existing?.created_at ?? createdAt,
+        updated_at: updatedAt,
+      })
+      return
     }
 
     if (query.includes("UPDATE entitlement_budgets")) {
       const [budgetKey, label, updatedAt] = bindings as [string, string | null, number]
       const existing = this.budgets.get(budgetKey)
-      if (!existing) return
+      if (!existing) {
+        throw new Error(`Missing entitlement_budgets row for update: ${budgetKey}`)
+      }
       this.budgets.set(budgetKey, {
         ...existing,
         label,
         updated_at: updatedAt,
       })
+      return
     }
+
+    if (query.includes("UPDATE entitlement_tokens")) {
+      if (query.includes("SET label =")) {
+        const [tokenId, label, updatedAt] = bindings as [string, string | null, number]
+        const existing = this.entitlementTokens.get(tokenId)
+        if (!existing) {
+          throw new Error(`Missing entitlement_tokens row for label update: ${tokenId}`)
+        }
+        this.entitlementTokens.set(tokenId, { ...existing, label, updated_at: updatedAt })
+        return
+      }
+
+      if (query.includes("SET active =")) {
+        const [tokenId, active, updatedAt] = bindings as [string, number, number]
+        const existing = this.entitlementTokens.get(tokenId)
+        if (!existing) {
+          throw new Error(`Missing entitlement_tokens row for active update: ${tokenId}`)
+        }
+        this.entitlementTokens.set(tokenId, { ...existing, active, updated_at: updatedAt })
+        return
+      }
+    }
+
+    if (query.includes("DELETE FROM entitlement_tokens")) {
+      if (query.includes("WHERE token_id")) {
+        const [tokenId] = bindings as [string]
+        if (!this.entitlementTokens.has(tokenId)) {
+          throw new Error(`Missing entitlement_tokens row for delete: ${tokenId}`)
+        }
+        this.entitlementTokens.delete(tokenId)
+        return
+      }
+
+      if (query.includes("WHERE budget_key")) {
+        const [budgetKey] = bindings as [string]
+        let deleted = false
+        for (const [tokenId, row] of this.entitlementTokens.entries()) {
+          if (row.budget_key === budgetKey) {
+            this.entitlementTokens.delete(tokenId)
+            deleted = true
+          }
+        }
+        if (!deleted) {
+          throw new Error(`Missing entitlement_tokens rows for budget delete: ${budgetKey}`)
+        }
+        return
+      }
+    }
+
+    if (query.includes("DELETE FROM budget_admin_tokens")) {
+      const [budgetKey] = bindings as [string]
+      if (!this.budgetAdminTokens.has(budgetKey)) {
+        throw new Error(`Missing budget_admin_tokens row for delete: ${budgetKey}`)
+      }
+      this.budgetAdminTokens.delete(budgetKey)
+      return
+    }
+
+    if (query.includes("DELETE FROM monthly_allowances")) {
+      const [budgetKey] = bindings as [string]
+      let deleted = false
+      for (const [allowanceId, row] of this.monthlyAllowances.entries()) {
+        if (row.budget_key === budgetKey) {
+          this.monthlyAllowances.delete(allowanceId)
+          deleted = true
+        }
+      }
+      if (!deleted) {
+        throw new Error(`Missing monthly_allowances rows for budget delete: ${budgetKey}`)
+      }
+      return
+    }
+
+    if (query.includes("DELETE FROM entitlement_budgets")) {
+      const [budgetKey] = bindings as [string]
+      if (!this.budgets.has(budgetKey)) {
+        throw new Error(`Missing entitlement_budgets row for delete: ${budgetKey}`)
+      }
+      this.budgets.delete(budgetKey)
+      return
+    }
+
+    throw new Error(`Unsupported execute query in test D1 stub: ${query}`)
   }
 
   query<T>(query: string, bindings: unknown[]) {
@@ -125,10 +286,39 @@ class MemoryD1Database {
       return (match ? [{ budget_key: match.budget_key }] : []) as T[]
     }
 
+    if (query.includes("FROM entitlement_budgets") && query.includes("WHERE budget_key")) {
+      const [budgetKey] = bindings as [string]
+      const match = this.budgets.get(budgetKey)
+      return (match ? [match] : []) as T[]
+    }
+
     if (query.includes("FROM entitlement_budgets")) {
       return Array.from(this.budgets.values()).sort(
-        (a, b) => b.updated_at - a.updated_at || b.created_at - a.created_at,
+        (a, b) =>
+          (a.label ?? a.budget_key)
+            .toLowerCase()
+            .localeCompare((b.label ?? b.budget_key).toLowerCase()) ||
+          a.budget_key.toLowerCase().localeCompare(b.budget_key.toLowerCase()),
       ) as T[]
+    }
+
+    if (query.includes("FROM entitlement_tokens") && query.includes("WHERE token_id")) {
+      const [tokenId] = bindings as [string]
+      const match = this.entitlementTokens.get(tokenId)
+      return (match ? [match] : []) as T[]
+    }
+
+    if (query.includes("FROM entitlement_tokens") && query.includes("WHERE budget_key")) {
+      const [budgetKey] = bindings as [string]
+      return Array.from(this.entitlementTokens.values())
+        .filter((row) => row.budget_key === budgetKey)
+        .sort((a, b) => b.updated_at - a.updated_at || b.created_at - a.created_at) as T[]
+    }
+
+    if (query.includes("FROM budget_admin_tokens") && query.includes("WHERE budget_key")) {
+      const [budgetKey] = bindings as [string]
+      const match = this.budgetAdminTokens.get(budgetKey)
+      return (match ? [match] : []) as T[]
     }
 
     if (query.includes("FROM monthly_allowances")) {
@@ -137,7 +327,7 @@ class MemoryD1Database {
       ) as T[]
     }
 
-    return []
+    throw new Error(`Unsupported query in test D1 stub: ${query}`)
   }
 }
 
@@ -298,7 +488,7 @@ describe("entitlement routes", () => {
 
     expect(response.status).toBe(401)
     await expect(response.json()).resolves.toEqual(
-      expect.objectContaining({ code: "HOST_ADMIN_SESSION_REQUIRED" }),
+      expect.objectContaining({ code: "BUDGET_ADMIN_SESSION_REQUIRED" }),
     )
   })
 

@@ -47,7 +47,7 @@ export default defineConfig({
   base: "/",
   test: {
     include: ["src/**/*.test.ts"],
-    exclude: ["e2e/**"],
+    exclude: ["e2e/**", "**/e2e/**"],
     environment: "node",
   },
 

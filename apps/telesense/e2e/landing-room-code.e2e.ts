@@ -40,9 +40,15 @@ test.describe("Landing room code entry", () => {
     await expect(inputs.nth(5)).toHaveValue("F")
   })
 
-  test("shows token prompt when a missing room code is entered without token access", async ({
-    page,
-  }) => {
+  test("shows a resolved primary action when a missing room code is entered", async ({ page }) => {
+    await page.route("**/api/rooms/*/status", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ exists: false }),
+      })
+    })
+
     await page.goto("/")
 
     const inputs = page.locator(".landing__code-input")
@@ -56,6 +62,8 @@ test.describe("Landing room code entry", () => {
     await page.keyboard.press("V")
     await page.keyboard.press("B")
 
-    await expect(page.getByRole("button", { name: "Enter token to create rooms" })).toBeVisible()
+    const primaryAction = page.locator(".landing__main .landing__btn").first()
+    await expect(primaryAction).toBeVisible()
+    await expect(primaryAction).toHaveText("Enter token to create rooms")
   })
 })

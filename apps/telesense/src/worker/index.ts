@@ -51,6 +51,7 @@ import {
   updateEntitlementTokenLabel,
   updateBudgetRegistryLabel,
   upsertBudgetAdminTokenRegistry,
+  upsertBudgetRegistry,
   upsertEntitlementTokenRegistry,
   upsertMonthlyAllowanceRegistry,
 } from "./host-admin-registry"
@@ -728,6 +729,11 @@ async function getKnownBudgets(env: Env) {
   }
 
   const budget = await inspectBudget(env, defaultBudgetKey(env))
+  await upsertBudgetRegistry(env, {
+    budgetKey: budget.budgetKey,
+    budgetId: budget.budgetId,
+    label: "Default budget",
+  })
   return [
     {
       budgetKey: budget.budgetKey,
@@ -1368,6 +1374,7 @@ registerAdminBudgetTokenRoutes(app, {
   badRequest,
   readJsonBody,
   requiredTrimmedField,
+  upsertBudgetRegistry,
   requireAdminSession,
   requireBudgetAccess,
   inspectBudget,

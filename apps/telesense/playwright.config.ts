@@ -3,9 +3,15 @@ import { defineConfig, devices } from "@playwright/test"
 const isCI = Boolean(
   (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.CI,
 )
+const useExistingServer = Boolean(
+  (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
+    ?.PLAYWRIGHT_USE_EXISTING_SERVER,
+)
 
 export default defineConfig({
   testDir: "./e2e",
+  testMatch: "**/*.e2e.ts",
+  globalSetup: "./e2e/global-setup.ts",
   fullyParallel: false,
   forbidOnly: isCI,
   retries: isCI ? 2 : 0,
@@ -36,10 +42,12 @@ export default defineConfig({
       },
     },
   ],
-  webServer: {
-    command: "vp dev",
-    url: "http://localhost:5173",
-    reuseExistingServer: !isCI,
-    timeout: 120000,
-  },
+  webServer: useExistingServer
+    ? undefined
+    : {
+        command: "vp run dev",
+        url: "http://localhost:5173",
+        reuseExistingServer: !isCI,
+        timeout: 120000,
+      },
 })

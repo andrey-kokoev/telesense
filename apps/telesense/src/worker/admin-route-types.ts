@@ -37,4 +37,8 @@ export type WorkerAdminRouteCommonDeps<TEnv extends WorkerAdminEnv = WorkerAdmin
 export type WorkerBudgetFieldDeps<TEnv extends WorkerAdminEnv = WorkerAdminEnv> =
   WorkerAdminRouteCommonDeps<TEnv> & {
     requiredTrimmedField: WorkerRequiredField
+    upsertBudgetRegistry?: (
+      env: TEnv,
+      record: { budgetKey: string; budgetId: string; label?: string | null },
+    ) => Promise<void>
   }

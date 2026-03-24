@@ -6,6 +6,7 @@ export function normalizeRoomCode(value: string | null | undefined) {
 
 function roomCodeCharacterFromKeyboardEvent(event: KeyboardEvent) {
   if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return ""
+  if (typeof event.key !== "string" || event.key.length !== 1) return ""
 
   return normalizeRoomCode(event.key).slice(-1)
 }
