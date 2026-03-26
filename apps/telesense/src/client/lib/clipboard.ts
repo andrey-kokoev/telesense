@@ -9,16 +9,20 @@
  */
 export async function writeToClipboard(text: string): Promise<void> {
   if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
-    await navigator.clipboard.write([
-      new ClipboardItem({
-        "text/plain": Promise.resolve(new Blob([text], { type: "text/plain" })),
-      }),
-    ])
-    return
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/plain": Promise.resolve(new Blob([text], { type: "text/plain" })),
+        }),
+      ])
+      return
+    } catch {}
   }
   if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text)
-    return
+    try {
+      await navigator.clipboard.writeText(text)
+      return
+    } catch {}
   }
   const el = document.createElement("textarea")
   el.value = text
