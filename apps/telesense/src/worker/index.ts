@@ -2218,7 +2218,7 @@ app.get("*", async (c) => {
 
   // Fallback API response if no assets or 404
   return c.json({
-    message: "telesence API",
+    message: "telesense API",
     version: "1.0.0",
     status: "running",
     note: "Frontend not built or ASSETS binding not configured",

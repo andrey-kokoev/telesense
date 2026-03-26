@@ -1,4 +1,4 @@
-# telesence Documentation
+# telesense Documentation
 
 Complete guide to the Cloudflare Realtime 1:1 video calling system.
 

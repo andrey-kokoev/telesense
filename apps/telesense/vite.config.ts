@@ -10,8 +10,8 @@ export default defineConfig({
       injectRegister: false,
       includeAssets: ["favicon.svg"],
       manifest: {
-        name: "telesence",
-        short_name: "telesence",
+        name: "telesense",
+        short_name: "telesense",
         description: "Installable lightweight app for secure video calls.",
         theme_color: "#c96a2f",
         background_color: "#f6efe6",

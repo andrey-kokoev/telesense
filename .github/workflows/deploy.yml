@@ -37,7 +37,7 @@ jobs:
           CI: true
 
   deploy-telesense:
-    name: Deploy telesence
+    name: Deploy telesense
     needs: test
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest

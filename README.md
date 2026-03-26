@@ -1,4 +1,4 @@
-# telesence
+# telesense
 
 **Status: `full 1:1 call works` (protocol verified via Echo Demo 2026-03-18)**
 
@@ -70,7 +70,7 @@ vp run deploy         # Deploy to Cloudflare
 
 ## Applications
 
-### 1. telesence (`apps/telesense`)
+### 1. telesense (`apps/telesense`)
 
 The main video calling application.
 

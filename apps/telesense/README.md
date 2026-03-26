@@ -1,4 +1,4 @@
-# telesence App
+# telesense App
 
 The main video-calling application.
 

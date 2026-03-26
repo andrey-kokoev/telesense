@@ -1,4 +1,4 @@
-# How telesence Works
+# How telesense Works
 
 High-level mental model of the current app.
 
