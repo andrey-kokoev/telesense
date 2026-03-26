@@ -40,27 +40,53 @@
 
     <section v-else class="budget-admin__panel">
       <div class="budget-admin__meta-row">
-        <span class="budget-admin__status">{{ budgetStatus }}</span>
-        <span class="budget-admin__usage">{{ usageSummary }}</span>
-        <span class="budget-admin__usage">{{ usageLimitLabel }}</span>
-        <button
-          v-if="entitlementTokens.length"
-          class="budget-admin__icon-button budget-admin__icon-button--inline budget-admin__create-token-header"
-          type="button"
-          :title="t('budget_admin_mint_entitlement')"
-          :aria-label="t('budget_admin_mint_entitlement')"
-          @click="mintEntitlementToken"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path
-              d="M12 5v14M5 12h14"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-            />
-          </svg>
-          <span>{{ t("budget_admin_create_token") }}</span>
-        </button>
+        <div class="budget-admin__meta-info">
+          <span class="budget-admin__status">{{ budgetStatus }}</span>
+          <span class="budget-admin__usage">{{ usageSummary }}</span>
+          <span class="budget-admin__usage">{{ usageLimitLabel }}</span>
+        </div>
+        <div class="budget-admin__meta-actions">
+          <button
+            class="budget-admin__icon-button budget-admin__icon-button--inline"
+            type="button"
+            :title="
+              meterAtTokenLevel
+                ? t('budget_admin_meter_at_token_level_on') +
+                  (formatResetDate(nextTokenPeriodResetAt)
+                    ? ' · ' +
+                      t('budget_admin_resets', { date: formatResetDate(nextTokenPeriodResetAt)! })
+                    : '')
+                : t('budget_admin_meter_at_token_level_off')
+            "
+            :aria-pressed="meterAtTokenLevel"
+            :disabled="togglingMeterAtTokenLevel"
+            @click="toggleMeterAtTokenLevel"
+          >
+            <span>{{
+              meterAtTokenLevel
+                ? t("budget_admin_meter_at_token_level_on")
+                : t("budget_admin_meter_at_token_level_off")
+            }}</span>
+          </button>
+          <button
+            v-if="entitlementTokens.length"
+            class="budget-admin__icon-button budget-admin__icon-button--inline budget-admin__create-token-header"
+            type="button"
+            :title="t('budget_admin_mint_entitlement')"
+            :aria-label="t('budget_admin_mint_entitlement')"
+            @click="mintEntitlementToken"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M12 5v14M5 12h14"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+              />
+            </svg>
+            <span>{{ t("budget_admin_create_token") }}</span>
+          </button>
+        </div>
       </div>
 
       <div class="budget-admin__usage-strip" :title="usageDetail">
@@ -115,6 +141,11 @@
           :unavailable-label="t('budget_admin_token_preview_unavailable')"
           :copy-title="t('admin_copy_token')"
           :delete-title="t('budget_admin_token_delete')"
+          :usage-label="
+            meterAtTokenLevel && token.consumedBytes !== undefined
+              ? t('budget_admin_token_used', { amount: formatBudgetBytes(token.consumedBytes) })
+              : undefined
+          "
           :set-input-ref="
             (el) => {
               if (editingTokenId === token.tokenId) setEditingTokenInput(el)
@@ -137,6 +168,12 @@
 import BudgetAdminTokenRow from "../components/BudgetAdminTokenRow.vue"
 import HomeLogoButton from "../components/HomeLogoButton.vue"
 import useBudgetAdminPage from "../composables/useBudgetAdminPage"
+import { formatBudgetBytes } from "../composables/useBudgetPresentation"
+
+function formatResetDate(ts: number | null): string | null {
+  if (!ts) return null
+  return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+}
 
 const props = defineProps<{ budgetKey: string }>()
 const {
@@ -157,6 +194,10 @@ const {
   usagePercent,
   usageLimitLabel,
   usageDetail,
+  meterAtTokenLevel,
+  nextTokenPeriodResetAt,
+  togglingMeterAtTokenLevel,
+  toggleMeterAtTokenLevel,
   unlockBudgetAdmin,
   mintEntitlementToken,
   setTokenDraftLabel,
@@ -273,11 +314,23 @@ const {
 }
 
 .budget-admin__meta-row {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.budget-admin__meta-info {
   display: flex;
   align-items: center;
-  gap: 0.8rem;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.8rem;
   color: var(--color-text-secondary);
   font-size: 0.85rem;
+}
+
+.budget-admin__meta-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .budget-admin__input {
@@ -319,6 +372,12 @@ const {
 
 .budget-admin__create-token-header {
   margin-left: auto;
+}
+
+.budget-admin__icon-button--inline[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--color-accent, #cb641c) 15%, var(--budget-admin-surface) 85%);
+  border-color: color-mix(in srgb, var(--color-accent, #cb641c) 40%, var(--color-border) 60%);
+  color: var(--color-text-primary);
 }
 
 .budget-admin__status {

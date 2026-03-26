@@ -1,3 +1,4 @@
+import { writeToClipboard } from "../lib/clipboard"
 import { readErrorText, readJsonResponse } from "../lib/jsonClient"
 import { useAdminSessions } from "./useAdminSessions"
 
@@ -89,7 +90,7 @@ export function useAdminClient() {
       throw new Error("Missing host admin bootstrap token")
     }
     store.setHostAdminSessionToken(store.hostAdminSessionToken.value, token)
-    await navigator.clipboard.writeText(token)
+    await writeToClipboard(token)
   }
 
   return {

@@ -1,4 +1,5 @@
 import { nextTick, type ComponentPublicInstance, type Ref } from "vue"
+import { writeToClipboard } from "../lib/clipboard"
 import { useHostAdminPolicyActions } from "./useHostAdminPolicyActions"
 import { useHostAdminRemainingActions } from "./useHostAdminRemainingActions"
 import type { BudgetListItem, BudgetResponse, MonthlyAllowanceResponse } from "../types/hostAdmin"
@@ -265,7 +266,7 @@ export function useHostAdminBudgetActions(options: {
       showMintedToken.value = false
       await Promise.all([loadBudgetList(), loadBudget()])
       try {
-        await navigator.clipboard.writeText(data.budgetAdminToken)
+        await writeToClipboard(data.budgetAdminToken)
         show(t("admin_token_copied"), "success")
       } catch {
         show(t("admin_token_minted"), "success")
@@ -285,7 +286,7 @@ export function useHostAdminBudgetActions(options: {
   async function copyMintedToken() {
     if (!mintedToken.value) return
     try {
-      await navigator.clipboard.writeText(mintedToken.value)
+      await writeToClipboard(mintedToken.value)
       show(t("admin_token_copied"), "success")
     } catch {
       show(t("admin_token_copy_failed"), "error")

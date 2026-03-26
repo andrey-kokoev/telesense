@@ -41,6 +41,31 @@ export default function useBudgetAdminPage(props: { budgetKey: string }) {
     )
   }
 
+  const meterAtTokenLevel = computed(() => budget.value?.meterAtTokenLevel ?? false)
+  const nextTokenPeriodResetAt = computed(() => monthlyAllowance.value?.nextResetAt ?? null)
+  const togglingMeterAtTokenLevel = ref(false)
+
+  async function toggleMeterAtTokenLevel() {
+    if (togglingMeterAtTokenLevel.value) return
+    lastError.value = ""
+    togglingMeterAtTokenLevel.value = true
+    try {
+      await adminFetchJson("/admin/entitlement/budget/meter-at-token-level", {
+        method: "POST",
+        body: JSON.stringify({
+          budgetKey: props.budgetKey,
+          meterAtTokenLevel: !meterAtTokenLevel.value,
+        }),
+      })
+      await Promise.all([loadBudget(), loadEntitlementTokens()])
+    } catch (error) {
+      lastError.value = error instanceof Error ? error.message : String(error)
+      show(lastError.value, "error")
+    } finally {
+      togglingMeterAtTokenLevel.value = false
+    }
+  }
+
   async function refresh() {
     lastError.value = ""
     try {
@@ -124,6 +149,10 @@ export default function useBudgetAdminPage(props: { budgetKey: string }) {
     usagePercent: computed(() => budgetPresentation.value.usagePercent),
     usageLimitLabel: computed(() => budgetPresentation.value.usageLimitLabel),
     usageDetail: computed(() => budgetPresentation.value.usageDetail),
+    meterAtTokenLevel,
+    nextTokenPeriodResetAt,
+    togglingMeterAtTokenLevel,
+    toggleMeterAtTokenLevel,
     unlockBudgetAdmin,
     mintEntitlementToken,
     setTokenDraftLabel,

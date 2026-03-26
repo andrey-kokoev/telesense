@@ -21,6 +21,7 @@ export type BudgetResponse = {
   budgetId: string
   enabled: boolean
   initialized: boolean
+  meterAtTokenLevel: boolean
   allowance: {
     remainingBytes: number
     consumedBytes: number

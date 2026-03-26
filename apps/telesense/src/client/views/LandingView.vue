@@ -23,6 +23,14 @@
         <p v-if="roomEntryHelperText" class="landing__hint">
           {{ roomEntryHelperText }}
         </p>
+        <button
+          v-if="roomEntryState === 'token_required' && serviceEntitlementUiState !== 'verifying'"
+          type="button"
+          class="landing__inline-link"
+          @click="openTokenModal"
+        >
+          {{ t("landing_enter_token_prompt_action") }}
+        </button>
       </div>
 
       <!-- Recent Calls -->
@@ -250,6 +258,7 @@ const canCreateRooms = computed(
   () => serviceEntitlementUiState.value === "valid" || unauthenticatedCreateAllowed.value,
 )
 const {
+  roomEntryState,
   roomActionButtonLabel,
   roomActionButtonClass,
   isRoomActionButtonDisabled,

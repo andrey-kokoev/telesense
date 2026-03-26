@@ -6,6 +6,7 @@ import {
   type ComponentPublicInstance,
   type Ref,
 } from "vue"
+import { writeToClipboard } from "../lib/clipboard"
 import { useEntitlementTokenActions } from "./useEntitlementTokenActions"
 import type { EntitlementTokenRecord } from "../types/entitlementTokens"
 
@@ -59,7 +60,7 @@ export function useBudgetAdminTokens(options: {
       }
       await loadEntitlementTokens()
       try {
-        await navigator.clipboard.writeText(data.serviceEntitlementToken)
+        await writeToClipboard(data.serviceEntitlementToken)
         show(t("admin_token_copied"), "success")
       } catch {
         show(t("budget_admin_entitlement_minted"), "success")

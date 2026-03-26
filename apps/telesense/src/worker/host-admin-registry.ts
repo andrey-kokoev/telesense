@@ -2,6 +2,7 @@ export type BudgetRegistryRecord = {
   budgetKey: string
   budgetId: string
   label: string | null
+  meterAtTokenLevel: boolean
   createdAt: number
   updatedAt: number
 }
@@ -122,7 +123,7 @@ export async function listBudgetRegistry(env: RegistryEnv): Promise<BudgetRegist
   try {
     const result = await db
       .prepare(
-        `SELECT budget_key, budget_id, label, created_at, updated_at
+        `SELECT budget_key, budget_id, label, meter_at_token_level, created_at, updated_at
          FROM entitlement_budgets
          ORDER BY lower(COALESCE(label, budget_key)) ASC, lower(budget_key) ASC`,
       )
@@ -130,6 +131,7 @@ export async function listBudgetRegistry(env: RegistryEnv): Promise<BudgetRegist
         budget_key: string
         budget_id: string
         label: string | null
+        meter_at_token_level: number
         created_at: number
         updated_at: number
       }>()
@@ -138,6 +140,7 @@ export async function listBudgetRegistry(env: RegistryEnv): Promise<BudgetRegist
       budgetKey: row.budget_key,
       budgetId: row.budget_id,
       label: row.label,
+      meterAtTokenLevel: row.meter_at_token_level === 1,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     }))
@@ -157,7 +160,7 @@ export async function getBudgetRegistry(
   try {
     const result = await db
       .prepare(
-        `SELECT budget_key, budget_id, label, created_at, updated_at
+        `SELECT budget_key, budget_id, label, meter_at_token_level, created_at, updated_at
          FROM entitlement_budgets
          WHERE budget_key = ?1
          LIMIT 1`,
@@ -167,6 +170,7 @@ export async function getBudgetRegistry(
         budget_key: string
         budget_id: string
         label: string | null
+        meter_at_token_level: number
         created_at: number
         updated_at: number
       }>()
@@ -177,6 +181,7 @@ export async function getBudgetRegistry(
       budgetKey: result.budget_key,
       budgetId: result.budget_id,
       label: result.label,
+      meterAtTokenLevel: result.meter_at_token_level === 1,
       createdAt: result.created_at,
       updatedAt: result.updated_at,
     }
@@ -184,6 +189,25 @@ export async function getBudgetRegistry(
     console.warn("[host-admin-registry] Failed to get budget registry", error)
     return null
   }
+}
+
+export async function updateBudgetMeterAtTokenLevel(
+  env: RegistryEnv,
+  budgetKey: string,
+  meterAtTokenLevel: boolean,
+) {
+  const db = env.HOST_ADMIN_DB
+  if (!db) return
+
+  const now = Date.now()
+  await db
+    .prepare(
+      `UPDATE entitlement_budgets
+       SET meter_at_token_level = ?2, updated_at = ?3
+       WHERE budget_key = ?1`,
+    )
+    .bind(budgetKey, meterAtTokenLevel ? 1 : 0, now)
+    .run()
 }
 
 export async function listMonthlyAllowanceRegistry(

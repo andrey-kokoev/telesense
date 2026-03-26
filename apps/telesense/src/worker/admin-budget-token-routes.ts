@@ -53,6 +53,9 @@ export function registerAdminBudgetTokenRoutes<TEnv extends WorkerAdminEnv>(
     deleteBudgetAdminTokenRegistry: (env: TEnv, budgetKey: string) => Promise<void>
     deleteMonthlyAllowanceRegistryByBudgetKey: (env: TEnv, budgetKey: string) => Promise<void>
     deleteBudgetRegistry: (env: TEnv, budgetKey: string) => Promise<void>
+    updateBudgetMeterAtTokenLevel: (env: TEnv, budgetKey: string, value: boolean) => Promise<void>
+    getTokenUsageLedger: (env: TEnv, tokenId: string) => DurableObjectStub
+    getBudgetMeterAtTokenLevel: (env: TEnv, budgetKey: string) => Promise<boolean>
   },
 ) {
   const {
@@ -82,6 +85,9 @@ export function registerAdminBudgetTokenRoutes<TEnv extends WorkerAdminEnv>(
     deleteBudgetAdminTokenRegistry,
     deleteMonthlyAllowanceRegistryByBudgetKey,
     deleteBudgetRegistry,
+    updateBudgetMeterAtTokenLevel,
+    getTokenUsageLedger,
+    getBudgetMeterAtTokenLevel,
   } = deps
 
   app.post("/admin/entitlement/mint", async (c) => {
@@ -112,9 +118,22 @@ export function registerAdminBudgetTokenRoutes<TEnv extends WorkerAdminEnv>(
     const access = await requireBudgetAccess(c, budgetKey)
     if (access instanceof Response) return access
 
-    return c.json({
-      tokens: await listEntitlementTokensByBudgetKey(c.env, budgetKey),
-    })
+    const tokens = await listEntitlementTokensByBudgetKey(c.env, budgetKey)
+    const meterAtTokenLevel = await getBudgetMeterAtTokenLevel(c.env, budgetKey)
+
+    if (!meterAtTokenLevel) {
+      return c.json({ tokens })
+    }
+
+    const enriched = await Promise.all(
+      tokens.map(async (token) => {
+        const ledger = getTokenUsageLedger(c.env, token.tokenId)
+        const res = await ledger.fetch(new Request("http://do.internal/?action=getUsage"))
+        const data = (await res.json()) as { consumedBytes: number }
+        return { ...token, consumedBytes: data.consumedBytes }
+      }),
+    )
+    return c.json({ tokens: enriched })
   })
 
   app.get("/admin/entitlement/tokens/value", async (c) => {
@@ -299,7 +318,11 @@ export function registerAdminBudgetTokenRoutes<TEnv extends WorkerAdminEnv>(
     if (access instanceof Response) return access
 
     try {
-      return c.json(await inspectBudget(env, budgetKey))
+      const [inspection, meterAtTokenLevel] = await Promise.all([
+        inspectBudget(env, budgetKey),
+        getBudgetMeterAtTokenLevel(env, budgetKey),
+      ])
+      return c.json({ ...inspection, meterAtTokenLevel })
     } catch {
       return c.json({ error: "Failed to get budget data" }, 500)
     }
@@ -514,6 +537,54 @@ export function registerAdminBudgetTokenRoutes<TEnv extends WorkerAdminEnv>(
       return c.json({ ok: true, budgetKey })
     } catch {
       return c.json({ error: "Failed to archive budget" }, 500)
+    }
+  })
+
+  app.post("/admin/entitlement/budget/meter-at-token-level", async (c) => {
+    const bodyResult = await readJsonBody<{ budgetKey?: string; meterAtTokenLevel?: boolean }>(c)
+    if (bodyResult instanceof Response) return bodyResult
+    const body = bodyResult
+
+    const budgetKey = requiredTrimmedField(c, body.budgetKey, "budgetKey")
+    if (budgetKey instanceof Response) return budgetKey
+    if (typeof body.meterAtTokenLevel !== "boolean") {
+      return badRequest(c, "meterAtTokenLevel must be boolean")
+    }
+
+    const access = await requireBudgetAccess(c, budgetKey)
+    if (access instanceof Response) return access
+
+    try {
+      await updateBudgetMeterAtTokenLevel(c.env, budgetKey, body.meterAtTokenLevel)
+      const [inspection, meterAtTokenLevel] = await Promise.all([
+        inspectBudget(c.env, budgetKey),
+        getBudgetMeterAtTokenLevel(c.env, budgetKey),
+      ])
+      return c.json({ ...inspection, meterAtTokenLevel })
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e)
+      return c.json({ error: `Failed to update meterAtTokenLevel: ${detail}` }, 500)
+    }
+  })
+
+  app.get("/admin/entitlement/token-usage", async (c) => {
+    const budgetKey = c.req.query("budgetKey")?.trim() || defaultBudgetKey(c.env)
+    const access = await requireBudgetAccess(c, budgetKey)
+    if (access instanceof Response) return access
+
+    try {
+      const tokens = await listEntitlementTokensByBudgetKey(c.env, budgetKey)
+      const usages = await Promise.all(
+        tokens.map(async (token) => {
+          const ledger = getTokenUsageLedger(c.env, token.tokenId)
+          const res = await ledger.fetch(new Request("http://do.internal/?action=getUsage"))
+          const data = (await res.json()) as { consumedBytes: number }
+          return { tokenId: token.tokenId, consumedBytes: data.consumedBytes }
+        }),
+      )
+      return c.json({ usages })
+    } catch {
+      return c.json({ error: "Failed to get token usage" }, 500)
     }
   })
 }

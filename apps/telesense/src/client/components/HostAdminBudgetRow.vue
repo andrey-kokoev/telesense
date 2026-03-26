@@ -8,245 +8,247 @@
         dim-inactive
         @click.stop="$emit('toggle-budget-active', budget.budgetKey)"
       />
-      <div class="admin-budget__summary-main">
-        <div class="admin-budget__identity">
-          <div class="admin-budget__identity-topline">
-            <template v-if="isEditingLabel">
-              <form
-                class="admin-budget__label-edit"
-                @submit.prevent="$emit('commit-label', budget.budgetKey)"
-              >
-                <input
-                  :ref="setEditingInputRef"
-                  :value="editingBudgetLabel"
-                  class="admin-budget__label-input"
-                  type="text"
-                  spellcheck="false"
-                  maxlength="40"
-                  @input="$emit('update:editing-budget-label', $event)"
-                  @click.stop
-                  @keydown.esc.prevent="$emit('cancel-label-edit')"
-                  @blur="$emit('commit-label', budget.budgetKey)"
-                />
-              </form>
-            </template>
-            <strong
-              v-else
-              class="admin-budget__label"
-              :title="renameTitle"
-              @click.stop="$emit('start-label-edit', budget)"
+      <div class="admin-budget__body">
+        <div class="admin-budget__identity-topline">
+          <template v-if="isEditingLabel">
+            <form
+              class="admin-budget__label-edit"
+              @submit.prevent="$emit('commit-label', budget.budgetKey)"
             >
-              {{ budget.label || unlabeledLabel }}
-            </strong>
-            <span v-if="isDefaultBudget" class="admin-budget__default-badge">
-              {{ defaultBudgetLabel }}
-            </span>
-          </div>
-          <span>{{ budget.budgetKey }}</span>
-        </div>
-      </div>
-      <div class="admin-budget__summary-meta">
-        <div v-if="usageSummary" class="admin-budget__usage" :title="usageSummary.title">
-          <div class="admin-budget__usage-bar" aria-hidden="true">
-            <span
-              class="admin-budget__usage-fill"
-              :style="{ width: `${usageSummary.percent}%` }"
-            ></span>
-          </div>
-          <span class="admin-budget__usage-label">{{ usageSummary.label }}</span>
-        </div>
-        <div class="admin-budget__override-wrap">
-          <button
-            type="button"
-            class="admin-badge admin-badge--toggle"
-            :class="{ 'admin-badge--inactive': !budgetPolicyIsActive }"
-            :title="remainingOverrideTitle"
-            :aria-label="remainingOverrideTitle"
-            @click.stop="$emit('open-remaining-override', budget.budgetKey)"
-          >
-            {{ policyBadgeLabel }}
-          </button>
-          <form
-            v-if="isRemainingOverrideOpen"
-            class="admin-budget__override-popup"
-            @submit.prevent="$emit('save-current-remaining')"
-          >
-            <label class="admin-budget__override-input-wrap">
               <input
-                :value="currentRemainingValue"
-                class="admin-input admin-input--compact"
-                type="number"
-                min="0"
-                step="1"
-                :placeholder="currentRemainingPlaceholder"
-                @input="$emit('update:current-remaining-gib', $event)"
+                :ref="setEditingInputRef"
+                :value="editingBudgetLabel"
+                class="admin-budget__label-input"
+                type="text"
+                spellcheck="false"
+                maxlength="40"
+                @input="$emit('update:editing-budget-label', $event)"
                 @click.stop
+                @keydown.esc.prevent="$emit('cancel-label-edit')"
+                @blur="$emit('commit-label', budget.budgetKey)"
               />
-              <span class="admin-budget__override-unit">GiB</span>
-            </label>
-            <button
-              class="admin-btn admin-btn--primary admin-btn--compact"
-              :disabled="loadingState === 'saving-remaining'"
-              :aria-label="remainingOkTitle"
-              :title="remainingOkTitle"
-            >
-              {{ remainingOkTitle }}
-            </button>
-          </form>
+            </form>
+          </template>
+          <strong
+            v-else
+            class="admin-budget__label"
+            :title="renameTitle"
+            @click.stop="$emit('start-label-edit', budget)"
+          >
+            {{ budget.label || unlabeledLabel }}
+          </strong>
+          <span v-if="isDefaultBudget" class="admin-budget__default-badge">
+            {{ defaultBudgetLabel }}
+          </span>
         </div>
-        <div class="admin-budget__actions">
-          <VerticalToggle
-            :active="budgetPolicyIsActive"
-            :title="budgetPolicyIsActive ? monthlyDeactivateTitle : monthlyActivateTitle"
-            :aria-label="budgetPolicyIsActive ? monthlyDeactivateTitle : monthlyActivateTitle"
-            dim-inactive
-            @click.stop="$emit('toggle-budget-policy-active', budget.budgetKey)"
-          />
-          <div class="admin-budget__menu-wrap">
+        <span class="admin-budget__key">{{ budget.budgetKey }}</span>
+        <div class="admin-budget__summary-meta">
+          <div v-if="usageSummary" class="admin-budget__usage" :title="usageSummary.title">
+            <div class="admin-budget__usage-bar" aria-hidden="true">
+              <span
+                class="admin-budget__usage-fill"
+                :style="{ width: `${usageSummary.percent}%` }"
+              ></span>
+            </div>
+            <span class="admin-budget__usage-label">{{ usageSummary.label }}</span>
+          </div>
+          <div class="admin-budget__override-wrap">
             <button
-              class="admin-btn admin-btn--ghost admin-btn--compact admin-budget__menu-trigger"
-              :title="moreActionsTitle"
-              :aria-label="moreActionsTitle"
-              :aria-expanded="isMenuOpen"
-              @click.stop="$emit('open-budget-menu', budget.budgetKey)"
+              type="button"
+              class="admin-badge admin-badge--toggle"
+              :class="{ 'admin-badge--inactive': !budgetPolicyIsActive }"
+              :title="remainingOverrideTitle"
+              :aria-label="remainingOverrideTitle"
+              @click.stop="$emit('open-remaining-override', budget.budgetKey)"
             >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <circle cx="12" cy="5" r="2" />
-                <circle cx="12" cy="12" r="2" />
-                <circle cx="12" cy="19" r="2" />
-              </svg>
+              {{ policyBadgeLabel }}
             </button>
-            <div v-if="isMenuOpen" class="admin-budget__menu">
-              <form
-                class="admin-budget__menu-form"
-                @submit.prevent="$emit('save-monthly-allowance')"
+            <form
+              v-if="isRemainingOverrideOpen"
+              class="admin-budget__override-popup"
+              @submit.prevent="$emit('save-current-remaining')"
+            >
+              <label class="admin-budget__override-input-wrap">
+                <input
+                  :value="currentRemainingValue"
+                  class="admin-input admin-input--compact"
+                  type="number"
+                  min="0"
+                  step="1"
+                  :placeholder="currentRemainingPlaceholder"
+                  @input="$emit('update:current-remaining-gib', $event)"
+                  @click.stop
+                />
+                <span class="admin-budget__override-unit">GiB</span>
+              </label>
+              <button
+                class="admin-btn admin-btn--primary admin-btn--compact"
+                :disabled="loadingState === 'saving-remaining'"
+                :aria-label="remainingOkTitle"
+                :title="remainingOkTitle"
               >
-                <label class="admin-field admin-field--inline">
-                  <span class="admin-field__label">{{ monthlyResetAmountLabel }}</span>
-                  <input
-                    :value="monthlyAllowanceForm.resetAmountGiB"
-                    class="admin-input admin-input--compact"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    @input="$emit('update:monthly-reset-amount-gib', $event)"
-                    @click.stop
-                  />
-                </label>
-                <label class="admin-field admin-field--inline admin-field--cron">
-                  <span class="admin-field__label admin-field__label--with-action">
-                    <span>{{ monthlyCronLabel }}</span>
-                    <button
-                      type="button"
-                      class="admin-info"
-                      :aria-label="monthlyNextResetTooltip"
-                      :title="monthlyNextResetTooltip"
-                    >
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        aria-hidden="true"
-                      >
-                        <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" />
-                        <path
-                          d="M12 8h.01M11 12h1v4h1"
-                          stroke="currentColor"
-                          stroke-width="2"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                        />
-                      </svg>
-                    </button>
-                  </span>
-                  <input
-                    :value="monthlyAllowanceForm.cronExpr"
-                    class="admin-input admin-input--compact"
-                    type="text"
-                    spellcheck="false"
-                    @input="$emit('update:monthly-cron-expr', $event)"
-                    @click.stop
-                  />
-                </label>
-                <button
-                  v-if="hasMonthlyAllowanceChanges"
-                  class="admin-btn admin-btn--primary admin-btn--compact admin-btn--icon-only"
-                  :disabled="loadingState === 'saving-monthly'"
-                  :aria-label="monthlySaveTitle"
-                  :title="monthlySaveTitle"
+                {{ remainingOkTitle }}
+              </button>
+            </form>
+          </div>
+          <div class="admin-budget__actions">
+            <VerticalToggle
+              :active="budgetPolicyIsActive"
+              :title="budgetPolicyIsActive ? monthlyDeactivateTitle : monthlyActivateTitle"
+              :aria-label="budgetPolicyIsActive ? monthlyDeactivateTitle : monthlyActivateTitle"
+              dim-inactive
+              @click.stop="$emit('toggle-budget-policy-active', budget.budgetKey)"
+            />
+            <div class="admin-budget__menu-wrap">
+              <button
+                class="admin-btn admin-btn--ghost admin-btn--compact admin-budget__menu-trigger"
+                :title="moreActionsTitle"
+                :aria-label="moreActionsTitle"
+                :aria-expanded="isMenuOpen"
+                @click.stop="$emit('open-budget-menu', budget.budgetKey)"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  aria-hidden="true"
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path
-                      d="M20 6 9 17l-5-5"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
+                  <circle cx="12" cy="5" r="2" />
+                  <circle cx="12" cy="12" r="2" />
+                  <circle cx="12" cy="19" r="2" />
+                </svg>
+              </button>
+              <div v-if="isMenuOpen" class="admin-budget__menu">
+                <form
+                  class="admin-budget__menu-form"
+                  @submit.prevent="$emit('save-monthly-allowance')"
+                >
+                  <label class="admin-field admin-field--inline">
+                    <span class="admin-field__label">{{ monthlyResetAmountLabel }}</span>
+                    <input
+                      :value="monthlyAllowanceForm.resetAmountGiB"
+                      class="admin-input admin-input--compact"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      @input="$emit('update:monthly-reset-amount-gib', $event)"
+                      @click.stop
                     />
-                  </svg>
-                </button>
-              </form>
+                  </label>
+                  <label class="admin-field admin-field--inline admin-field--cron">
+                    <span class="admin-field__label admin-field__label--with-action">
+                      <span>{{ monthlyCronLabel }}</span>
+                      <button
+                        type="button"
+                        class="admin-info"
+                        :aria-label="monthlyNextResetTooltip"
+                        :title="monthlyNextResetTooltip"
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          aria-hidden="true"
+                        >
+                          <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" />
+                          <path
+                            d="M12 8h.01M11 12h1v4h1"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          />
+                        </svg>
+                      </button>
+                    </span>
+                    <input
+                      :value="monthlyAllowanceForm.cronExpr"
+                      class="admin-input admin-input--compact"
+                      type="text"
+                      spellcheck="false"
+                      @input="$emit('update:monthly-cron-expr', $event)"
+                      @click.stop
+                    />
+                  </label>
+                  <button
+                    v-if="hasMonthlyAllowanceChanges"
+                    class="admin-btn admin-btn--primary admin-btn--compact admin-btn--icon-only"
+                    :disabled="loadingState === 'saving-monthly'"
+                    :aria-label="monthlySaveTitle"
+                    :title="monthlySaveTitle"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path
+                        d="M20 6 9 17l-5-5"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                  </button>
+                </form>
 
-              <div class="admin-budget__menu-token">
-                <button
-                  type="button"
-                  class="admin-budget__menu-item"
-                  :disabled="loadingState === 'minting'"
-                  @click="$emit('mint-token', budget.budgetKey)"
-                >
-                  {{ copyBudgetAdminTokenLabel }}
-                </button>
-                <div v-if="mintedToken" class="admin-token-result">
-                  <div class="admin-token-result__actions">
-                    <button type="button" class="admin-link" @click="$emit('toggle-minted-token')">
-                      {{ showMintedToken ? hideTokenLabel : revealTokenLabel }}
-                    </button>
-                    <button type="button" class="admin-link" @click="$emit('copy-minted-token')">
-                      {{ copyTokenLabel }}
-                    </button>
+                <div class="admin-budget__menu-token">
+                  <button
+                    type="button"
+                    class="admin-budget__menu-item"
+                    :disabled="loadingState === 'minting'"
+                    @click="$emit('mint-token', budget.budgetKey)"
+                  >
+                    {{ copyBudgetAdminTokenLabel }}
+                  </button>
+                  <div v-if="mintedToken" class="admin-token-result">
+                    <div class="admin-token-result__actions">
+                      <button
+                        type="button"
+                        class="admin-link"
+                        @click="$emit('toggle-minted-token')"
+                      >
+                        {{ showMintedToken ? hideTokenLabel : revealTokenLabel }}
+                      </button>
+                      <button type="button" class="admin-link" @click="$emit('copy-minted-token')">
+                        {{ copyTokenLabel }}
+                      </button>
+                    </div>
+                    <p v-if="showMintedToken" class="admin-token-result__value">
+                      {{ mintedToken }}
+                    </p>
                   </div>
-                  <p v-if="showMintedToken" class="admin-token-result__value">
-                    {{ mintedToken }}
-                  </p>
+                </div>
+                <div class="admin-budget__menu-footer">
+                  <button
+                    v-if="!isDefaultBudget"
+                    type="button"
+                    class="admin-budget__menu-item admin-budget__menu-item--danger"
+                    :disabled="loadingState === 'archiving-budget'"
+                    @click="$emit('archive-budget', budget.budgetKey)"
+                  >
+                    {{ archiveBudgetLabel }}
+                  </button>
                 </div>
               </div>
-              <div class="admin-budget__menu-footer">
-                <button
-                  v-if="!isDefaultBudget"
-                  type="button"
-                  class="admin-budget__menu-item admin-budget__menu-item--danger"
-                  :disabled="loadingState === 'archiving-budget'"
-                  @click="$emit('archive-budget', budget.budgetKey)"
-                >
-                  {{ archiveBudgetLabel }}
-                </button>
-              </div>
             </div>
+            <button
+              type="button"
+              class="admin-btn admin-btn--ghost admin-btn--compact admin-budget__open-trigger"
+              :title="openBudgetTitle"
+              :aria-label="openBudgetTitle"
+              @click.stop="$emit('open-budget-page', budget.budgetKey)"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="m9 6 6 6-6 6"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
           </div>
-          <button
-            type="button"
-            class="admin-btn admin-btn--ghost admin-btn--compact admin-budget__open-trigger"
-            :title="openBudgetTitle"
-            :aria-label="openBudgetTitle"
-            @click.stop="$emit('open-budget-page', budget.budgetKey)"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path
-                d="m9 6 6 6-6 6"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
-          </button>
         </div>
       </div>
     </div>
@@ -426,11 +428,20 @@ defineEmits<{
   gap: 0.4rem;
 }
 
+.admin-budget__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+  padding: 0 0 0 0.35rem;
+}
+
 .admin-budget__identity-topline {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 0.45rem;
   min-width: 0;
+  overflow: hidden;
 }
 
 .admin-budget__default-badge {
@@ -531,49 +542,38 @@ defineEmits<{
   gap: 0.45rem;
 }
 
-.admin-budget__summary-main,
 .admin-budget__summary-meta {
   display: flex;
   align-items: center;
-  gap: 0.85rem;
-}
-
-.admin-budget__summary-main {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.admin-budget__summary-meta {
   justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: 0.65rem;
   min-width: 0;
   position: relative;
-  gap: 0.65rem;
-}
-
-.admin-budget__identity {
-  display: grid;
-  gap: 0.2rem;
-  min-width: 0;
-  width: 100%;
-  padding: 0 0 0 0.35rem;
-  border: 0;
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-}
-
-.admin-budget__identity strong {
-  color: var(--color-text-primary);
 }
 
 .admin-budget__label {
-  display: inline-block;
-  width: fit-content;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
   cursor: text;
   text-decoration-line: underline;
   text-decoration-style: dotted;
   text-decoration-color: var(--color-text-secondary-faded);
   text-underline-offset: 0.18em;
+}
+
+.admin-budget__key {
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .admin-budget__label-edit {
@@ -597,14 +597,6 @@ defineEmits<{
 .admin-budget__label-input:focus {
   outline: none;
   border-bottom-color: var(--color-accent);
-}
-
-.admin-budget__identity span {
-  color: var(--color-text-secondary);
-  font-size: 0.85rem;
-  font-family:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
-    monospace;
 }
 
 .admin-budget__usage {

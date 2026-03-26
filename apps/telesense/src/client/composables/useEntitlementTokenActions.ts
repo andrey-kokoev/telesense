@@ -1,4 +1,5 @@
 import type { Ref } from "vue"
+import { writeToClipboard } from "../lib/clipboard"
 import type { EntitlementTokenRecord } from "../types/entitlementTokens"
 
 type ToastFn = (message: string, variant?: "success" | "error" | "info") => void
@@ -73,7 +74,7 @@ export function useEntitlementTokenActions(options: {
       if (!data.tokenValue) {
         throw new Error("Token value unavailable")
       }
-      await navigator.clipboard.writeText(data.tokenValue)
+      await writeToClipboard(data.tokenValue)
       show(t("admin_token_copied"), "success")
     } catch (error) {
       lastError.value = error instanceof Error ? error.message : String(error)

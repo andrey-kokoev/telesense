@@ -6,6 +6,7 @@ export type EntitlementTokenRecord = {
   tokenPreview: string | null
   label: string | null
   active: boolean
+  consumedBytes?: number
   createdAt: number
   updatedAt: number
 }

@@ -112,6 +112,7 @@
           </svg>
         </button>
       </div>
+      <span v-if="usageLabel" class="budget-admin-token-row__usage">{{ usageLabel }}</span>
     </div>
   </div>
 </template>
@@ -133,6 +134,7 @@ defineProps<{
   copyTitle: string
   deleteTitle: string
   setInputRef: (el: Element | ComponentPublicInstance | null) => void
+  usageLabel?: string
 }>()
 
 defineEmits<{
@@ -158,6 +160,8 @@ defineEmits<{
 
 .budget-admin-token-row__main {
   min-width: 0;
+  display: grid;
+  gap: 0.2rem;
 }
 
 .budget-admin-token-row__line {
@@ -234,5 +238,11 @@ defineEmits<{
 
 .budget-admin-token-row__icon-button--delete {
   color: color-mix(in srgb, #9d3023 80%, var(--color-text-primary) 20%);
+}
+
+.budget-admin-token-row__usage {
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+  white-space: nowrap;
 }
 </style>

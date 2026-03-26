@@ -68,6 +68,8 @@ export class CallRoom {
   private participants: Map<string, Participant> = new Map()
   private budgetId: string | null = null
   private budgetKey: string | null = null
+  private tokenId: string | null = null
+  private meterAtTokenLevel: boolean = false
   private roomId: string | null = null
   private workerBaseUrl: string | null = null
   private initialized: boolean = false
@@ -129,6 +131,10 @@ export class CallRoom {
     if (storedRoomId) {
       this.roomId = storedRoomId
     }
+    const storedTokenId = await this.state.storage.get<string>("tokenId")
+    const storedMeterAtTokenLevel = await this.state.storage.get<boolean>("meterAtTokenLevel")
+    if (storedTokenId) this.tokenId = storedTokenId
+    if (storedMeterAtTokenLevel) this.meterAtTokenLevel = storedMeterAtTokenLevel
 
     if (storedMetering) {
       this.lastMeteredAt = storedMetering.lastMeteredAt
@@ -842,7 +848,13 @@ export class CallRoom {
   }
 
   private async setBudgetId(request: Request): Promise<Response> {
-    const body = (await request.json()) as { budgetId: string; budgetKey: string; roomId: string }
+    const body = (await request.json()) as {
+      budgetId: string
+      budgetKey: string
+      roomId: string
+      tokenId?: string | null
+      meterAtTokenLevel?: boolean
+    }
     if (!body.budgetId) {
       return new Response(JSON.stringify({ error: "budgetId required" }), { status: 400 })
     }
@@ -855,9 +867,13 @@ export class CallRoom {
     this.budgetId = body.budgetId
     this.budgetKey = body.budgetKey
     this.roomId = body.roomId
+    this.tokenId = body.tokenId ?? null
+    this.meterAtTokenLevel = body.meterAtTokenLevel ?? false
     await this.state.storage.put("budgetId", body.budgetId)
     await this.state.storage.put("budgetKey", body.budgetKey)
     await this.state.storage.put("roomId", body.roomId)
+    if (this.tokenId) await this.state.storage.put("tokenId", this.tokenId)
+    if (this.meterAtTokenLevel) await this.state.storage.put("meterAtTokenLevel", true)
     // Start metering when budget is bound
     this.startMetering()
     return new Response(
@@ -930,7 +946,13 @@ export class CallRoom {
       const response = await fetch(`${this.workerBaseUrl}/api/rooms/${this.roomId}/meter`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bytes, budgetId: this.budgetId, budgetKey: this.budgetKey }),
+        body: JSON.stringify({
+          bytes,
+          budgetId: this.budgetId,
+          budgetKey: this.budgetKey,
+          ...(this.tokenId ? { tokenId: this.tokenId } : {}),
+          ...(this.meterAtTokenLevel ? { meterAtTokenLevel: true } : {}),
+        }),
       })
 
       if (response.status === 402) {

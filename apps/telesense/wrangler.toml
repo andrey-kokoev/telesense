@@ -31,6 +31,10 @@ class_name = "EntitlementBudget"
 name = "MONTHLY_ALLOWANCES"
 class_name = "MonthlyAllowance"
 
+[[durable_objects.bindings]]
+name = "TOKEN_USAGE_LEDGERS"
+class_name = "TokenUsageLedger"
+
 # Host-admin registry database
 # Create and bind this before using deployment-wide host admin:
 #   vp exec wrangler d1 create telesense-host-admin
@@ -54,6 +58,10 @@ new_classes = ["EntitlementBudget"]
 [[migrations]]
 tag = "v3"
 new_classes = ["MonthlyAllowance"]
+
+[[migrations]]
+tag = "v4"
+new_classes = ["TokenUsageLedger"]
 
 [triggers]
 crons = ["*/15 * * * *"]

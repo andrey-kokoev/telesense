@@ -186,6 +186,58 @@ function handleInputKeydown(index: number, event: KeyboardEvent) {
   }
 }
 
+.landing__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  font-size: 1rem;
+  font-weight: 500;
+  font-family: inherit;
+  border: none;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    transform 0.1s ease,
+    opacity 0.15s ease;
+}
+
+.landing__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.landing__btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.landing__btn--primary {
+  background: var(--color-accent);
+  color: var(--color-accent-foreground);
+}
+
+.landing__btn--primary:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+}
+
+.landing__btn--secondary {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+}
+
+.landing__btn--secondary:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+}
+
+.landing__btn-icon {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
 @media (max-width: 480px) {
   .landing__code-inputs {
     gap: var(--space-1);

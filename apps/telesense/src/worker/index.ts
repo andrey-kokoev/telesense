@@ -50,12 +50,14 @@ import {
   updateEntitlementTokenActive,
   updateEntitlementTokenLabel,
   updateBudgetRegistryLabel,
+  updateBudgetMeterAtTokenLevel,
   upsertBudgetAdminTokenRegistry,
   upsertBudgetRegistry,
   upsertEntitlementTokenRegistry,
   upsertMonthlyAllowanceRegistry,
 } from "./host-admin-registry"
 import { MonthlyAllowance } from "./monthly-allowance"
+import { TokenUsageLedger } from "./token-usage-ledger"
 import { mintToken, parseToken, verifyTokenWithSecret } from "./tokens"
 import {
   buildTokenPreview,
@@ -93,6 +95,7 @@ type Env = {
   CALL_ROOMS: DurableObjectNamespace
   ENTITLEMENT_BUDGETS: DurableObjectNamespace
   MONTHLY_ALLOWANCES: DurableObjectNamespace
+  TOKEN_USAGE_LEDGERS: DurableObjectNamespace
 }
 
 // VERIFIED: rtc.live.cloudflare.com/v1 (not realtime.cloudflare.com/client/v4)
@@ -115,6 +118,11 @@ function getEntitlementBudget(env: Env): DurableObjectStub {
 function getEntitlementBudgetByKey(env: Env, budgetKey: string): DurableObjectStub {
   const id = env.ENTITLEMENT_BUDGETS.idFromName(budgetKey)
   return env.ENTITLEMENT_BUDGETS.get(id)
+}
+
+function getTokenUsageLedger(env: Env, tokenId: string): DurableObjectStub {
+  const id = env.TOKEN_USAGE_LEDGERS.idFromName(tokenId)
+  return env.TOKEN_USAGE_LEDGERS.get(id)
 }
 
 function getMonthlyAllowance(env: Env): DurableObjectStub {
@@ -376,6 +384,8 @@ type ServiceEntitlementVerificationResult =
       budgetId: string
       budgetKey: string
       remainingBytes: number
+      tokenId: string
+      meterAtTokenLevel: boolean
     }
   | {
       ok: false
@@ -450,6 +460,8 @@ async function verifyServiceEntitlementToken(
       budgetId: budgetData.budgetId,
       budgetKey: defaultBudgetKey(env),
       remainingBytes: budgetData.remainingBytes,
+      tokenId: "",
+      meterAtTokenLevel: false,
     }
   }
 
@@ -522,8 +534,12 @@ async function verifyServiceEntitlementToken(
     }
   }
 
+  let meterAtTokenLevel = false
   if (env.HOST_ADMIN_DB) {
-    const tokenRecord = await getEntitlementTokenRegistry(env, verification.claims.tokenId)
+    const [tokenRecord, budgetRegistry] = await Promise.all([
+      getEntitlementTokenRegistry(env, verification.claims.tokenId),
+      getBudgetRegistry(env, budgetKey),
+    ])
     if (
       !tokenRecord ||
       !tokenRecord.active ||
@@ -538,6 +554,7 @@ async function verifyServiceEntitlementToken(
         code: "SERVICE_ENTITLEMENT_INVALID",
       }
     }
+    meterAtTokenLevel = budgetRegistry?.meterAtTokenLevel ?? false
   }
 
   const budgetRes = await budget.fetch(new Request("http://do.internal/?action=getBudget"))
@@ -587,6 +604,8 @@ async function verifyServiceEntitlementToken(
     budgetId: budgetData.budgetId,
     budgetKey,
     remainingBytes: budgetData.remainingBytes,
+    tokenId: verification.claims.tokenId,
+    meterAtTokenLevel,
   }
 }
 
@@ -1006,7 +1025,13 @@ async function handleCreateSession(c: AppContext) {
     await callRoom.fetch(
       new Request("http://do.internal/?action=setBudgetId", {
         method: "POST",
-        body: JSON.stringify({ budgetId: tokenBudgetId, budgetKey: tokenBudgetKey, roomId }),
+        body: JSON.stringify({
+          budgetId: tokenBudgetId,
+          budgetKey: tokenBudgetKey,
+          roomId,
+          tokenId: verification.tokenId || null,
+          meterAtTokenLevel: verification.meterAtTokenLevel,
+        }),
       }),
     )
   } else {
@@ -1396,6 +1421,12 @@ registerAdminBudgetTokenRoutes(app, {
   deleteBudgetAdminTokenRegistry,
   deleteMonthlyAllowanceRegistryByBudgetKey,
   deleteBudgetRegistry,
+  updateBudgetMeterAtTokenLevel,
+  getTokenUsageLedger,
+  getBudgetMeterAtTokenLevel: async (env: Env, budgetKey: string) => {
+    const record = await getBudgetRegistry(env, budgetKey)
+    return record?.meterAtTokenLevel ?? false
+  },
 })
 
 registerAdminMonthlyAllowanceRoutes(app, {
@@ -1972,7 +2003,13 @@ app.post("/api/rooms/:roomId/meter", async (c) => {
     return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
   }
 
-  let body: { bytes: number; budgetId: string; budgetKey: string }
+  let body: {
+    bytes: number
+    budgetId: string
+    budgetKey: string
+    tokenId?: string
+    meterAtTokenLevel?: boolean
+  }
   try {
     body = await c.req.json()
     if (typeof body.bytes !== "number" || body.bytes <= 0) {
@@ -1988,14 +2025,28 @@ app.post("/api/rooms/:roomId/meter", async (c) => {
     return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
   }
 
-  // Charge the budget
+  // Charge the budget (and token ledger in parallel when token-level metering is on)
   const budget = getEntitlementBudgetByKey(env, body.budgetKey)
-  const chargeRes = await budget.fetch(
+  const chargeResPromise = budget.fetch(
     new Request("http://do.internal/?action=charge", {
       method: "POST",
       body: JSON.stringify({ bytes: body.bytes, roomId }),
     }),
   )
+  if (body.meterAtTokenLevel && body.tokenId) {
+    const ledger = getTokenUsageLedger(env, body.tokenId)
+    c.executionCtx.waitUntil(
+      ledger
+        .fetch(
+          new Request("http://do.internal/?action=charge", {
+            method: "POST",
+            body: JSON.stringify({ bytes: body.bytes }),
+          }),
+        )
+        .catch((e) => console.warn("[meter] Token ledger charge failed", e)),
+    )
+  }
+  const chargeRes = await chargeResPromise
 
   const chargeResult = (await chargeRes.json()) as {
     ok: boolean
@@ -2224,6 +2275,19 @@ async function runScheduledMonthlyAllowance(env: Env) {
         body: JSON.stringify({ appliedAt: Date.now() }),
       }),
     )
+
+    // Reset token-level ledgers if this budget uses per-token metering
+    const budgetRegistry = await getBudgetRegistry(env, status.budgetKey)
+    if (budgetRegistry?.meterAtTokenLevel) {
+      const tokens = await listEntitlementTokensByBudgetKey(env, status.budgetKey)
+      await Promise.allSettled(
+        tokens.map((token) =>
+          getTokenUsageLedger(env, token.tokenId).fetch(
+            new Request("http://do.internal/?action=resetUsage", { method: "POST" }),
+          ),
+        ),
+      )
+    }
   }
 }
 
@@ -2238,3 +2302,4 @@ export default {
 export { CallRoom }
 export { EntitlementBudget }
 export { MonthlyAllowance }
+export { TokenUsageLedger }

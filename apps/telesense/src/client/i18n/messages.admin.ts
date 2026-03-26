@@ -87,5 +87,9 @@ export const adminMessages = {
     budget_admin_token_label_saved: "Token label updated",
     budget_admin_token_enable_tooltip: "Click to activate token",
     budget_admin_token_disable_tooltip: "Click to deactivate token",
+    budget_admin_meter_at_token_level_on: "Track usage per token",
+    budget_admin_meter_at_token_level_off: "Per-token tracking off",
+    budget_admin_resets: "Resets {date}",
+    budget_admin_token_used: "{amount} this period",
   },
 } as const
