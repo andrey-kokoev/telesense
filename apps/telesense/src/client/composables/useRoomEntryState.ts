@@ -74,7 +74,6 @@ export function useRoomEntryState(options: {
     if (roomEntryState.value === "incomplete") return t("landing_enter_room_code")
     if (roomEntryState.value === "checking") return t("landing_checking_room")
     if (roomEntryState.value === "joinable") return t("landing_join_room_action")
-    if (roomEntryState.value === "token_required") return t("landing_enter_token_prompt_action")
     if (roomEntryState.value === "error") return t("landing_try_again")
     return t("landing_create_room_action")
   })
@@ -88,7 +87,11 @@ export function useRoomEntryState(options: {
 
   const isRoomActionButtonDisabled = computed(() => {
     if (roomActionState.value === "submitting") return true
-    return roomEntryState.value === "incomplete" || roomEntryState.value === "checking"
+    return (
+      roomEntryState.value === "incomplete" ||
+      roomEntryState.value === "checking" ||
+      roomEntryState.value === "token_required"
+    )
   })
 
   const roomEntryHelperText = computed(() => {
