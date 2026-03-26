@@ -1,123 +1,131 @@
 <template>
   <div class="landing">
-    <LandingHero :subtitle="t('landing_secure_video_calls')" />
+    <div class="landing__body">
+      <div class="landing__content">
+        <LandingHero :subtitle="t('landing_secure_video_calls')" />
 
-    <main class="landing__main">
-      <RoomCodeSection
-        :title="t('landing_enter_room')"
-        :digits="roomCodeDigits"
-        name="room-code"
-        :button-class="roomActionButtonClass"
-        :button-label="roomActionButtonLabel"
-        :button-disabled="isRoomActionButtonDisabled"
-        :set-input-ref="setRoomCodeInputRef"
-        :is-input-disabled="isRoomCodeInputDisabled"
-        @submit="submitRoomAction"
-        @paste="onRoomCodePaste"
-        @input="handleRoomCodeInput"
-        @keydown="handleRoomCodeKeydown"
-        @blur="handleRoomCodeBlur"
-      />
-
-      <div v-if="roomEntryHelperText" class="landing__room-helper">
-        <p v-if="roomEntryHelperText" class="landing__hint">
-          {{ roomEntryHelperText }}
-        </p>
-        <button
-          v-if="roomEntryState === 'token_required' && serviceEntitlementUiState !== 'verifying'"
-          type="button"
-          class="landing__inline-link"
-          @click="openTokenModal"
-        >
-          {{ t("landing_enter_token_prompt_action") }}
-        </button>
-      </div>
-
-      <!-- Recent Calls -->
-      <RecentRoomsSection
-        v-if="recentCalls.length > 0"
-        :title="
-          recentCalls.length > 8
-            ? `${t('landing_recent')} (${recentCalls.length})`
-            : t('landing_recent')
-        "
-        :recent-calls="displayedRecentCalls"
-        :room-availability="roomAvailability"
-        :active-only="showActiveRecentOnly"
-        :active-count="activeRecentCount"
-        :set-scroll-ref="setRecentScrollRef"
-        :register-visibility-ref="setRecentItemRef"
-        @toggle-active-only="showActiveRecentOnly = !showActiveRecentOnly"
-        @open="handleRecentItemClick"
-        @rename="renameRoom"
-        @delete="deleteRoom"
-      />
-    </main>
-
-    <!-- Token Change Modal (for authenticated users) -->
-    <div v-if="showTokenModal" class="landing__modal" @click.self="closeTokenModal">
-      <div class="landing__modal-content">
-        <h3 class="landing__modal-title">{{ tokenModalTitle }}</h3>
-        <form class="landing__form" @submit.prevent="updateServiceEntitlementToken">
-          <input
-            v-model="tokenInput"
-            type="password"
-            class="input"
-            :placeholder="tokenModalPlaceholder"
-            autocomplete="off"
-            autocapitalize="off"
-            autocorrect="off"
-            spellcheck="false"
-            inputmode="text"
+        <main class="landing__main">
+          <RoomCodeSection
+            :title="t('landing_enter_room')"
+            :digits="roomCodeDigits"
+            name="room-code"
+            :button-class="roomActionButtonClass"
+            :button-label="roomActionButtonLabel"
+            :button-disabled="isRoomActionButtonDisabled"
+            :set-input-ref="setRoomCodeInputRef"
+            :is-input-disabled="isRoomCodeInputDisabled"
+            @submit="submitRoomAction"
+            @paste="onRoomCodePaste"
+            @input="handleRoomCodeInput"
+            @keydown="handleRoomCodeKeydown"
+            @blur="handleRoomCodeBlur"
           />
-          <div class="landing__modal-actions">
-            <button type="button" class="btn btn-ghost" @click="closeTokenModal">
-              {{ t("landing_cancel") }}
-            </button>
+
+          <div v-if="roomEntryHelperText" class="landing__room-helper">
+            <p v-if="roomEntryHelperText" class="landing__hint">
+              {{ roomEntryHelperText }}
+            </p>
             <button
-              type="submit"
-              class="btn btn-primary"
-              :disabled="!tokenInput.trim() || serviceEntitlementUiState === 'verifying'"
+              v-if="
+                roomEntryState === 'token_required' && serviceEntitlementUiState !== 'verifying'
+              "
+              type="button"
+              class="landing__inline-link"
+              @click="openTokenModal"
             >
-              {{ t("landing_save") }}
+              {{ t("landing_enter_token_prompt_action") }}
             </button>
           </div>
-        </form>
-      </div>
-    </div>
 
-    <div v-if="serviceEntitlementUiState !== 'missing'" class="landing__token-status">
-      <span class="landing__token-badge">
-        {{ tokenStatusLabel }}
-      </span>
-      <button class="landing__token-action" @click="openTokenModal">
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <path d="M12 20h9" />
-          <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z" />
-        </svg>
-        <span>{{ t("landing_change_token_action") }}</span>
-      </button>
-      <button class="landing__token-action" @click="clearEnteredAccess">
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <line x1="18" y1="6" x2="6" y2="18" />
-          <line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
-        <span>{{ t("landing_clear_token") }}</span>
-      </button>
+          <!-- Recent Calls -->
+          <RecentRoomsSection
+            v-if="recentCalls.length > 0"
+            :title="
+              recentCalls.length > 8
+                ? `${t('landing_recent')} (${recentCalls.length})`
+                : t('landing_recent')
+            "
+            :recent-calls="displayedRecentCalls"
+            :room-availability="roomAvailability"
+            :active-only="showActiveRecentOnly"
+            :active-count="activeRecentCount"
+            :set-scroll-ref="setRecentScrollRef"
+            :register-visibility-ref="setRecentItemRef"
+            @toggle-active-only="showActiveRecentOnly = !showActiveRecentOnly"
+            @open="handleRecentItemClick"
+            @rename="renameRoom"
+            @delete="deleteRoom"
+          />
+        </main>
+
+        <!-- Token Change Modal (for authenticated users) -->
+        <div v-if="showTokenModal" class="landing__modal" @click.self="closeTokenModal">
+          <div class="landing__modal-content">
+            <h3 class="landing__modal-title">{{ tokenModalTitle }}</h3>
+            <form class="landing__form" @submit.prevent="updateServiceEntitlementToken">
+              <input
+                v-model="tokenInput"
+                type="password"
+                class="input"
+                :placeholder="tokenModalPlaceholder"
+                autocomplete="off"
+                autocapitalize="off"
+                autocorrect="off"
+                spellcheck="false"
+                inputmode="text"
+              />
+              <div class="landing__modal-actions">
+                <button type="button" class="btn btn-ghost" @click="closeTokenModal">
+                  {{ t("landing_cancel") }}
+                </button>
+                <button
+                  type="submit"
+                  class="btn btn-primary"
+                  :disabled="!tokenInput.trim() || serviceEntitlementUiState === 'verifying'"
+                >
+                  {{ t("landing_save") }}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div v-if="serviceEntitlementUiState !== 'missing'" class="landing__token-status">
+          <span class="landing__token-badge">
+            {{ tokenStatusLabel }}
+          </span>
+          <div class="landing__token-actions">
+            <button class="landing__token-action" @click="openTokenModal">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z" />
+              </svg>
+              <span>{{ t("landing_change_token_action") }}</span>
+            </button>
+            <button class="landing__token-action" @click="clearEnteredAccess">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+              <span>{{ t("landing_clear_token") }}</span>
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="landing__footer">
@@ -442,11 +450,28 @@ function openAdmin() {
 <style scoped>
 .landing {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
+  padding-inline: var(--space-4);
   background: var(--color-bg-primary);
+}
+
+.landing__body {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  align-items: center;
+}
+
+.landing__content {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .landing__main {
@@ -457,7 +482,6 @@ function openAdmin() {
 .landing__footer {
   width: 100%;
   max-width: 360px;
-  margin-top: auto;
   padding-top: var(--space-8);
   padding-bottom: var(--space-6);
   display: flex;
@@ -571,14 +595,20 @@ function openAdmin() {
 
 .landing__token-status {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
   margin-top: var(--space-8);
   padding-top: var(--space-6);
   border-top: 1px solid var(--color-border);
   user-select: none;
   -webkit-user-select: none;
+}
+
+.landing__token-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
 }
 
 .landing__token-badge {
@@ -666,12 +696,6 @@ function openAdmin() {
     margin: var(--space-5) 0;
   }
 
-  .landing__token-status {
-    flex-wrap: wrap;
-    justify-content: flex-start;
-    gap: var(--space-2);
-  }
-
   .landing__footer {
     justify-content: flex-start;
     padding-top: var(--space-6);
@@ -680,7 +704,7 @@ function openAdmin() {
 
   .landing__footer-actions {
     width: 100%;
-    justify-content: flex-end;
+    justify-content: center;
   }
 
   .landing__modal {
