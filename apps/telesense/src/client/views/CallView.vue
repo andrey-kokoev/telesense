@@ -307,7 +307,7 @@ onBeforeUnmount(() => {
     class="call-view__modal-backdrop"
     @click.self="takeoverPromptState === 'prompting' && resolveTakeoverPrompt(false)"
   >
-    <div class="call-view__modal">
+    <div class="call-view__modal p-4">
       <h3 class="call-view__modal-title">{{ t("call_takeover_title") }}</h3>
       <p class="call-view__modal-copy">{{ takeoverPromptMessage }}</p>
       <div class="call-view__modal-actions">

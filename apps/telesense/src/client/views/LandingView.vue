@@ -154,6 +154,7 @@
         <ThemeToggle />
       </div>
     </div>
+    <BuildStatusText class="landing__build-status mt-4" />
   </div>
 </template>
 
@@ -166,6 +167,7 @@ import {
   ref,
   type ComponentPublicInstance,
 } from "vue"
+import BuildStatusText from "../components/BuildStatusText.vue"
 import LandingHero from "../components/LandingHero.vue"
 import LanguageToggle from "../components/LanguageToggle.vue"
 import RecentRoomsSection from "../components/RecentRoomsSection.vue"
@@ -485,13 +487,19 @@ function openAdmin() {
   padding-top: var(--space-8);
   padding-bottom: var(--space-6);
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
 }
 
 .landing__footer-actions {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+.landing__build-status {
+  color: color-mix(in srgb, var(--color-text-secondary) 78%, transparent);
 }
 
 .landing__footer-admin {

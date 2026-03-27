@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { CSSProperties, ComponentPublicInstance } from "vue"
+import type { CSSProperties, ComponentPublicInstance, Ref } from "vue"
 import { computed, onBeforeUnmount, onMounted, ref } from "vue"
 import { Icon } from "@iconify/vue"
 import LanguageToggle from "./LanguageToggle.vue"
@@ -7,6 +7,7 @@ import ThemeToggle from "./ThemeToggle.vue"
 import TvNoiseSurface from "./TvNoiseSurface.vue"
 import { useI18n } from "../composables/useI18n"
 import { useToast } from "../composables/useToast"
+import { usePipFrame } from "../composables/usePipFrame"
 
 const props = defineProps<{
   roomId: string
@@ -59,6 +60,21 @@ const emit = defineEmits<{
 
 const showMenu = ref(false)
 const menuWrap = ref<HTMLElement | null>(null)
+const videosContainerRef: Ref<HTMLElement | null> = ref(null)
+
+const {
+  style: pipFrameStyle,
+  onPointerDown: onPipPointerDown,
+  onPointerMove: onPipPointerMove,
+  onPointerUp: onPipPointerUp,
+  onPointerCancel: onPipPointerCancel,
+  onLostPointerCapture: onPipLostPointerCapture,
+  onClick: onPipClick,
+  onTouchStart: onPipTouchStart,
+  onTouchMove: onPipTouchMove,
+  onTouchEnd: onPipTouchEnd,
+} = usePipFrame(videosContainerRef)
+
 const isWaitingForRemote = computed(
   () =>
     props.remoteDisplayState === "starting" || props.remoteDisplayState === "waiting_for_remote",
@@ -156,6 +172,7 @@ async function copyDiagnostics() {
 
     <div class="call-desktop__body">
       <div
+        ref="videosContainerRef"
         class="call-desktop__videos"
         :class="`call-desktop__videos--${desktopLayout}`"
         role="region"
@@ -163,7 +180,19 @@ async function copyDiagnostics() {
       >
         <div
           class="call-desktop__video-card call-desktop__video-card--local"
-          @click="emit('localVideoTap')"
+          :class="{ 'call-desktop__video-card--pip': desktopLayout === 'focus-remote' }"
+          :style="desktopLayout === 'focus-remote' ? pipFrameStyle : undefined"
+          @pointerdown="desktopLayout === 'focus-remote' ? onPipPointerDown : undefined"
+          @pointermove="desktopLayout === 'focus-remote' ? onPipPointerMove : undefined"
+          @pointerup="desktopLayout === 'focus-remote' ? onPipPointerUp : undefined"
+          @pointercancel="desktopLayout === 'focus-remote' ? onPipPointerCancel : undefined"
+          @lostpointercapture="
+            desktopLayout === 'focus-remote' ? onPipLostPointerCapture : undefined
+          "
+          @touchstart="desktopLayout === 'focus-remote' ? onPipTouchStart : undefined"
+          @touchmove="desktopLayout === 'focus-remote' ? onPipTouchMove : undefined"
+          @touchend="desktopLayout === 'focus-remote' ? onPipTouchEnd : undefined"
+          @click="desktopLayout === 'focus-remote' ? onPipClick : () => emit('localVideoTap')"
           role="img"
           aria-label="Your video"
         >
@@ -403,6 +432,10 @@ async function copyDiagnostics() {
 
 .call-desktop__footer {
   flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .call-desktop__footer-row {
@@ -505,6 +538,14 @@ async function copyDiagnostics() {
   z-index: 2;
   border: 1px solid rgb(255 255 255 / 0.14);
   box-shadow: 0 10px 30px rgb(0 0 0 / 0.3);
+}
+
+/* When PiP is interactive, composable provides positioning */
+.call-desktop__video-card--local.call-desktop__video-card--pip {
+  top: unset;
+  right: unset;
+  width: unset;
+  aspect-ratio: unset;
 }
 
 .call-desktop__sidebar {

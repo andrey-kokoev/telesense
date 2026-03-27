@@ -7,6 +7,8 @@ import ThemeToggle from "./ThemeToggle.vue"
 import TvNoiseSurface from "./TvNoiseSurface.vue"
 import { useI18n } from "../composables/useI18n"
 import { useToast } from "../composables/useToast"
+import { usePipFrame } from "../composables/usePipFrame"
+import type { Ref } from "vue"
 
 const props = defineProps<{
   roomId: string
@@ -65,10 +67,19 @@ const isRemoteDisconnected = computed(() => props.remoteDisplayState === "remote
 const isRemoteMediaInterrupted = computed(
   () => props.remoteDisplayState === "remote_media_interrupted",
 )
-const localVideoCorner = ref<"top-left" | "top-right" | "bottom-left" | "bottom-right">(
-  "bottom-right",
-)
-const pipTouchStart = ref<{ x: number; y: number } | null>(null)
+const videosContainerRef: Ref<HTMLElement | null> = ref(null)
+const {
+  style: pipFrameStyle,
+  onPointerDown: onPipPointerDown,
+  onPointerMove: onPipPointerMove,
+  onPointerUp: onPipPointerUp,
+  onPointerCancel: onPipPointerCancel,
+  onLostPointerCapture: onPipLostPointerCapture,
+  onClick: onPipClick,
+  onTouchStart: onPipTouchStart,
+  onTouchMove: onPipTouchMove,
+  onTouchEnd: onPipTouchEnd,
+} = usePipFrame(videosContainerRef)
 
 const blurTappedButton = (event: Event) => {
   window.setTimeout(() => {
@@ -89,66 +100,6 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener("pointerdown", handleDocumentPointerDown)
 })
-
-function onLocalPreviewTouchStart(event: TouchEvent) {
-  const touch = event.touches[0]
-  if (!touch) return
-  pipTouchStart.value = { x: touch.clientX, y: touch.clientY }
-}
-
-function onLocalPreviewTouchEnd(event: TouchEvent) {
-  const start = pipTouchStart.value
-  const touch = event.changedTouches[0]
-  pipTouchStart.value = null
-  if (!start || !touch) return
-
-  const dx = touch.clientX - start.x
-  const dy = touch.clientY - start.y
-  if (Math.abs(dx) < 24 && Math.abs(dy) < 24) return
-
-  if (Math.abs(dx) >= 24 && Math.abs(dy) >= 24) {
-    localVideoCorner.value =
-      dx > 0 ? (dy > 0 ? "bottom-right" : "top-right") : dy > 0 ? "bottom-left" : "top-left"
-    return
-  }
-
-  const horizontal = Math.abs(dx) >= Math.abs(dy)
-
-  if (horizontal) {
-    if (dx > 0) {
-      localVideoCorner.value =
-        localVideoCorner.value === "top-left"
-          ? "top-right"
-          : localVideoCorner.value === "bottom-left"
-            ? "bottom-right"
-            : localVideoCorner.value
-    } else {
-      localVideoCorner.value =
-        localVideoCorner.value === "top-right"
-          ? "top-left"
-          : localVideoCorner.value === "bottom-right"
-            ? "bottom-left"
-            : localVideoCorner.value
-    }
-    return
-  }
-
-  if (dy > 0) {
-    localVideoCorner.value =
-      localVideoCorner.value === "top-left"
-        ? "bottom-left"
-        : localVideoCorner.value === "top-right"
-          ? "bottom-right"
-          : localVideoCorner.value
-  } else {
-    localVideoCorner.value =
-      localVideoCorner.value === "bottom-left"
-        ? "top-left"
-        : localVideoCorner.value === "bottom-right"
-          ? "top-right"
-          : localVideoCorner.value
-  }
-}
 
 async function copyRoomCode() {
   try {
@@ -221,7 +172,12 @@ async function copyDiagnostics() {
       </div>
     </header>
 
-    <div class="call-mobile__videos" role="region" :aria-label="t('call_video_feeds')">
+    <div
+      ref="videosContainerRef"
+      class="call-mobile__videos"
+      role="region"
+      :aria-label="t('call_video_feeds')"
+    >
       <div
         class="call-mobile__video-card call-mobile__video-card--remote"
         @click="emit('remoteVideoTap')"
@@ -271,10 +227,16 @@ async function copyDiagnostics() {
         <div
           v-if="mobileLayout === 'picture-in-picture'"
           class="call-mobile__video-card call-mobile__video-card--local"
-          :class="`call-mobile__video-card--${localVideoCorner}`"
-          @click="emit('localVideoTap')"
-          @touchstart.passive="onLocalPreviewTouchStart"
-          @touchend="onLocalPreviewTouchEnd"
+          :style="pipFrameStyle"
+          @pointerdown="onPipPointerDown"
+          @pointermove="onPipPointerMove"
+          @pointerup="onPipPointerUp"
+          @pointercancel="onPipPointerCancel"
+          @lostpointercapture="onPipLostPointerCapture"
+          @touchstart="onPipTouchStart"
+          @touchmove="onPipTouchMove"
+          @touchend="onPipTouchEnd"
+          @click="onPipClick"
           role="img"
           aria-label="Your video"
         >
@@ -306,116 +268,118 @@ async function copyDiagnostics() {
     </div>
 
     <nav ref="menuWrap" class="call-mobile__bottom-bar" :aria-label="t('call_controls')">
-      <button
-        type="button"
-        class="call-mobile__nav-button"
-        :class="{ 'call-mobile__nav-button--active': isAudioMuted }"
-        @click="emit('toggleAudio')"
-        @pointerup="blurTappedButton"
-        :disabled="!hasLocalStream"
-      >
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          aria-hidden="true"
+      <div class="call-mobile__bottom-bar-actions">
+        <button
+          type="button"
+          class="call-mobile__nav-button"
+          :class="{ 'call-mobile__nav-button--active': isAudioMuted }"
+          @click="emit('toggleAudio')"
+          @pointerup="blurTappedButton"
+          :disabled="!hasLocalStream"
         >
-          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 1 0 6 0V4a3 3 0 0 0-3-3Z" />
-          <path d="M19 10v2a7 7 0 1 1-14 0v-2" />
-          <path d="M12 19v4" />
-        </svg>
-        <span>{{ isAudioMuted ? t("call_unmute") : t("call_mute") }}</span>
-      </button>
-      <button
-        type="button"
-        class="call-mobile__nav-button"
-        :class="{ 'call-mobile__nav-button--active': isVideoOff }"
-        @click="emit('toggleVideo')"
-        @pointerup="blurTappedButton"
-        :disabled="!hasLocalStream"
-      >
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          aria-hidden="true"
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 1 0 6 0V4a3 3 0 0 0-3-3Z" />
+            <path d="M19 10v2a7 7 0 1 1-14 0v-2" />
+            <path d="M12 19v4" />
+          </svg>
+          <span>{{ isAudioMuted ? t("call_unmute") : t("call_mute") }}</span>
+        </button>
+        <button
+          type="button"
+          class="call-mobile__nav-button"
+          :class="{ 'call-mobile__nav-button--active': isVideoOff }"
+          @click="emit('toggleVideo')"
+          @pointerup="blurTappedButton"
+          :disabled="!hasLocalStream"
         >
-          <path d="m22 8-6 4 6 4V8Z" />
-          <rect x="2" y="6" width="14" height="12" rx="2" ry="2" />
-        </svg>
-        <span>{{ isVideoOff ? t("call_camera_on") : t("call_camera_off") }}</span>
-      </button>
-      <button
-        type="button"
-        class="call-mobile__nav-button call-mobile__nav-button--leave"
-        @click="emit('leave')"
-        @pointerup="blurTappedButton"
-      >
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          aria-hidden="true"
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <path d="m22 8-6 4 6 4V8Z" />
+            <rect x="2" y="6" width="14" height="12" rx="2" ry="2" />
+          </svg>
+          <span>{{ isVideoOff ? t("call_camera_on") : t("call_camera_off") }}</span>
+        </button>
+        <button
+          type="button"
+          class="call-mobile__nav-button call-mobile__nav-button--leave"
+          @click="emit('leave')"
+          @pointerup="blurTappedButton"
         >
-          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-          <path d="m16 17 5-5-5-5" />
-          <path d="M21 12H9" />
-        </svg>
-        <span>{{ t("call_leave") }}</span>
-      </button>
-      <button
-        type="button"
-        class="call-mobile__nav-button"
-        :class="{ 'call-mobile__nav-button--active': showMenu }"
-        :aria-label="t('call_more_actions')"
-        @click="showMenu = !showMenu"
-        @pointerup="blurTappedButton"
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <circle cx="12" cy="5" r="2" />
-          <circle cx="12" cy="12" r="2" />
-          <circle cx="12" cy="19" r="2" />
-        </svg>
-        <span>{{ t("call_more_actions") }}</span>
-      </button>
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <path d="m16 17 5-5-5-5" />
+            <path d="M21 12H9" />
+          </svg>
+          <span>{{ t("call_leave") }}</span>
+        </button>
+        <button
+          type="button"
+          class="call-mobile__nav-button"
+          :class="{ 'call-mobile__nav-button--active': showMenu }"
+          :aria-label="t('call_more_actions')"
+          @click="showMenu = !showMenu"
+          @pointerup="blurTappedButton"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <circle cx="12" cy="5" r="2" />
+            <circle cx="12" cy="12" r="2" />
+            <circle cx="12" cy="19" r="2" />
+          </svg>
+          <span>{{ t("call_more_actions") }}</span>
+        </button>
 
-      <div v-if="showMenu" class="call-mobile__menu">
-        <button
-          type="button"
-          class="call-mobile__menu-item"
-          @click="
-            () => {
-              emit('update:showLogs', !showLogs)
-              showMenu = false
-            }
-          "
-          @pointerup="blurTappedButton"
-        >
-          {{ t("call_logs") }}
-        </button>
-        <button
-          type="button"
-          v-if="canEndRoom"
-          class="call-mobile__menu-item call-mobile__menu-item--danger"
-          @click="
-            () => {
-              emit('endRoom')
-              showMenu = false
-            }
-          "
-          @pointerup="blurTappedButton"
-        >
-          {{ t("call_end_room") }}
-        </button>
+        <div v-if="showMenu" class="call-mobile__menu">
+          <button
+            type="button"
+            class="call-mobile__menu-item"
+            @click="
+              () => {
+                emit('update:showLogs', !showLogs)
+                showMenu = false
+              }
+            "
+            @pointerup="blurTappedButton"
+          >
+            {{ t("call_logs") }}
+          </button>
+          <button
+            type="button"
+            v-if="canEndRoom"
+            class="call-mobile__menu-item call-mobile__menu-item--danger"
+            @click="
+              () => {
+                emit('endRoom')
+                showMenu = false
+              }
+            "
+            @pointerup="blurTappedButton"
+          >
+            {{ t("call_end_room") }}
+          </button>
+        </div>
       </div>
     </nav>
 
@@ -515,6 +479,8 @@ async function copyDiagnostics() {
 
 .call-mobile__video-card--local {
   position: absolute;
+  right: 0.9rem;
+  bottom: 0.9rem;
   width: min(34vw, 8.5rem);
   aspect-ratio: 3 / 4;
   min-height: 0;
@@ -523,39 +489,24 @@ async function copyDiagnostics() {
   box-shadow: 0 10px 30px rgb(0 0 0 / 0.28);
 }
 
-.call-mobile__video-card--top-left {
-  top: 0.9rem;
-  left: 0.9rem;
-}
-
-.call-mobile__video-card--top-right {
-  top: 0.9rem;
-  right: 0.9rem;
-}
-
-.call-mobile__video-card--bottom-left {
-  bottom: 0.9rem;
-  left: 0.9rem;
-}
-
-.call-mobile__video-card--bottom-right {
-  right: 0.9rem;
-  bottom: 0.9rem;
-}
-
 .call-mobile__bottom-bar {
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
-  height: calc(56px + env(safe-area-inset-bottom));
   display: flex;
+  flex-direction: column;
   border-top: 1px solid color-mix(in srgb, var(--color-accent) 18%, transparent);
   background: var(--color-bg-primary);
   z-index: 10;
   overflow-anchor: none;
   isolation: isolate;
   transform: translateZ(0);
+}
+
+.call-mobile__bottom-bar-actions {
+  height: 56px;
+  display: flex;
 }
 
 .call-mobile__nav-button {

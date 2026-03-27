@@ -1,8 +1,31 @@
+import { execSync } from "node:child_process"
+import { readFileSync } from "node:fs"
 import { defineConfig } from "vite-plus"
 import vue from "@vitejs/plugin-vue"
 import { VitePWA } from "vite-plugin-pwa"
 
+const packageJson = JSON.parse(
+  readFileSync(new URL("./package.json", import.meta.url), "utf8"),
+) as { version?: string }
+
+function getCommitSha(): string {
+  try {
+    return execSync("git rev-parse --short HEAD", { encoding: "utf8" }).trim()
+  } catch {
+    return "unknown"
+  }
+}
+
+const buildVersion = packageJson.version ?? "0.0.0"
+const buildTime = new Date().toISOString()
+const buildCommitSha = getCommitSha()
+
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(buildVersion),
+    __BUILD_TIME__: JSON.stringify(buildTime),
+    __BUILD_COMMIT_SHA__: JSON.stringify(buildCommitSha),
+  },
   plugins: [
     vue(),
     VitePWA({

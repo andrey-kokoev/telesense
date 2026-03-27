@@ -1,6 +1,7 @@
 import { createApp } from "vue"
 import { registerSW } from "virtual:pwa-register"
 import App from "./App.vue"
+import { useBuildInfo } from "./composables/useBuildInfo"
 import { useTheme } from "./composables/useTheme"
 
 // Initialize theme before mounting
@@ -18,9 +19,17 @@ if (import.meta.env.DEV) {
       // Ignore service worker cleanup failures in development.
     })
 } else {
-  registerSW({
+  const { registerUpdateHandler, markUpdateAvailable, clearUpdateAvailable } = useBuildInfo()
+  const updateSW = registerSW({
     immediate: true,
+    onRegistered() {
+      clearUpdateAvailable()
+    },
+    onNeedRefresh() {
+      markUpdateAvailable()
+    },
   })
+  registerUpdateHandler(updateSW)
 }
 
 const app = createApp(App)
