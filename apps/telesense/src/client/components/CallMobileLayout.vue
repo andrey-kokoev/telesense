@@ -226,7 +226,7 @@ async function copyDiagnostics() {
 
         <div
           v-if="mobileLayout === 'picture-in-picture'"
-          class="call-mobile__video-card call-mobile__video-card--local"
+          class="call-mobile__video-card call-mobile__video-card--local call-mobile__video-card--pip"
           :style="pipFrameStyle"
           @pointerdown="onPipPointerDown"
           @pointermove="onPipPointerMove"
@@ -487,6 +487,12 @@ async function copyDiagnostics() {
   z-index: 2;
   border: 1px solid rgb(255 255 255 / 0.14);
   box-shadow: 0 10px 30px rgb(0 0 0 / 0.28);
+}
+
+/* When PiP is interactive, composable provides positioning */
+.call-mobile__video-card--local.call-mobile__video-card--pip {
+  width: unset;
+  aspect-ratio: unset;
 }
 
 .call-mobile__bottom-bar {

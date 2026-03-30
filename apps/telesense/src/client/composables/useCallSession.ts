@@ -638,30 +638,42 @@ export function useCallSession({
       currentSessionId.value = sessionId
       startHeartbeat(sessionId)
 
-      log("📹 Requesting camera access...")
+      log("📹 Requesting camera/microphone access...")
       sessionLifecycle.value = "acquiring_media"
+      const acquiredTracks: MediaStreamTrack[] = []
       try {
-        media.localStream.value = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true,
-        })
-        media.cameraTrack.value = media.localStream.value.getVideoTracks()[0] ?? null
+        const videoStream = await navigator.mediaDevices.getUserMedia({ video: true })
+        acquiredTracks.push(...videoStream.getVideoTracks())
+        log("✅ Camera connected")
+      } catch (e) {
+        log(`⚠️ Camera not available: ${errorToMessage(e)}`)
+      }
+      try {
+        const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        acquiredTracks.push(...audioStream.getAudioTracks())
+        log("✅ Microphone connected")
+      } catch (e) {
+        log(`⚠️ Microphone not available: ${errorToMessage(e)}`)
+      }
+      if (acquiredTracks.length > 0) {
+        media.localStream.value = new MediaStream(acquiredTracks)
+        media.cameraTrack.value = acquiredTracks.find((t) => t.kind === "video") ?? null
         if (media.localVid.value) {
           media.localVid.value.srcObject = media.localStream.value
         }
-        log("✅ Camera connected")
-      } catch (e) {
-        log(`❌ Camera error: ${errorToMessage(e)}`)
-        await cleanupCallPresence()
-        leaveWithError("Camera access denied")
-        return
+      } else {
+        log("⚠️ No media devices available - joining as viewer")
+        media.localStream.value = null
+        media.cameraTrack.value = null
       }
 
       await syncMediaState()
 
       const transceivers = media.localStream.value
-        .getTracks()
-        .map((track) => pc.addTransceiver(track, { direction: "sendonly" }))
+        ? media.localStream.value
+            .getTracks()
+            .map((track) => pc.addTransceiver(track, { direction: "sendonly" }))
+        : []
       media.publishedVideoSender.value =
         transceivers.find(({ sender }) => sender.track?.kind === "video")?.sender ?? null
 
@@ -670,7 +682,7 @@ export function useCallSession({
 
       log("📤 Publishing...", "publish.start", {
         sessionId,
-        trackKinds: media.localStream.value.getTracks().map((track) => track.kind),
+        trackKinds: media.localStream.value?.getTracks().map((track) => track.kind) ?? [],
       })
       sessionLifecycle.value = "publishing"
       const publishRes = await apiCall(`/api/rooms/${roomId}/publish-offer`, {
