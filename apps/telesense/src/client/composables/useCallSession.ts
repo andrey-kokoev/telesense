@@ -1,4 +1,4 @@
-import { onBeforeUnmount, onMounted, ref, type Ref } from "vue"
+import { onBeforeUnmount, onMounted, ref, watch, type Ref } from "vue"
 import { useAppStore } from "./useAppStore"
 
 interface SessionResponse {
@@ -167,11 +167,51 @@ export function useCallSession({
   const beforeUnloadListener = ref<(() => void) | null>(null)
 
   // Chat state
-  const chatMessages = ref<
-    Array<{ id: string; text: string; timestamp: number; isLocal: boolean }>
-  >([])
+  const CHAT_STORAGE_KEY = `telesense:chat:${roomId}`
+  const MAX_STORED_MESSAGES = 100
+
+  function loadChatHistory() {
+    try {
+      const stored = localStorage.getItem(CHAT_STORAGE_KEY)
+      if (stored) {
+        const parsed = JSON.parse(stored) as Array<{
+          id: string
+          text: string
+          timestamp: number
+          isLocal: boolean
+        }>
+        // Validate structure before using
+        if (Array.isArray(parsed)) {
+          return parsed.slice(-MAX_STORED_MESSAGES)
+        }
+      }
+    } catch {
+      // Invalid storage data, start fresh
+    }
+    return []
+  }
+
+  function saveChatHistory() {
+    try {
+      localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(chatMessages.value))
+    } catch {
+      // Storage might be full or unavailable
+    }
+  }
+
+  const chatMessages =
+    ref<Array<{ id: string; text: string; timestamp: number; isLocal: boolean }>>(loadChatHistory())
   const dataChannel = ref<RTCDataChannel | null>(null)
   const isChatOpen = ref(false)
+
+  // Auto-save chat history when messages change
+  watch(
+    chatMessages,
+    () => {
+      saveChatHistory()
+    },
+    { deep: true },
+  )
 
   async function apiCall(url: string, options: RequestInit = {}) {
     const extraHeaders =
