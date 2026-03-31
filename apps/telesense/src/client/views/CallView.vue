@@ -144,6 +144,7 @@ const {
   chatMessages,
   isChatOpen,
   sendChatMessage,
+  deleteMessage,
   toggleChat,
   syncMediaState,
   endRoom,
@@ -184,6 +185,16 @@ function handleSendMessage() {
   } else {
     showToast("Could not send message - chat not connected", "error")
   }
+}
+
+function handleDeleteMessage(messageId: string) {
+  const result = deleteMessage(messageId)
+  if (result === "not-found") {
+    showToast("Message not found", "error")
+  } else if (result === "local-only") {
+    showToast("Deleted locally only - remote may still see it", "info")
+  }
+  // "deleted" case is silent success
 }
 
 const remoteDisplayState = computed<CallDisplayState>(() => {
@@ -371,11 +382,24 @@ onBeforeUnmount(() => {
           :class="{ 'call-view__chat-message--local': msg.isLocal }"
         >
           <span class="call-view__chat-text">{{ msg.text }}</span>
-          <span class="call-view__chat-time">
-            {{
-              new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-            }}
-          </span>
+          <div class="call-view__chat-meta">
+            <span class="call-view__chat-time">
+              {{
+                new Date(msg.timestamp).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              }}
+            </span>
+            <button
+              v-if="msg.isLocal"
+              class="call-view__chat-delete"
+              @click="handleDeleteMessage(msg.id)"
+              title="Delete"
+            >
+              🗑
+            </button>
+          </div>
         </div>
         <div v-if="chatMessages.length === 0" class="call-view__chat-empty">
           {{ t("call_chat_empty") }}
@@ -464,10 +488,30 @@ onBeforeUnmount(() => {
   word-break: break-word;
 }
 
+.call-view__chat-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  align-self: flex-end;
+}
+
 .call-view__chat-time {
   font-size: 0.75rem;
   opacity: 0.7;
-  align-self: flex-end;
+}
+
+.call-view__chat-delete {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+  padding: 0;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+.call-view__chat-delete:hover {
+  opacity: 1;
 }
 
 .call-view__chat-empty {

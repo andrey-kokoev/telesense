@@ -831,16 +831,32 @@ export function useCallSession({
 
     dc.onmessage = (event) => {
       try {
-        const message = JSON.parse(event.data) as { id: string; text: string; timestamp: number }
-        chatMessages.value.push({
-          ...message,
-          isLocal: false,
-        })
-        // Keep only last 100 messages
-        if (chatMessages.value.length > 100) {
-          chatMessages.value.shift()
+        const data = JSON.parse(event.data) as
+          | { id: string; text: string; timestamp: number }
+          | { type: "delete"; messageId: string }
+
+        // Handle delete signal
+        if ("type" in data && data.type === "delete") {
+          const index = chatMessages.value.findIndex((m) => m.id === data.messageId)
+          if (index !== -1) {
+            chatMessages.value.splice(index, 1)
+            log("💬 Message deleted by remote")
+          }
+          return
         }
-        log("💬 Received message")
+
+        // Handle regular message
+        if ("text" in data) {
+          chatMessages.value.push({
+            ...data,
+            isLocal: false,
+          })
+          // Keep only last 100 messages
+          if (chatMessages.value.length > 100) {
+            chatMessages.value.shift()
+          }
+          log("💬 Received message")
+        }
       } catch {
         // Ignore malformed messages
       }
@@ -883,6 +899,38 @@ export function useCallSession({
     }
   }
 
+  function deleteMessage(messageId: string): "deleted" | "local-only" | "not-found" {
+    const index = chatMessages.value.findIndex((m) => m.id === messageId)
+    if (index === -1) {
+      return "not-found"
+    }
+
+    const message = chatMessages.value[index]
+
+    // Remove locally
+    chatMessages.value.splice(index, 1)
+
+    // Try to notify remote if session is active and it's a local message
+    const dc = dataChannel.value
+    if (message.isLocal && dc && dc.readyState === "open") {
+      try {
+        dc.send(
+          JSON.stringify({
+            type: "delete",
+            messageId,
+          }),
+        )
+        return "deleted"
+      } catch {
+        // Failed to notify remote, but local deletion succeeded
+        return "local-only"
+      }
+    }
+
+    // For remote messages or if no active session, only local deletion
+    return message.isLocal ? "local-only" : "deleted"
+  }
+
   function toggleChat() {
     isChatOpen.value = !isChatOpen.value
   }
@@ -918,6 +966,7 @@ export function useCallSession({
     chatMessages,
     isChatOpen,
     sendChatMessage,
+    deleteMessage,
     toggleChat,
     syncMediaState,
     endRoom,
