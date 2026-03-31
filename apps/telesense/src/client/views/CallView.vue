@@ -428,7 +428,7 @@ onBeforeUnmount(() => {
   z-index: 110;
   display: flex;
   justify-content: flex-end;
-  background: rgb(0 0 0 / 0.24);
+  background: color-mix(in srgb, var(--color-bg-primary) 60%, transparent);
 }
 
 .call-view__chat-panel {
@@ -436,7 +436,7 @@ onBeforeUnmount(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--color-bg-elevated);
+  background: var(--color-bg-primary);
   border-left: 1px solid var(--color-border);
   box-shadow: var(--shadow-lg);
 }
