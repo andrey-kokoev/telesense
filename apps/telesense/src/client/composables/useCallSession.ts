@@ -639,13 +639,10 @@ export function useCallSession({
     // Handle incoming data channel from remote peer (for answerer side)
     pc.ondatachannel = (event) => {
       const channel = event.channel
-      log(
-        `💬 Data channel received: label=${channel.label}, id=${channel.id}, state=${channel.readyState}`,
-      )
       if (channel.label === "chat") {
         setupDataChannel(channel)
         dataChannel.value = channel
-        log(`💬 Chat data channel RECEIVED (answerer side, id=${channel.id})`)
+        log("💬 Chat data channel received from remote")
       }
     }
 
@@ -744,7 +741,7 @@ export function useCallSession({
         })
         setupDataChannel(dc)
         dataChannel.value = dc
-        log(`💬 Chat data channel CREATED (offerer side, id=${dc.id})`)
+        log("💬 Chat data channel created")
       } catch (e) {
         log(`⚠️ Could not create data channel: ${errorToMessage(e)}`)
       }
@@ -830,14 +827,11 @@ export function useCallSession({
   })
 
   function setupDataChannel(dc: RTCDataChannel) {
-    log(`💬 Data channel setup: readyState=${dc.readyState}, id=${dc.id}`)
-
     dc.onopen = () => {
-      log(`💬 Chat channel OPEN (id=${dc.id})`)
+      log("💬 Chat channel open")
     }
 
     dc.onmessage = (event) => {
-      log(`💬 Raw message received: ${event.data.slice(0, 100)}`)
       try {
         const data = JSON.parse(event.data) as
           | { id: string; text: string; timestamp: number }
@@ -863,32 +857,25 @@ export function useCallSession({
           if (chatMessages.value.length > 100) {
             chatMessages.value.shift()
           }
-          log(`💬 Received message: "${data.text.slice(0, 30)}..."`)
+          log("💬 Received message")
         }
-      } catch (e) {
-        log(`💬 Message parse error: ${errorToMessage(e)}`)
+      } catch {
+        // Ignore malformed messages
       }
     }
 
     dc.onclose = () => {
-      log(`💬 Chat channel CLOSED (id=${dc.id})`)
+      log("💬 Chat channel closed")
     }
 
     dc.onerror = (e) => {
-      log(`💬 Chat ERROR: ${errorToMessage(e)}`)
+      log(`💬 Chat error: ${errorToMessage(e)}`)
     }
   }
 
   function sendChatMessage(text: string): boolean {
     const dc = dataChannel.value
-    log(`💬 Attempting send: dc=${!!dc}, readyState=${dc?.readyState}`)
-
-    if (!dc) {
-      log("💬 Send failed: no data channel")
-      return false
-    }
-    if (dc.readyState !== "open") {
-      log(`💬 Send failed: readyState=${dc.readyState} (expected "open")`)
+    if (!dc || dc.readyState !== "open") {
       return false
     }
 
@@ -899,9 +886,7 @@ export function useCallSession({
     }
 
     try {
-      const payload = JSON.stringify(message)
-      log(`💬 Sending: ${payload.slice(0, 100)}`)
-      dc.send(payload)
+      dc.send(JSON.stringify(message))
       chatMessages.value.push({
         ...message,
         isLocal: true,
@@ -910,10 +895,8 @@ export function useCallSession({
       if (chatMessages.value.length > 100) {
         chatMessages.value.shift()
       }
-      log("💬 Send succeeded")
       return true
-    } catch (e) {
-      log(`💬 Send error: ${errorToMessage(e)}`)
+    } catch {
       return false
     }
   }
