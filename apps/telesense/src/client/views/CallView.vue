@@ -441,6 +441,13 @@ onBeforeUnmount(() => {
   box-shadow: var(--shadow-lg);
 }
 
+@media (max-width: 640px) {
+  .call-view__chat-panel {
+    width: 100%;
+    border-left: none;
+  }
+}
+
 .call-view__chat-header {
   display: flex;
   align-items: center;
