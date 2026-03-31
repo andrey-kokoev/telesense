@@ -77,6 +77,11 @@ export const landingCallMessages = {
       "Service budget exhausted. Room will terminate in {minutes} minutes.",
     call_service_budget_grace_banner:
       "Service budget exhausted. Room will terminate in {minutes} minutes.",
+    call_chat: "Chat",
+    call_chat_title: "Chat",
+    call_chat_empty: "No messages yet",
+    call_chat_placeholder: "Type a message...",
+    call_chat_send: "Send",
   },
   ru: {
     landing_secure_video_calls: "Безопасные видеозвонки",

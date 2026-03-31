@@ -166,6 +166,13 @@ export function useCallSession({
   const visibilityListener = ref<(() => void) | null>(null)
   const beforeUnloadListener = ref<(() => void) | null>(null)
 
+  // Chat state
+  const chatMessages = ref<
+    Array<{ id: string; text: string; timestamp: number; isLocal: boolean }>
+  >([])
+  const dataChannel = ref<RTCDataChannel | null>(null)
+  const isChatOpen = ref(false)
+
   async function apiCall(url: string, options: RequestInit = {}) {
     const extraHeaders =
       options.headers && !Array.isArray(options.headers)
@@ -589,6 +596,14 @@ export function useCallSession({
       }
     }
 
+    // Handle incoming data channel from remote peer
+    pc.ondatachannel = (event) => {
+      const channel = event.channel
+      if (channel.label === "chat") {
+        setupDataChannel(channel)
+      }
+    }
+
     try {
       log("🔑 Creating session...", "session.create.start", {
         roomId,
@@ -677,6 +692,18 @@ export function useCallSession({
       media.publishedVideoSender.value =
         transceivers.find(({ sender }) => sender.track?.kind === "video")?.sender ?? null
 
+      // Create data channel for chat (before creating offer)
+      try {
+        const dc = pc.createDataChannel("chat", {
+          ordered: true,
+        })
+        setupDataChannel(dc)
+        dataChannel.value = dc
+        log("💬 Chat data channel created")
+      } catch (e) {
+        log(`⚠️ Could not create data channel: ${errorToMessage(e)}`)
+      }
+
       const offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
 
@@ -757,6 +784,69 @@ export function useCallSession({
     }
   })
 
+  function setupDataChannel(dc: RTCDataChannel) {
+    dc.onopen = () => {
+      log("💬 Chat channel open")
+    }
+
+    dc.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data) as { id: string; text: string; timestamp: number }
+        chatMessages.value.push({
+          ...message,
+          isLocal: false,
+        })
+        // Keep only last 100 messages
+        if (chatMessages.value.length > 100) {
+          chatMessages.value.shift()
+        }
+        log("💬 Received message")
+      } catch {
+        // Ignore malformed messages
+      }
+    }
+
+    dc.onclose = () => {
+      log("💬 Chat channel closed")
+    }
+
+    dc.onerror = (e) => {
+      log(`💬 Chat error: ${errorToMessage(e)}`)
+    }
+  }
+
+  function sendChatMessage(text: string): boolean {
+    const dc = dataChannel.value
+    if (!dc || dc.readyState !== "open") {
+      return false
+    }
+
+    const message = {
+      id: crypto.randomUUID(),
+      text: text.slice(0, 500), // Limit message length
+      timestamp: Date.now(),
+    }
+
+    try {
+      dc.send(JSON.stringify(message))
+      chatMessages.value.push({
+        ...message,
+        isLocal: true,
+      })
+      // Keep only last 100 messages
+      if (chatMessages.value.length > 100) {
+        chatMessages.value.shift()
+      }
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  function toggleChat() {
+    isChatOpen.value = !isChatOpen.value
+  }
+
   onBeforeUnmount(() => {
     if (visibilityListener.value) {
       document.removeEventListener("visibilitychange", visibilityListener.value)
@@ -769,8 +859,10 @@ export function useCallSession({
     }
 
     void cleanupCallPresence()
+    dataChannel.value?.close()
     pcRef.value?.close()
     pcRef.value = null
+    dataChannel.value = null
     media.publishedVideoSender.value = null
     media.clearRemoteVideo()
     media.stopLocalMedia()
@@ -783,6 +875,10 @@ export function useCallSession({
     hadRemoteParticipant,
     isRemoteDisconnected,
     isRemoteMediaInterrupted,
+    chatMessages,
+    isChatOpen,
+    sendChatMessage,
+    toggleChat,
     syncMediaState,
     endRoom,
     leave,

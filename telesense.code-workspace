@@ -6,6 +6,9 @@
     {
       "path": "../thoughts",
     },
+    {
+      "path": "../pda-lab",
+    },
   ],
   "settings": {},
 }

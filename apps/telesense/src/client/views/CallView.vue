@@ -141,6 +141,10 @@ const {
   hadRemoteParticipant,
   isRemoteDisconnected,
   isRemoteMediaInterrupted,
+  chatMessages,
+  isChatOpen,
+  sendChatMessage,
+  toggleChat,
   syncMediaState,
   endRoom,
   leave,
@@ -166,6 +170,21 @@ const {
   onConfirmTakeover: confirmTakeover,
 })
 syncMediaStateImpl = syncMediaState
+
+// Chat input
+const chatInput = ref("")
+
+function handleSendMessage() {
+  const text = chatInput.value.trim()
+  if (!text) return
+
+  const sent = sendChatMessage(text)
+  if (sent) {
+    chatInput.value = ""
+  } else {
+    showToast("Could not send message - chat not connected", "error")
+  }
+}
 
 const remoteDisplayState = computed<CallDisplayState>(() => {
   if (sessionLifecycle.value !== "ready") return "starting"
@@ -254,12 +273,16 @@ onBeforeUnmount(() => {
     :remote-display-state="remoteDisplayState"
     :mobile-layout="mobileCallLayout"
     :remote-zoom-style="remoteZoom.transformStyle.value"
+    :is-chat-open="isChatOpen"
+    :chat-messages="chatMessages"
     :set-local-video-el="setLocalVideoEl"
     :set-remote-video-el="setRemoteVideoEl"
     @update:show-logs="setLogsPanelOpen($event)"
     @set-mobile-layout="setMobileCallLayout"
     @toggle-audio="toggleAudio"
     @toggle-video="toggleVideo"
+    @toggle-chat="toggleChat"
+    @send-chat-message="handleSendMessage"
     @leave="leave"
     @end-room="endRoom"
     @local-video-tap="onVideoTap('local')"
@@ -286,6 +309,8 @@ onBeforeUnmount(() => {
     :remote-display-state="remoteDisplayState"
     :desktop-layout="desktopCallLayout"
     :remote-zoom-style="remoteZoom.transformStyle.value"
+    :is-chat-open="isChatOpen"
+    :chat-messages="chatMessages"
     :set-local-video-el="setLocalVideoEl"
     :set-remote-video-el="setRemoteVideoEl"
     @update:show-logs="setLogsPanelOpen($event)"
@@ -293,6 +318,8 @@ onBeforeUnmount(() => {
     @toggle-audio="toggleAudio"
     @toggle-video="toggleVideo"
     @toggle-screen-share="toggleScreenShare"
+    @toggle-chat="toggleChat"
+    @send-chat-message="handleSendMessage"
     @leave="leave"
     @end-room="endRoom"
     @local-video-tap="onVideoTap('local')"
@@ -328,9 +355,160 @@ onBeforeUnmount(() => {
       </div>
     </div>
   </div>
+
+  <!-- Chat panel -->
+  <div v-if="isChatOpen" class="call-view__chat-backdrop" @click.self="toggleChat">
+    <div class="call-view__chat-panel">
+      <div class="call-view__chat-header">
+        <strong>{{ t("call_chat_title") }}</strong>
+        <button class="call-view__chat-close" @click="toggleChat">✕</button>
+      </div>
+      <div class="call-view__chat-messages">
+        <div
+          v-for="msg in chatMessages"
+          :key="msg.id"
+          class="call-view__chat-message"
+          :class="{ 'call-view__chat-message--local': msg.isLocal }"
+        >
+          <span class="call-view__chat-text">{{ msg.text }}</span>
+          <span class="call-view__chat-time">
+            {{
+              new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+            }}
+          </span>
+        </div>
+        <div v-if="chatMessages.length === 0" class="call-view__chat-empty">
+          {{ t("call_chat_empty") }}
+        </div>
+      </div>
+      <form class="call-view__chat-input-area" @submit.prevent="handleSendMessage">
+        <input
+          v-model="chatInput"
+          type="text"
+          class="call-view__chat-input"
+          :placeholder="t('call_chat_placeholder')"
+          maxlength="500"
+        />
+        <button type="submit" class="call-view__chat-send" :disabled="!chatInput.trim()">
+          {{ t("call_chat_send") }}
+        </button>
+      </form>
+    </div>
+  </div>
 </template>
 
 <style scoped>
+.call-view__chat-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: flex;
+  justify-content: flex-end;
+  background: rgb(0 0 0 / 0.24);
+}
+
+.call-view__chat-panel {
+  width: min(100%, 24rem);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-elevated);
+  border-left: 1px solid var(--color-border);
+  box-shadow: var(--shadow-lg);
+}
+
+.call-view__chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.call-view__chat-close {
+  border: none;
+  background: none;
+  font-size: 1.25rem;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+}
+
+.call-view__chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.call-view__chat-message {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-secondary);
+  max-width: 85%;
+  align-self: flex-start;
+}
+
+.call-view__chat-message--local {
+  background: var(--color-accent);
+  color: var(--color-accent-foreground);
+  align-self: flex-end;
+}
+
+.call-view__chat-text {
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.call-view__chat-time {
+  font-size: 0.75rem;
+  opacity: 0.7;
+  align-self: flex-end;
+}
+
+.call-view__chat-empty {
+  text-align: center;
+  color: var(--color-text-secondary);
+  padding: var(--space-8);
+}
+
+.call-view__chat-input-area {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.call-view__chat-input {
+  flex: 1;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font: inherit;
+}
+
+.call-view__chat-send {
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  color: var(--color-accent-foreground);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.call-view__chat-send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .call-view__modal-backdrop {
   position: fixed;
   inset: 0;

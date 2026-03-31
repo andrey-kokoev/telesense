@@ -35,6 +35,8 @@ const props = defineProps<{
     | "remote_left"
   mobileLayout: "picture-in-picture" | "remote-only"
   remoteZoomStyle: CSSProperties
+  isChatOpen: boolean
+  chatMessages: Array<{ id: string; text: string; timestamp: number; isLocal: boolean }>
   setLocalVideoEl: (el: Element | ComponentPublicInstance | null) => void
   setRemoteVideoEl: (el: Element | ComponentPublicInstance | null) => void
 }>()
@@ -47,6 +49,8 @@ const emit = defineEmits<{
   setMobileLayout: [value: "picture-in-picture" | "remote-only"]
   toggleAudio: []
   toggleVideo: []
+  toggleChat: []
+  sendChatMessage: [text: string]
   leave: []
   endRoom: []
   localVideoTap: []
@@ -334,6 +338,29 @@ async function copyDiagnostics() {
             <path d="M21 12H9" />
           </svg>
           <span>{{ t("call_leave") }}</span>
+        </button>
+        <button
+          type="button"
+          class="call-mobile__nav-button"
+          :class="{ 'call-mobile__nav-button--active': isChatOpen }"
+          @click="emit('toggleChat')"
+          @pointerup="blurTappedButton"
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </svg>
+          <span>{{ t("call_chat") }}</span>
+          <span v-if="chatMessages.length > 0 && !isChatOpen" class="call-mobile__chat-badge">
+            {{ chatMessages.length > 9 ? "9+" : chatMessages.length }}
+          </span>
         </button>
         <button
           type="button"

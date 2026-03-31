@@ -35,6 +35,8 @@ const props = defineProps<{
     | "remote_left"
   desktopLayout: "side-by-side" | "focus-remote"
   remoteZoomStyle: CSSProperties
+  isChatOpen: boolean
+  chatMessages: Array<{ id: string; text: string; timestamp: number; isLocal: boolean }>
   setLocalVideoEl: (el: Element | ComponentPublicInstance | null) => void
   setRemoteVideoEl: (el: Element | ComponentPublicInstance | null) => void
 }>()
@@ -48,6 +50,8 @@ const emit = defineEmits<{
   toggleAudio: []
   toggleVideo: []
   toggleScreenShare: []
+  toggleChat: []
+  sendChatMessage: [text: string]
   leave: []
   endRoom: []
   localVideoTap: []
@@ -291,6 +295,16 @@ async function copyDiagnostics() {
           </button>
           <button class="call-desktop__control call-desktop__control--leave" @click="emit('leave')">
             {{ t("call_leave") }}
+          </button>
+          <button
+            class="call-desktop__control"
+            :class="{ 'call-desktop__control--active': isChatOpen }"
+            @click="emit('toggleChat')"
+          >
+            {{ t("call_chat") }}
+            <span v-if="chatMessages.length > 0 && !isChatOpen" class="call-desktop__chat-badge">
+              {{ chatMessages.length > 9 ? "9+" : chatMessages.length }}
+            </span>
           </button>
         </div>
 
