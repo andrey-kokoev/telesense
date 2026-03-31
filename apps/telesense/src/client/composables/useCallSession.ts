@@ -636,11 +636,13 @@ export function useCallSession({
       }
     }
 
-    // Handle incoming data channel from remote peer
+    // Handle incoming data channel from remote peer (for answerer side)
     pc.ondatachannel = (event) => {
       const channel = event.channel
       if (channel.label === "chat") {
         setupDataChannel(channel)
+        dataChannel.value = channel
+        log("💬 Chat data channel received from remote")
       }
     }
 
