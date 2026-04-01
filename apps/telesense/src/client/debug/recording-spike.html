@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Recording Spike Test</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 800px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      .section {
+        margin: 2rem 0;
+        padding: 1rem;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+      }
+      button {
+        padding: 0.75rem 1.5rem;
+        margin: 0.5rem;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .log {
+        background: #f5f5f5;
+        padding: 1rem;
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 0.875rem;
+        white-space: pre-wrap;
+        max-height: 300px;
+        overflow-y: auto;
+      }
+      video {
+        width: 100%;
+        max-width: 400px;
+        border: 1px solid #ddd;
+      }
+      .success {
+        color: green;
+      }
+      .error {
+        color: red;
+      }
+      .info {
+        color: blue;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🎥 Recording Spike Test</h1>
+    <p>Validates MediaRecorder can record Cloudflare Realtime remote streams</p>
+
+    <div class="section">
+      <h2>1. Configuration</h2>
+      <label>
+        Room ID:
+        <input
+          type="text"
+          id="roomId"
+          placeholder="TEST12"
+          value="TEST12"
+          style="text-transform: uppercase"
+        />
+      </label>
+      <p><small>Enter a room code and open this page in two browsers</small></p>
+    </div>
+
+    <div class="section">
+      <h2>2. Connection</h2>
+      <button id="connectBtn" onclick="connect()">Connect to Room</button>
+      <button id="disconnectBtn" onclick="disconnect()" disabled>Disconnect</button>
+      <div id="connectionStatus">Not connected</div>
+    </div>
+
+    <div class="section">
+      <h2>3. Local Preview</h2>
+      <video id="localVideo" autoplay muted playsinline></video>
+    </div>
+
+    <div class="section">
+      <h2>4. Remote Stream</h2>
+      <video id="remoteVideo" autoplay playsinline></video>
+      <div id="remoteStatus">Waiting for remote participant...</div>
+    </div>
+
+    <div class="section">
+      <h2>5. Recording Test</h2>
+      <div>
+        <label>Record:</label><br />
+        <input type="checkbox" id="recordLocal" checked /> Local stream<br />
+        <input type="checkbox" id="recordRemote" /> Remote stream<br />
+        <input type="checkbox" id="recordAudio" checked /> Include audio<br />
+        <input type="checkbox" id="recordVideo" checked /> Include video
+      </div>
+      <br />
+      <button id="startRecBtn" onclick="startRecording()" disabled>Start Recording</button>
+      <button id="stopRecBtn" onclick="stopRecording()" disabled>Stop Recording</button>
+      <div id="recordingStatus">Not recording</div>
+      <div id="recordingTime"></div>
+    </div>
+
+    <div class="section">
+      <h2>6. Playback Test</h2>
+      <video id="playbackVideo" controls style="display: none"></video>
+      <div id="playbackInfo"></div>
+      <button id="downloadBtn" onclick="downloadRecording()" disabled>Download Recording</button>
+    </div>
+
+    <div class="section">
+      <h2>Logs</h2>
+      <div class="log" id="logs"></div>
+      <button onclick="clearLogs()">Clear Logs</button>
+    </div>
+
+    <script>
+      // Configuration - same as app
+      const API_BASE = ""
+
+      let pc = null
+      let localStream = null
+      let remoteStream = null
+      let mediaRecorder = null
+      let recordedChunks = []
+      let recordingStartTime = null
+      let recordingTimer = null
+      let sessionId = null
+
+      function log(msg, type = "info") {
+        const logs = document.getElementById("logs")
+        const time = new Date().toLocaleTimeString()
+        const className = type === "error" ? "error" : type === "success" ? "success" : "info"
+        logs.innerHTML += `<div class="${className}">[${time}] ${msg}</div>`
+        logs.scrollTop = logs.scrollHeight
+        console.log(`[${type}]`, msg)
+      }
+
+      function clearLogs() {
+        document.getElementById("logs").innerHTML = ""
+      }
+
+      function updateStatus(id, msg) {
+        document.getElementById(id).textContent = msg
+      }
+
+      async function connect() {
+        const roomId = document.getElementById("roomId").value.toUpperCase()
+        if (!roomId || roomId.length !== 6) {
+          log("Room ID must be 6 characters", "error")
+          return
+        }
+
+        try {
+          log(`Connecting to room ${roomId}...`)
+          document.getElementById("connectBtn").disabled = true
+
+          // Create peer connection
+          pc = new RTCPeerConnection({
+            iceServers: [{ urls: "stun:stun.cloudflare.com:3478" }],
+            bundlePolicy: "max-bundle",
+          })
+
+          // Handle remote tracks
+          pc.ontrack = (event) => {
+            log(`Remote track received: ${event.track.kind}`, "success")
+
+            if (!remoteStream) {
+              remoteStream = new MediaStream()
+              document.getElementById("remoteVideo").srcObject = remoteStream
+            }
+            remoteStream.addTrack(event.track)
+
+            updateStatus(
+              "remoteStatus",
+              `Remote connected: ${remoteStream.getTracks().length} tracks`,
+            )
+            document.getElementById("recordRemote").checked = true
+            updateRecordingButtons()
+          }
+
+          // Get local media
+          log("Requesting camera/microphone...")
+          localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+          document.getElementById("localVideo").srcObject = localStream
+
+          localStream.getTracks().forEach((track) => {
+            pc.addTransceiver(track, { direction: "sendonly" })
+          })
+
+          // Create session (simplified - no auth for spike)
+          log("Creating session...")
+          const browserId = crypto.randomUUID()
+          const sessionRes = await fetch(`${API_BASE}/api/rooms/${roomId}/session`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ browserInstanceId: browserId }),
+          })
+
+          if (!sessionRes.ok) {
+            throw new Error(`Session creation failed: ${sessionRes.status}`)
+          }
+
+          const sessionData = await sessionRes.json()
+          sessionId = sessionData.sessionId
+          log(`Session created: ${sessionId.slice(0, 8)}...`, "success")
+
+          // Create offer and publish
+          const offer = await pc.createOffer()
+          await pc.setLocalDescription(offer)
+
+          const publishRes = await fetch(`${API_BASE}/api/rooms/${roomId}/publish-offer`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sessionId,
+              sdpOffer: offer.sdp,
+              tracks: pc.getTransceivers().map((t) => ({
+                mid: t.mid,
+                trackName: t.sender.track?.id || crypto.randomUUID(),
+              })),
+            }),
+          })
+
+          if (!publishRes.ok) {
+            throw new Error(`Publish failed: ${publishRes.status}`)
+          }
+
+          const publishData = await publishRes.json()
+          await pc.setRemoteDescription(publishData.sessionDescription)
+          log("Connected to Cloudflare", "success")
+
+          // Start polling for remote tracks
+          startPolling(roomId, sessionId)
+
+          updateStatus("connectionStatus", "Connected - waiting for remote...")
+          document.getElementById("disconnectBtn").disabled = false
+          updateRecordingButtons()
+        } catch (err) {
+          log(`Error: ${err.message}`, "error")
+          document.getElementById("connectBtn").disabled = false
+        }
+      }
+
+      async function startPolling(roomId, sessionId) {
+        const poll = async () => {
+          if (!pc) return
+
+          try {
+            const res = await fetch(
+              `${API_BASE}/api/rooms/${roomId}/discover-remote-tracks?sessionId=${sessionId}`,
+            )
+            if (!res.ok) return
+
+            const data = await res.json()
+            if (data.tracks.length > 0 && !remoteStream) {
+              log(`Found ${data.tracks.length} remote tracks`, "info")
+            }
+          } catch (e) {
+            // Silent fail
+          }
+
+          if (pc) setTimeout(poll, 2000)
+        }
+        poll()
+      }
+
+      function disconnect() {
+        if (mediaRecorder && mediaRecorder.state !== "inactive") {
+          stopRecording()
+        }
+
+        if (pc) {
+          pc.close()
+          pc = null
+        }
+
+        localStream?.getTracks().forEach((t) => t.stop())
+        localStream = null
+        remoteStream = null
+        sessionId = null
+
+        document.getElementById("localVideo").srcObject = null
+        document.getElementById("remoteVideo").srcObject = null
+
+        updateStatus("connectionStatus", "Disconnected")
+        updateStatus("remoteStatus", "Waiting for remote participant...")
+        document.getElementById("connectBtn").disabled = false
+        document.getElementById("disconnectBtn").disabled = true
+        updateRecordingButtons()
+
+        log("Disconnected")
+      }
+
+      function updateRecordingButtons() {
+        const hasStream = localStream || remoteStream
+        document.getElementById("startRecBtn").disabled = !hasStream
+      }
+
+      function startRecording() {
+        recordedChunks = []
+
+        const recordLocal = document.getElementById("recordLocal").checked
+        const recordRemote = document.getElementById("recordRemote").checked
+        const recordAudio = document.getElementById("recordAudio").checked
+        const recordVideo = document.getElementById("recordVideo").checked
+
+        // Build the stream to record
+        const streamsToRecord = []
+
+        if (recordLocal && localStream) {
+          const tracks = []
+          if (recordAudio) {
+            const audioTrack = localStream.getAudioTracks()[0]
+            if (audioTrack) tracks.push(audioTrack)
+          }
+          if (recordVideo) {
+            const videoTrack = localStream.getVideoTracks()[0]
+            if (videoTrack) tracks.push(videoTrack)
+          }
+          if (tracks.length > 0) {
+            streamsToRecord.push(new MediaStream(tracks))
+            log(`Adding local stream: ${tracks.map((t) => t.kind).join(", ")}`)
+          }
+        }
+
+        if (recordRemote && remoteStream) {
+          const tracks = []
+          if (recordAudio) {
+            const audioTrack = remoteStream.getAudioTracks()[0]
+            if (audioTrack) tracks.push(audioTrack)
+          }
+          if (recordVideo) {
+            const videoTrack = remoteStream.getVideoTracks()[0]
+            if (videoTrack) tracks.push(videoTrack)
+          }
+          if (tracks.length > 0) {
+            streamsToRecord.push(new MediaStream(tracks))
+            log(`Adding remote stream: ${tracks.map((t) => t.kind).join(", ")}`)
+          }
+        }
+
+        if (streamsToRecord.length === 0) {
+          log("No streams selected for recording", "error")
+          return
+        }
+
+        // For simplicity, record first stream only in spike
+        // Full implementation would need AudioContext for mixing
+        const streamToRecord = streamsToRecord[0]
+
+        log(`Starting MediaRecorder with ${streamToRecord.getTracks().length} tracks...`)
+
+        // Try different MIME types
+        const mimeTypes = [
+          "video/webm;codecs=vp9,opus",
+          "video/webm;codecs=vp8,opus",
+          "video/webm",
+          "video/mp4",
+        ]
+
+        let selectedMimeType = ""
+        for (const type of mimeTypes) {
+          if (MediaRecorder.isTypeSupported(type)) {
+            selectedMimeType = type
+            log(`Using MIME type: ${type}`, "success")
+            break
+          }
+        }
+
+        if (!selectedMimeType) {
+          log("No supported MIME type found", "error")
+          return
+        }
+
+        try {
+          mediaRecorder = new MediaRecorder(streamToRecord, {
+            mimeType: selectedMimeType,
+            videoBitsPerSecond: 2500000,
+          })
+
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+              recordedChunks.push(event.data)
+              log(`Received chunk: ${(event.data.size / 1024).toFixed(1)} KB`)
+            }
+          }
+
+          mediaRecorder.onstop = () => {
+            const totalSize = recordedChunks.reduce((sum, chunk) => sum + chunk.size, 0)
+            log(
+              `Recording stopped. Total size: ${(totalSize / 1024 / 1024).toFixed(2)} MB`,
+              "success",
+            )
+
+            const blob = new Blob(recordedChunks, { type: selectedMimeType })
+            const url = URL.createObjectURL(blob)
+
+            const playbackVideo = document.getElementById("playbackVideo")
+            playbackVideo.src = url
+            playbackVideo.style.display = "block"
+
+            document.getElementById("playbackInfo").innerHTML = `
+            <strong>Format:</strong> ${selectedMimeType}<br>
+            <strong>Duration:</strong> ${document.getElementById("recordingTime").textContent}<br>
+            <strong>Size:</strong> ${(totalSize / 1024 / 1024).toFixed(2)} MB<br>
+            <strong>Tracks:</strong> ${streamToRecord
+              .getTracks()
+              .map((t) => t.kind)
+              .join(", ")}
+          `
+
+            document.getElementById("downloadBtn").disabled = false
+            updateStatus("recordingStatus", "Recording complete")
+          }
+
+          mediaRecorder.onerror = (e) => {
+            log(`MediaRecorder error: ${e.message || "Unknown error"}`, "error")
+          }
+
+          // Request data every 1 second (for testing, can use larger chunks later)
+          mediaRecorder.start(1000)
+
+          recordingStartTime = Date.now()
+          recordingTimer = setInterval(() => {
+            const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000)
+            const mins = Math.floor(elapsed / 60)
+              .toString()
+              .padStart(2, "0")
+            const secs = (elapsed % 60).toString().padStart(2, "0")
+            document.getElementById("recordingTime").textContent = `${mins}:${secs}`
+          }, 1000)
+
+          updateStatus("recordingStatus", "Recording...")
+          document.getElementById("startRecBtn").disabled = true
+          document.getElementById("stopRecBtn").disabled = false
+
+          log("Recording started", "success")
+        } catch (err) {
+          log(`Failed to start recording: ${err.message}`, "error")
+        }
+      }
+
+      function stopRecording() {
+        if (mediaRecorder && mediaRecorder.state !== "inactive") {
+          mediaRecorder.stop()
+        }
+
+        if (recordingTimer) {
+          clearInterval(recordingTimer)
+          recordingTimer = null
+        }
+
+        document.getElementById("startRecBtn").disabled = false
+        document.getElementById("stopRecBtn").disabled = true
+      }
+
+      function downloadRecording() {
+        if (recordedChunks.length === 0) return
+
+        const blob = new Blob(recordedChunks, { type: "video/webm" })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = url
+        a.download = `recording-${new Date().toISOString().slice(0, 19)}.webm`
+        a.click()
+        URL.revokeObjectURL(url)
+
+        log("Download started")
+      }
+
+      // Check MediaRecorder support on load
+      window.onload = () => {
+        if (!window.MediaRecorder) {
+          log("MediaRecorder API not supported in this browser", "error")
+          document.getElementById("startRecBtn").disabled = true
+        } else {
+          log("MediaRecorder API is supported", "success")
+
+          // List supported MIME types
+          const types = [
+            "video/webm;codecs=vp9,opus",
+            "video/webm;codecs=vp8,opus",
+            "video/webm",
+            "audio/webm;codecs=opus",
+            "video/mp4",
+          ]
+
+          log("Supported formats:")
+          types.forEach((type) => {
+            if (MediaRecorder.isTypeSupported(type)) {
+              log(`  ✓ ${type}`)
+            }
+          })
+        }
+      }
+    </script>
+  </body>
+</html>
