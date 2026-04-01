@@ -1198,20 +1198,14 @@ export function useCallSession({
   }
 
   async function stopRecording(): Promise<{ success: boolean; error?: string }> {
+    log("🎥 Stop recording called")
     const sessionId = currentSessionId.value
     if (!sessionId) {
       return { success: false, error: "Not connected" }
     }
 
-    // Stop media recorder first
-    if (mediaRecorder.value && mediaRecorder.value.state !== "inactive") {
-      mediaRecorder.value.stop()
-    }
-    if (recordingTimer.value) {
-      clearInterval(recordingTimer.value)
-      recordingTimer.value = null
-    }
-
+    // Call API first to update CallRoom status (before stopping MediaRecorder)
+    // This ensures the status is "stopped" when the onstop handler tries to upload
     try {
       const res = await apiCall(`/api/rooms/${roomId}/recording/stop`, {
         method: "POST",
@@ -1226,11 +1220,22 @@ export function useCallSession({
       const data = (await res.json()) as { success: boolean; duration: number }
       recordingStatus.value = "stopped"
       log(`🎥 Recording stopped. Duration: ${Math.floor(data.duration / 1000)}s`)
-
-      return { success: true }
     } catch (e) {
       return { success: false, error: errorToMessage(e) }
     }
+
+    // Stop media recorder after API call succeeds
+    log(`🎥 Stopping MediaRecorder (state: ${mediaRecorder.value?.state})`)
+    if (mediaRecorder.value && mediaRecorder.value.state !== "inactive") {
+      mediaRecorder.value.stop()
+      log("🎥 MediaRecorder.stop() called")
+    }
+    if (recordingTimer.value) {
+      clearInterval(recordingTimer.value)
+      recordingTimer.value = null
+    }
+
+    return { success: true }
   }
 
   async function startMediaRecorder() {
@@ -1452,5 +1457,7 @@ export function useCallSession({
     respondToRecordingRequest,
     stopRecording,
     pollRecordingStatus: (sessionId: string) => void pollRecordingStatus(sessionId),
+    // Exposed for testing
+    currentSessionId,
   }
 }

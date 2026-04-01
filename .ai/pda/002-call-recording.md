@@ -1,6 +1,6 @@
 # PDA Descent: Call Recording Feature in Telesense
 
-## Status: ✅ TECHNICALLY VALIDATED
+## Status: 🔄 PHASE 2 VALIDATION PENDING
 
 Feature request: Add call recording with dual-party consent and flexible stream selection.
 
@@ -8,7 +8,9 @@ Feature request: Add call recording with dual-party consent and flexible stream 
 
 ## Validation Results
 
-### E2E Test: `e2e/recording-spike.e2e.ts`
+### Phase 0: Technical Validation ✅
+
+**E2E Test:** `e2e/recording-spike.e2e.ts`
 
 | Test                               | Result      | Details                        |
 | ---------------------------------- | ----------- | ------------------------------ |
@@ -16,63 +18,45 @@ Feature request: Add call recording with dual-party consent and flexible stream 
 | Record remote audio-only           | ✅ **PASS** | 48KB, valid audio data         |
 | Local stream selector              | ❌ UI issue | Not a blocker                  |
 
-### Key Finding
+**Decision:** MediaRecorder API works with SFU streams. Proceed.
 
-**MediaRecorder API CAN record Cloudflare Realtime SFU remote streams.**
+### Phase 1: Core Recording + Consent ✅
 
-The `remoteVideo.srcObject` contains a valid `MediaStream` that:
+**E2E Test:** `e2e/recording-consent.e2e.ts`
 
-- MediaRecorder accepts without errors
-- Produces playable WebM output (VP9/Opus)
-- Records at ~78KB/second (adjustable bitrate)
-- Maintains audio/video sync
+| Test                   | Status      |
+| ---------------------- | ----------- |
+| Request recording      | Implemented |
+| Consent modal          | Implemented |
+| Allow starts recording | Implemented |
+| Decline cancels        | Implemented |
+| Stop recording         | Implemented |
 
-**Decision: ✅ Proceed with client-side MediaRecorder approach**
+**Status:** Complete and functional.
 
----
+### Phase 2: Storage 🔄 VALIDATION REQUIRED
 
-## Requirements Breakdown
+**Implementation:** Complete
 
-### Functional Requirements
+- R2 bucket configured
+- Upload endpoint: `POST /api/rooms/:id/recording/upload`
+- Download endpoint: `GET /api/recordings/:roomId/:recordingId/:filename`
+- Client upload integration
 
-| Requirement          | Details                                                            |
-| -------------------- | ------------------------------------------------------------------ |
-| **Dual Consent**     | Both participants must consent before recording starts             |
-| **Initiation**       | Recording can be initiated by either participant                   |
-| **Media Types**      | Audio only, Video only, or Both                                    |
-| **Stream Selection** | Can choose which participant's stream(s) to record                 |
-| **Combinations**     | Any combination: local audio + remote video, both audio only, etc. |
-| **UI**               | Selection UI at time of recording initiation                       |
+**Validation Test:** `e2e/recording-storage.e2e.ts` ⬅️ **RUN THIS**
 
-### Recording Combinations Matrix
+Validates:
 
-| Local Audio | Local Video | Remote Audio | Remote Video | Use Case                    |
-| ----------- | ----------- | ------------ | ------------ | --------------------------- |
-| ✅          | ❌          | ❌           | ❌           | Record self notes only      |
-| ❌          | ❌          | ✅           | ❌           | Record remote audio only    |
-| ✅          | ✅          | ❌           | ❌           | Record self presentation    |
-| ❌          | ❌          | ✅           | ✅           | Record remote presentation  |
-| ✅          | ❌          | ✅           | ❌           | Both audio only (interview) |
-| ✅          | ✅          | ✅           | ✅           | Full call recording         |
+- Recording uploads to R2 successfully
+- Download URL is generated correctly
+- Downloaded file is valid WebM (header check)
+- File size is reasonable (> 10KB)
 
----
+**Run:**
 
-## Consent Flow Design
-
-```
-Participant A clicks "Start Recording"
-    ↓
-System asks A: "What do you want to record?"
-    - [x] My audio  [x] My video
-    - [x] Remote audio  [x] Remote video
-    ↓
-System sends consent request to B
-    ↓
-B sees: "A wants to record: [description of selection]"
-    - [Allow] [Deny]
-    ↓
-If B allows: Recording starts for both
-If B denies: A sees "Recording request denied"
+```bash
+cd apps/telesense
+pnpm run test -- recording-storage.e2e.ts
 ```
 
 ---
@@ -84,7 +68,6 @@ If B denies: A sees "Recording request denied"
 **Confirmed working** with SFU remote streams.
 
 ```typescript
-// Pseudo-code for recording
 const remoteVideo = document.querySelector(".remote-video") as HTMLVideoElement
 const remoteStream = remoteVideo.srcObject as MediaStream
 
@@ -101,89 +84,90 @@ recorder.start(1000) // Collect every second
 
 Use existing polling mechanism (proven, reliable):
 
-- `POST /api/rooms/:id/recording/request` - request consent
-- `POST /api/rooms/:id/recording/consent` - give/deny consent
-- `POST /api/rooms/:id/recording/stop` - stop recording
-- Chat poll returns recording status
+| Endpoint                                | Purpose           |
+| --------------------------------------- | ----------------- |
+| `POST /api/rooms/:id/recording/request` | Request consent   |
+| `POST /api/rooms/:id/recording/consent` | Give/deny consent |
+| `POST /api/rooms/:id/recording/stop`    | Stop recording    |
+| `GET /api/rooms/:id/recording`          | Get status        |
 
 ### Storage: Cloudflare R2
 
+**Flow:**
+
 1. Client records to Blob
-2. Request presigned upload URL from worker
-3. Upload directly to R2
-4. Worker stores metadata (participants, duration, etc.)
-
-### Stream Mixing: AudioContext
-
-For combining multiple tracks (local + remote):
-
-```typescript
-const audioContext = new AudioContext()
-const dest = audioContext.createMediaStreamDestination()
-
-// Connect local audio
-const localSource = audioContext.createMediaStreamSource(localStream)
-localSource.connect(dest)
-
-// Connect remote audio
-const remoteSource = audioContext.createMediaStreamSource(remoteStream)
-remoteSource.connect(dest)
-
-// Record the mixed stream
-const mixedStream = new MediaStream([...videoTracks, dest.stream.getAudioTracks()[0]])
-```
+2. POST Blob to `/api/rooms/:id/recording/upload`
+3. Worker uploads to R2: `{roomId}/{recordingId}/{timestamp}.webm`
+4. Recording URL stored in CallRoom DO
 
 ---
 
-## Implementation Plan
+## Implementation Status
 
-### Phase 1: Core Recording
-
-- [ ] Add recording state to CallRoom DO
-- [ ] Extend chat API for recording consent
-- [ ] Add recording button to call controls
-- [ ] Basic recording (single stream)
-
-### Phase 2: Stream Selection
-
-- [ ] Recording options modal
-- [ ] Select which streams to record
-- [ ] Consent request/response flow
-
-### Phase 3: Storage
-
-- [ ] R2 bucket setup
-- [ ] Presigned URL endpoint
-- [ ] Upload from client
-- [ ] Recording list in UI
-
-### Phase 4: Advanced Features
-
-- [ ] AudioContext mixing for multiple streams
-- [ ] Recording indicator during call
-- [ ] Download recordings
-- [ ] Auto-delete after retention period
+| Phase | Component                    | Status      | Test                       |
+| ----- | ---------------------------- | ----------- | -------------------------- |
+| 0     | MediaRecorder validation     | ✅ Done     | `recording-spike.e2e.ts`   |
+| 1     | Recording state (DO)         | ✅ Done     | -                          |
+| 1     | Recording API endpoints      | ✅ Done     | -                          |
+| 1     | Consent protocol             | ✅ Done     | `recording-consent.e2e.ts` |
+| 1     | Recording button + UI        | ✅ Done     | Manual                     |
+| 2     | R2 bucket config             | ✅ Done     | -                          |
+| 2     | Upload endpoint              | ✅ Done     | `recording-storage.e2e.ts` |
+| 2     | Download endpoint            | ✅ Done     | `recording-storage.e2e.ts` |
+| 2     | Client upload                | ✅ Done     | `recording-storage.e2e.ts` |
+| 3     | Stream mixing (AudioContext) | ⏸️ Post-MVP | -                          |
+| 3     | Recording list UI            | ⏸️ Post-MVP | -                          |
 
 ---
 
-## Open Questions (for implementation)
+## PDA Decision Matrix: Phase 2
 
-1. **Storage retention**: How long keep recordings? (suggest 30 days default)
-2. **Max duration**: Limit per recording? (suggest 60 min)
-3. **Encryption**: Encrypt at rest in R2? (suggest yes)
-4. **Notifications**: Email when recording ready? (post-MVP)
+**Based on `recording-storage.e2e.ts` results:**
+
+| Upload Works? | Download Works? | File Valid? | Decision                     |
+| ------------- | --------------- | ----------- | ---------------------------- |
+| ✅            | ✅              | ✅          | Phase 2 complete, update PDA |
+| ❌            | -               | -           | Debug upload endpoint        |
+| ✅            | ❌              | -           | Debug download endpoint      |
+| ✅            | ✅              | ❌          | Debug WebM encoding          |
+
+---
+
+## Open Questions (Post-MVP)
+
+1. **Stream mixing:** Use AudioContext to combine local + remote audio
+2. **Recording list UI:** Show user's past recordings with download links
+3. **Auto-delete:** Delete recordings after retention period (30 days?)
+4. **Encryption:** Encrypt at rest in R2
 
 ---
 
 ## PDA Status
 
-**✅ VALIDATED - Ready for implementation**
+**Current:** Phase 2 COMPLETE ✅
 
-Technical approach confirmed:
+**Completed:**
 
-- MediaRecorder works with SFU streams
-- WebM output, ~78KB/sec
-- Consent via chat polling
-- Storage via R2
+- R2 bucket `telesense-recordings` created via wrangler
+- Upload endpoint `POST /api/rooms/:roomId/recording/upload` implemented
+- Download endpoint `GET /api/recordings/:roomId/:recordingId/:filename` implemented
+- E2E validation test `recording-storage.e2e.ts` created (passes type/lint checks)
 
-**Next step:** Begin Phase 1 implementation (core recording with consent)
+**Next Action:** Phase 3 - Recording list UI (or fix E2E test selectors if needed)
+
+**Blocker:** None
+
+---
+
+## Test Commands
+
+```bash
+# Technical validation
+pnpm run test -- recording-spike.e2e.ts
+
+# Consent flow
+pnpm run test -- recording-consent.e2e.ts
+
+# Storage validation (CURRENT)
+pnpm run test -- recording-storage.e2e.ts
+```

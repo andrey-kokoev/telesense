@@ -155,6 +155,7 @@ const {
   requestRecording,
   respondToRecordingRequest,
   stopRecording,
+  currentSessionId,
 } = useCallSession({
   roomId: props.roomId,
   store,
@@ -346,6 +347,7 @@ onBeforeUnmount(() => {
   <div style="position: fixed; top: 1rem; right: 1rem; z-index: 100">
     <button
       v-if="sessionLifecycle === 'ready'"
+      data-testid="record-button"
       class="call-view__record-btn"
       :class="{ 'call-view__record-btn--active': recordingStatus === 'active' }"
       @click="openRecordingModal"
@@ -584,7 +586,11 @@ onBeforeUnmount(() => {
   </div>
 
   <!-- Recording Indicator -->
-  <div v-if="recordingStatus === 'active'" class="call-view__recording-indicator">
+  <div
+    v-if="recordingStatus === 'active'"
+    data-testid="recording-indicator"
+    class="call-view__recording-indicator"
+  >
     <span class="call-view__recording-dot"></span>
     <span class="call-view__recording-text">REC {{ recordingDurationFormatted }}</span>
   </div>
