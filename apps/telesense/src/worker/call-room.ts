@@ -43,6 +43,7 @@ export interface ChatMessage {
   timestamp: number
   participantId: string
   deleted?: boolean
+  deletedAt?: number
 }
 
 export interface CallState {
@@ -876,9 +877,15 @@ export class CallRoom {
         isLocal: m.participantId === selfLookup.participant.participantId,
       }))
 
+    // Return IDs of messages that were deleted since last poll
+    const deletedIds = this.chatMessages
+      .filter((m) => m.deleted && m.deletedAt && m.deletedAt > since)
+      .map((m) => m.id)
+
     return new Response(
       JSON.stringify({
         messages,
+        deletedIds,
         serverTime: Date.now(),
       }),
       {
@@ -914,6 +921,7 @@ export class CallRoom {
     }
 
     message.deleted = true
+    message.deletedAt = Date.now()
     await this.persist()
 
     return new Response(JSON.stringify({ success: true }), {

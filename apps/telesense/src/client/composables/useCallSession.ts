@@ -1012,11 +1012,23 @@ export function useCallSession({
           timestamp: number
           isLocal: boolean
         }>
+        deletedIds?: string[]
         serverTime: number
       }
 
       // Update last poll time
       lastChatPollTime.value = data.serverTime
+
+      // Handle deleted messages
+      if (data.deletedIds && data.deletedIds.length > 0) {
+        for (const deletedId of data.deletedIds) {
+          const index = chatMessages.value.findIndex((m) => m.id === deletedId)
+          if (index !== -1) {
+            chatMessages.value.splice(index, 1)
+            log("💬 Message deleted by remote")
+          }
+        }
+      }
 
       // Add new messages (filter out ones we already have or sent)
       for (const msg of data.messages) {

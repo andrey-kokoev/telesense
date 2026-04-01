@@ -59,16 +59,11 @@ test.describe("Chat messaging between two participants", () => {
       })
 
       // ===== BROWSER B: Join room =====
+      // Navigate directly to room - app routes to CallView when ?room= is present
       await pageB.goto(`/?room=${roomId}`)
 
-      // Wait for room check to complete - button should show join action
-      const joinButtonB = pageB.locator(".landing__main .landing__btn").first()
-      await expect(joinButtonB).toBeEnabled({ timeout: 10000 })
-      // Click the button (label depends on room state, could be "Join room" or similar)
-      await joinButtonB.click()
-
-      // Wait for call view
-      await expect(pageB).toHaveURL(new RegExp(`\\?room=${roomId}$`))
+      // Wait for call view to load (check for room ID in the UI)
+      await expect(pageB.getByText(roomId)).toBeVisible({ timeout: 10000 })
 
       // Wait for connection - look for "Remote participant connected"
       await expect(pageB.getByText("Remote participant connected!")).toBeVisible({
@@ -147,11 +142,9 @@ test.describe("Chat messaging between two participants", () => {
       await pageA.locator(".call-view__chat-input").fill(testMessage)
       await pageA.locator(".call-view__chat-send").click()
 
-      // B joins
+      // B joins - navigate directly to room
       await pageB.goto(`/?room=${roomId}`)
-      const joinButtonB2 = pageB.locator(".landing__main .landing__btn").first()
-      await expect(joinButtonB2).toBeEnabled({ timeout: 10000 })
-      await joinButtonB2.click()
+      await expect(pageB.getByText(roomId)).toBeVisible({ timeout: 10000 })
 
       await expect(pageB.getByText("Remote participant connected!")).toBeVisible({
         timeout: 30000,

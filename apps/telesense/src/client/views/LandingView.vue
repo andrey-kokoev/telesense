@@ -309,6 +309,13 @@ onMounted(() => {
     const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`
     window.history.replaceState({}, "", nextUrl)
   }
+
+  // Handle pre-filled room code from URL (?room=XXX)
+  const roomFromUrl = params.get("room")
+  if (roomFromUrl) {
+    void openRecentRoom(roomFromUrl.toUpperCase())
+  }
+
   focusRoomCodeInput(0)
   window.addEventListener("keydown", handleDesktopLandingKeydown)
   void detectUnauthenticatedCreateAccess()
