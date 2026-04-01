@@ -46,12 +46,32 @@ export interface ChatMessage {
   deletedAt?: number
 }
 
+export type RecordingStatus = "idle" | "requested" | "active" | "stopped"
+
+export interface RecordingSession {
+  id: string
+  requestedBy: string // participantId
+  requestedAt: number
+  startedAt?: number
+  stoppedAt?: number
+  status: RecordingStatus
+  consent: Map<string, boolean> // participantId -> consented
+  options: {
+    recordLocalAudio: boolean
+    recordLocalVideo: boolean
+    recordRemoteAudio: boolean
+    recordRemoteVideo: boolean
+  }
+  recordingUrl?: string // Set when uploaded
+}
+
 export interface CallState {
   sessions: Map<string, Session>
   participants: Map<string, Participant>
   budgetId: string | null
   budgetKey: string | null
   chatMessages: ChatMessage[]
+  recordingSession: RecordingSession | null
 }
 
 type SessionLookup =
@@ -87,6 +107,9 @@ export class CallRoom {
   // Chat state
   private chatMessages: ChatMessage[] = []
   private static readonly MAX_CHAT_MESSAGES = 100
+
+  // Recording state
+  private recordingSession: RecordingSession | null = null
 
   // Metering state
   private meteringTimer: number | null = null
@@ -153,6 +176,16 @@ export class CallRoom {
     const storedChatMessages = await this.state.storage.get<ChatMessage[]>("chatMessages")
     if (storedChatMessages) {
       this.chatMessages = storedChatMessages
+    }
+
+    const storedRecordingSession =
+      await this.state.storage.get<RecordingSession>("recordingSession")
+    if (storedRecordingSession) {
+      // Restore Map from plain object
+      this.recordingSession = {
+        ...storedRecordingSession,
+        consent: new Map(Object.entries(storedRecordingSession.consent || {})),
+      }
     }
 
     if (storedMetering) {
@@ -222,6 +255,16 @@ export class CallRoom {
           return this.getChatMessages(request)
         case "deleteChatMessage":
           return await this.deleteChatMessage(request)
+        case "requestRecording":
+          return await this.requestRecording(request)
+        case "respondToRecordingRequest":
+          return await this.respondToRecordingRequest(request)
+        case "stopRecording":
+          return await this.stopRecording(request)
+        case "getRecordingStatus":
+          return this.getRecordingStatus(request)
+        case "setRecordingUrl":
+          return await this.setRecordingUrl(request)
         default:
           console.error(`[CallRoom] Unknown action: ${action}`)
           return new Response(JSON.stringify({ error: `Unknown action: ${action}` }), {
@@ -983,6 +1026,16 @@ export class CallRoom {
       graceEndsAt: this.graceEndsAt,
     })
     await this.state.storage.put("chatMessages", this.chatMessages)
+
+    // Persist recording session (convert Map to plain object)
+    if (this.recordingSession) {
+      await this.state.storage.put("recordingSession", {
+        ...this.recordingSession,
+        consent: Object.fromEntries(this.recordingSession.consent),
+      })
+    } else {
+      await this.state.storage.delete("recordingSession")
+    }
   }
 
   private async setBudgetId(request: Request): Promise<Response> {
@@ -1023,6 +1076,233 @@ export class CallRoom {
   private getBudgetId(): Response {
     return new Response(JSON.stringify({ budgetId: this.budgetId, budgetKey: this.budgetKey }), {
       status: 200,
+    })
+  }
+
+  // ==================== Recording ====================
+
+  private async requestRecording(request: Request): Promise<Response> {
+    const { internalId, options } = (await request.json()) as {
+      internalId: string
+      options: RecordingSession["options"]
+    }
+
+    const lookup = this.resolveSession(internalId)
+    if (lookup.kind === "missing") return this.sessionNotFoundResponse()
+    if (lookup.kind === "replaced") return this.sessionReplacedResponse()
+
+    // Check if there's already an active recording
+    if (this.recordingSession?.status === "active") {
+      return new Response(JSON.stringify({ error: "Recording already in progress" }), {
+        status: 409,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
+    // Create new recording session in "requested" state
+    this.recordingSession = {
+      id: crypto.randomUUID(),
+      requestedBy: lookup.participant.participantId,
+      requestedAt: Date.now(),
+      status: "requested",
+      consent: new Map(),
+      options: options || {
+        recordLocalAudio: true,
+        recordLocalVideo: true,
+        recordRemoteAudio: true,
+        recordRemoteVideo: true,
+      },
+    }
+
+    // Requester automatically consents
+    this.recordingSession.consent.set(lookup.participant.participantId, true)
+
+    await this.persist()
+
+    console.log(`[CallRoom] Recording requested by ${lookup.participant.participantId.slice(0, 8)}`)
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        recordingId: this.recordingSession.id,
+        status: this.recordingSession.status,
+      }),
+      { headers: { "Content-Type": "application/json" } },
+    )
+  }
+
+  private async respondToRecordingRequest(request: Request): Promise<Response> {
+    const { internalId, consent } = (await request.json()) as {
+      internalId: string
+      consent: boolean
+    }
+
+    const lookup = this.resolveSession(internalId)
+    if (lookup.kind === "missing") return this.sessionNotFoundResponse()
+    if (lookup.kind === "replaced") return this.sessionReplacedResponse()
+
+    if (!this.recordingSession || this.recordingSession.status !== "requested") {
+      return new Response(JSON.stringify({ error: "No recording request pending" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
+    // Record this participant's consent
+    this.recordingSession.consent.set(lookup.participant.participantId, consent)
+
+    // Check if all participants have responded
+    const allParticipants = Array.from(this.participants.keys())
+    const allConsented = allParticipants.every(
+      (pid) => this.recordingSession!.consent.get(pid) === true,
+    )
+    const anyDeclined = allParticipants.some(
+      (pid) => this.recordingSession!.consent.get(pid) === false,
+    )
+
+    let response: { success: boolean; status: string; started?: boolean; declined?: boolean } = {
+      success: true,
+      status: this.recordingSession.status,
+    }
+
+    if (anyDeclined) {
+      // Someone declined - cancel the recording request
+      this.recordingSession.status = "stopped"
+      this.recordingSession.stoppedAt = Date.now()
+      response = { success: true, status: "stopped", declined: true }
+      console.log(
+        `[CallRoom] Recording declined by ${lookup.participant.participantId.slice(0, 8)}`,
+      )
+    } else if (allConsented) {
+      // Everyone consented - start recording
+      this.recordingSession.status = "active"
+      this.recordingSession.startedAt = Date.now()
+      response = { success: true, status: "active", started: true }
+      console.log(`[CallRoom] Recording started: ${this.recordingSession.id.slice(0, 8)}`)
+    } else {
+      // Waiting for more responses
+      response = { success: true, status: "requested" }
+    }
+
+    await this.persist()
+
+    return new Response(JSON.stringify(response), {
+      headers: { "Content-Type": "application/json" },
+    })
+  }
+
+  private async stopRecording(request: Request): Promise<Response> {
+    const { internalId } = (await request.json()) as { internalId: string }
+
+    const lookup = this.resolveSession(internalId)
+    if (lookup.kind === "missing") return this.sessionNotFoundResponse()
+    if (lookup.kind === "replaced") return this.sessionReplacedResponse()
+
+    if (!this.recordingSession || this.recordingSession.status !== "active") {
+      return new Response(JSON.stringify({ error: "No active recording" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
+    // Only requester or admin can stop recording
+    if (this.recordingSession.requestedBy !== lookup.participant.participantId) {
+      return new Response(JSON.stringify({ error: "Only the requester can stop recording" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
+    this.recordingSession.status = "stopped"
+    this.recordingSession.stoppedAt = Date.now()
+    await this.persist()
+
+    console.log(`[CallRoom] Recording stopped: ${this.recordingSession.id.slice(0, 8)}`)
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        recordingId: this.recordingSession.id,
+        duration: this.recordingSession.stoppedAt - (this.recordingSession.startedAt || 0),
+      }),
+      { headers: { "Content-Type": "application/json" } },
+    )
+  }
+
+  private getRecordingStatus(request: Request): Response {
+    const url = new URL(request.url)
+    const internalId = url.searchParams.get("internalId")
+
+    if (!internalId) {
+      return new Response(JSON.stringify({ error: "Missing internalId" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
+    const lookup = this.resolveSession(internalId)
+    if (lookup.kind === "missing") return this.sessionNotFoundResponse()
+    if (lookup.kind === "replaced") return this.sessionReplacedResponse()
+
+    if (!this.recordingSession) {
+      return new Response(
+        JSON.stringify({
+          status: "idle",
+          recording: null,
+        }),
+        { headers: { "Content-Type": "application/json" } },
+      )
+    }
+
+    return new Response(
+      JSON.stringify({
+        status: this.recordingSession.status,
+        recording: {
+          id: this.recordingSession.id,
+          requestedBy: this.recordingSession.requestedBy,
+          requestedAt: this.recordingSession.requestedAt,
+          startedAt: this.recordingSession.startedAt,
+          stoppedAt: this.recordingSession.stoppedAt,
+          options: this.recordingSession.options,
+          consent: Object.fromEntries(this.recordingSession.consent),
+          myConsent: this.recordingSession.consent.get(lookup.participant.participantId),
+          url: this.recordingSession.recordingUrl,
+        },
+      }),
+      { headers: { "Content-Type": "application/json" } },
+    )
+  }
+
+  private async setRecordingUrl(request: Request): Promise<Response> {
+    const { internalId, url: recordingUrl } = (await request.json()) as {
+      internalId: string
+      url: string
+    }
+
+    const lookup = this.resolveSession(internalId)
+    if (lookup.kind === "missing") return this.sessionNotFoundResponse()
+    if (lookup.kind === "replaced") return this.sessionReplacedResponse()
+
+    if (!this.recordingSession) {
+      return new Response(JSON.stringify({ error: "No recording session" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
+    // Only requester can set URL
+    if (this.recordingSession.requestedBy !== lookup.participant.participantId) {
+      return new Response(JSON.stringify({ error: "Only the requester can set recording URL" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
+    this.recordingSession.recordingUrl = recordingUrl
+    await this.persist()
+
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { "Content-Type": "application/json" },
     })
   }
 

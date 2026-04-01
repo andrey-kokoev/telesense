@@ -209,6 +209,21 @@ export function useCallSession({
   const lastChatPollTime = ref(0)
   const pendingMessageIds = ref<Set<string>>(new Set())
 
+  // Recording state
+  const recordingStatus = ref<"idle" | "requested" | "active" | "stopped">("idle")
+  const recordingId = ref<string | null>(null)
+  const recordingRequestedBy = ref<string | null>(null)
+  const recordingOptions = ref<{
+    recordLocalAudio: boolean
+    recordLocalVideo: boolean
+    recordRemoteAudio: boolean
+    recordRemoteVideo: boolean
+  } | null>(null)
+  const mediaRecorder = ref<MediaRecorder | null>(null)
+  const recordedChunks = ref<Blob[]>([])
+  const recordingDuration = ref(0)
+  const recordingTimer = ref<number | null>(null)
+
   // Auto-save chat history when messages change
   watch(
     chatMessages,
@@ -1061,6 +1076,7 @@ export function useCallSession({
 
     const poll = async () => {
       await pollChatMessages(sessionId)
+      await pollRecordingStatus(sessionId)
 
       if (currentSessionId.value !== sessionId) return
       chatPollTimeoutId.value = window.setTimeout(() => {
@@ -1091,7 +1107,282 @@ export function useCallSession({
     media.publishedVideoSender.value = null
     media.clearRemoteVideo()
     media.stopLocalMedia()
+
+    // Stop any active recording
+    if (mediaRecorder.value && mediaRecorder.value.state !== "inactive") {
+      mediaRecorder.value.stop()
+    }
+    if (recordingTimer.value) {
+      clearInterval(recordingTimer.value)
+      recordingTimer.value = null
+    }
   })
+
+  // ==================== Recording ====================
+
+  async function requestRecording(options: {
+    recordLocalAudio: boolean
+    recordLocalVideo: boolean
+    recordRemoteAudio: boolean
+    recordRemoteVideo: boolean
+  }): Promise<{ success: boolean; error?: string }> {
+    const sessionId = currentSessionId.value
+    if (!sessionId) {
+      return { success: false, error: "Not connected" }
+    }
+
+    try {
+      const res = await apiCall(`/api/rooms/${roomId}/recording/request`, {
+        method: "POST",
+        body: JSON.stringify({ sessionId, options }),
+      })
+
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
+        return { success: false, error: data.error || `Request failed: ${res.status}` }
+      }
+
+      const data = (await res.json()) as { success: boolean; recordingId: string; status: string }
+      recordingId.value = data.recordingId
+      recordingStatus.value = data.status as typeof recordingStatus.value
+      recordingOptions.value = options
+      recordingRequestedBy.value = sessionId // Will be updated on poll
+
+      log("🎥 Recording requested")
+      return { success: true }
+    } catch (e) {
+      return { success: false, error: errorToMessage(e) }
+    }
+  }
+
+  async function respondToRecordingRequest(
+    consent: boolean,
+  ): Promise<{ success: boolean; started?: boolean; error?: string }> {
+    const sessionId = currentSessionId.value
+    if (!sessionId) {
+      return { success: false, error: "Not connected" }
+    }
+
+    try {
+      const res = await apiCall(`/api/rooms/${roomId}/recording/consent`, {
+        method: "POST",
+        body: JSON.stringify({ sessionId, consent }),
+      })
+
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
+        return { success: false, error: data.error || `Request failed: ${res.status}` }
+      }
+
+      const data = (await res.json()) as {
+        success: boolean
+        status: string
+        started?: boolean
+        declined?: boolean
+      }
+      recordingStatus.value = data.status as typeof recordingStatus.value
+
+      if (data.started) {
+        log("🎥 Recording started!")
+        await startMediaRecorder()
+      } else if (data.declined) {
+        log("🎥 Recording request declined")
+        recordingStatus.value = "idle"
+        recordingId.value = null
+      }
+
+      return { success: true, started: data.started }
+    } catch (e) {
+      return { success: false, error: errorToMessage(e) }
+    }
+  }
+
+  async function stopRecording(): Promise<{ success: boolean; error?: string }> {
+    const sessionId = currentSessionId.value
+    if (!sessionId) {
+      return { success: false, error: "Not connected" }
+    }
+
+    // Stop media recorder first
+    if (mediaRecorder.value && mediaRecorder.value.state !== "inactive") {
+      mediaRecorder.value.stop()
+    }
+    if (recordingTimer.value) {
+      clearInterval(recordingTimer.value)
+      recordingTimer.value = null
+    }
+
+    try {
+      const res = await apiCall(`/api/rooms/${roomId}/recording/stop`, {
+        method: "POST",
+        body: JSON.stringify({ sessionId }),
+      })
+
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
+        return { success: false, error: data.error || `Request failed: ${res.status}` }
+      }
+
+      const data = (await res.json()) as { success: boolean; duration: number }
+      recordingStatus.value = "stopped"
+      log(`🎥 Recording stopped. Duration: ${Math.floor(data.duration / 1000)}s`)
+
+      return { success: true }
+    } catch (e) {
+      return { success: false, error: errorToMessage(e) }
+    }
+  }
+
+  async function startMediaRecorder() {
+    if (!recordingOptions.value) return
+
+    const streamToRecord = await buildRecordingStream(recordingOptions.value)
+    if (!streamToRecord) {
+      log("🎥 Could not build recording stream", "error")
+      return
+    }
+
+    // Find supported MIME type
+    const mimeTypes = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"]
+    let selectedMimeType = ""
+    for (const type of mimeTypes) {
+      if (MediaRecorder.isTypeSupported(type)) {
+        selectedMimeType = type
+        break
+      }
+    }
+
+    if (!selectedMimeType) {
+      log("🎥 No supported MIME type for recording", "error")
+      return
+    }
+
+    try {
+      mediaRecorder.value = new MediaRecorder(streamToRecord, {
+        mimeType: selectedMimeType,
+        videoBitsPerSecond: 2500000,
+      })
+
+      recordedChunks.value = []
+
+      mediaRecorder.value.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordedChunks.value.push(event.data)
+        }
+      }
+
+      mediaRecorder.value.onstop = () => {
+        const blob = new Blob(recordedChunks.value, { type: selectedMimeType })
+        log(`🎥 Recording complete. Size: ${(blob.size / 1024 / 1024).toFixed(2)} MB`)
+        // TODO: Upload to storage
+      }
+
+      mediaRecorder.value.onerror = (e) => {
+        log(`🎥 Recording error: ${errorToMessage(e)}`, "error")
+      }
+
+      // Start recording
+      mediaRecorder.value.start(1000) // Collect every second
+      recordingStatus.value = "active"
+      recordingDuration.value = 0
+
+      recordingTimer.value = window.setInterval(() => {
+        recordingDuration.value += 1
+      }, 1000)
+
+      log("🎥 MediaRecorder started")
+    } catch (e) {
+      log(`🎥 Failed to start MediaRecorder: ${errorToMessage(e)}`, "error")
+    }
+  }
+
+  async function buildRecordingStream(
+    options: typeof recordingOptions.value,
+  ): Promise<MediaStream | null> {
+    if (!options) return null
+
+    const tracks: MediaStreamTrack[] = []
+
+    // Get local tracks
+    if (options.recordLocalAudio || options.recordLocalVideo) {
+      const localStream = media.localStream.value
+      if (localStream) {
+        if (options.recordLocalAudio) {
+          const audioTrack = localStream.getAudioTracks()[0]
+          if (audioTrack) tracks.push(audioTrack)
+        }
+        if (options.recordLocalVideo) {
+          const videoTrack = localStream.getVideoTracks()[0]
+          if (videoTrack) tracks.push(videoTrack)
+        }
+      }
+    }
+
+    // Get remote tracks from video element
+    if (options.recordRemoteAudio || options.recordRemoteVideo) {
+      const remoteVideo = media.remoteVid.value
+      if (remoteVideo?.srcObject) {
+        const remoteStream = remoteVideo.srcObject as MediaStream
+        if (options.recordRemoteAudio) {
+          const audioTrack = remoteStream.getAudioTracks()[0]
+          if (audioTrack) tracks.push(audioTrack)
+        }
+        if (options.recordRemoteVideo) {
+          const videoTrack = remoteStream.getVideoTracks()[0]
+          if (videoTrack) tracks.push(videoTrack)
+        }
+      }
+    }
+
+    if (tracks.length === 0) {
+      return null
+    }
+
+    return new MediaStream(tracks)
+  }
+
+  // Poll for recording status (for consent requests from other participant)
+  async function pollRecordingStatus(sessionId: string) {
+    if (currentSessionId.value !== sessionId) return
+
+    try {
+      const res = await apiCall(`/api/rooms/${roomId}/recording?sessionId=${sessionId}`)
+      if (!res.ok) return
+
+      const data = (await res.json()) as {
+        status: "idle" | "requested" | "active" | "stopped"
+        recording: {
+          id: string
+          requestedBy: string
+          requestedAt: number
+          startedAt?: number
+          stoppedAt?: number
+          options: typeof recordingOptions.value
+          consent: Record<string, boolean>
+          myConsent?: boolean
+        } | null
+      }
+
+      // Update status if changed
+      if (data.status !== recordingStatus.value) {
+        recordingStatus.value = data.status
+
+        if (data.recording) {
+          recordingId.value = data.recording.id
+          recordingOptions.value = data.recording.options
+          recordingRequestedBy.value = data.recording.requestedBy
+
+          // If recording just started and we're not the requester, start MediaRecorder
+          if (data.status === "active" && mediaRecorder.value?.state !== "recording") {
+            log("🎥 Recording started by remote participant")
+            await startMediaRecorder()
+          }
+        }
+      }
+    } catch {
+      // Silent fail - will retry on next poll
+    }
+  }
 
   return {
     sessionLifecycle,
@@ -1108,5 +1399,14 @@ export function useCallSession({
     syncMediaState,
     endRoom,
     leave,
+    // Recording
+    recordingStatus,
+    recordingId,
+    recordingDuration,
+    recordingRequestedBy,
+    requestRecording,
+    respondToRecordingRequest,
+    stopRecording,
+    pollRecordingStatus: (sessionId: string) => void pollRecordingStatus(sessionId),
   }
 }

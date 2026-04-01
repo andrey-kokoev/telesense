@@ -14,7 +14,7 @@
 
 import { Context, Hono } from "hono"
 import { logger } from "hono/logger"
-import { CallRoom } from "./call-room"
+import { CallRoom, type RecordingSession } from "./call-room"
 import {
   BUDGET_ADMIN_HEADER,
   BUDGET_ADMIN_SESSION_HEADER,
@@ -2342,6 +2342,212 @@ app.post("/api/rooms/:roomId/chat/delete", async (c) => {
   }
 
   return c.json({ ok: true } as OkResponse)
+})
+
+// 15. RECORDING - Request to start recording
+app.post("/api/rooms/:roomId/recording/request", async (c) => {
+  const env = c.env
+  const roomId = normalizeRoomId(c.req.param("roomId"))
+
+  try {
+    requireNonEmptyString(roomId, "roomId")
+  } catch (e) {
+    return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
+  }
+
+  let body: {
+    sessionId: string
+    options: {
+      recordLocalAudio: boolean
+      recordLocalVideo: boolean
+      recordRemoteAudio: boolean
+      recordRemoteVideo: boolean
+    }
+  }
+  try {
+    body = await c.req.json()
+    requireNonEmptyString(body.sessionId, "sessionId")
+  } catch (e) {
+    return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
+  }
+
+  const callRoom = getCallRoom(env, roomId)
+  const requestRes = await callRoom.fetch(
+    new Request("http://do.internal/?action=requestRecording", {
+      method: "POST",
+      body: JSON.stringify({
+        internalId: body.sessionId,
+        options: body.options,
+      }),
+    }),
+  )
+
+  if (!requestRes.ok) {
+    if (requestRes.status === 409) {
+      return c.json(
+        { error: "Recording already in progress", code: "RECORDING_ACTIVE" } as ErrorResponse,
+        409,
+      )
+    }
+    if (requestRes.status === 404) {
+      return c.json({ error: "Session not found", code: "SESSION_NOT_FOUND" } as ErrorResponse, 404)
+    }
+    return c.json(
+      { error: "Failed to request recording", code: "INTERNAL_ERROR" } as ErrorResponse,
+      500,
+    )
+  }
+
+  const data = (await requestRes.json()) as {
+    success: boolean
+    recordingId: string
+    status: string
+  }
+  return c.json(data)
+})
+
+// 16. RECORDING - Respond to recording request (consent)
+app.post("/api/rooms/:roomId/recording/consent", async (c) => {
+  const env = c.env
+  const roomId = normalizeRoomId(c.req.param("roomId"))
+
+  try {
+    requireNonEmptyString(roomId, "roomId")
+  } catch (e) {
+    return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
+  }
+
+  let body: {
+    sessionId: string
+    consent: boolean
+  }
+  try {
+    body = await c.req.json()
+    requireNonEmptyString(body.sessionId, "sessionId")
+  } catch (e) {
+    return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
+  }
+
+  const callRoom = getCallRoom(env, roomId)
+  const consentRes = await callRoom.fetch(
+    new Request("http://do.internal/?action=respondToRecordingRequest", {
+      method: "POST",
+      body: JSON.stringify({
+        internalId: body.sessionId,
+        consent: body.consent,
+      }),
+    }),
+  )
+
+  if (!consentRes.ok) {
+    if (consentRes.status === 404) {
+      return c.json(
+        { error: "No recording request pending", code: "NOT_FOUND" } as ErrorResponse,
+        404,
+      )
+    }
+    return c.json(
+      { error: "Failed to respond to recording request", code: "INTERNAL_ERROR" } as ErrorResponse,
+      500,
+    )
+  }
+
+  const data = (await consentRes.json()) as {
+    success: boolean
+    status: string
+    started?: boolean
+    declined?: boolean
+  }
+  return c.json(data)
+})
+
+// 17. RECORDING - Stop recording
+app.post("/api/rooms/:roomId/recording/stop", async (c) => {
+  const env = c.env
+  const roomId = normalizeRoomId(c.req.param("roomId"))
+
+  try {
+    requireNonEmptyString(roomId, "roomId")
+  } catch (e) {
+    return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
+  }
+
+  let body: {
+    sessionId: string
+  }
+  try {
+    body = await c.req.json()
+    requireNonEmptyString(body.sessionId, "sessionId")
+  } catch (e) {
+    return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
+  }
+
+  const callRoom = getCallRoom(env, roomId)
+  const stopRes = await callRoom.fetch(
+    new Request("http://do.internal/?action=stopRecording", {
+      method: "POST",
+      body: JSON.stringify({
+        internalId: body.sessionId,
+      }),
+    }),
+  )
+
+  if (!stopRes.ok) {
+    if (stopRes.status === 404) {
+      return c.json({ error: "No active recording", code: "NOT_FOUND" } as ErrorResponse, 404)
+    }
+    if (stopRes.status === 403) {
+      return c.json(
+        { error: "Only the requester can stop recording", code: "FORBIDDEN" } as ErrorResponse,
+        403,
+      )
+    }
+    return c.json(
+      { error: "Failed to stop recording", code: "INTERNAL_ERROR" } as ErrorResponse,
+      500,
+    )
+  }
+
+  const data = (await stopRes.json()) as { success: boolean; recordingId: string; duration: number }
+  return c.json(data)
+})
+
+// 18. RECORDING - Get recording status
+app.get("/api/rooms/:roomId/recording", async (c) => {
+  const env = c.env
+  const roomId = normalizeRoomId(c.req.param("roomId"))
+
+  try {
+    requireNonEmptyString(roomId, "roomId")
+  } catch (e) {
+    return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
+  }
+
+  const sessionId = c.req.query("sessionId")
+  if (!sessionId) {
+    return c.json({ error: "sessionId required", code: "BAD_REQUEST" } as ErrorResponse, 400)
+  }
+
+  const callRoom = getCallRoom(env, roomId)
+  const statusRes = await callRoom.fetch(
+    new Request(`http://do.internal/?action=getRecordingStatus&internalId=${sessionId}`),
+  )
+
+  if (!statusRes.ok) {
+    if (statusRes.status === 404) {
+      return c.json({ error: "Session not found", code: "SESSION_NOT_FOUND" } as ErrorResponse, 404)
+    }
+    return c.json(
+      { error: "Failed to get recording status", code: "INTERNAL_ERROR" } as ErrorResponse,
+      500,
+    )
+  }
+
+  const data = (await statusRes.json()) as {
+    status: string
+    recording: RecordingSession | null
+  }
+  return c.json(data)
 })
 
 /**

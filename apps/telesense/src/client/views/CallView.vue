@@ -149,6 +149,12 @@ const {
   syncMediaState,
   endRoom,
   leave,
+  recordingStatus,
+  recordingId,
+  recordingDuration,
+  requestRecording,
+  respondToRecordingRequest,
+  stopRecording,
 } = useCallSession({
   roomId: props.roomId,
   store,
@@ -196,6 +202,74 @@ function handleDeleteMessage(messageId: string) {
   }
   // "deleted" case is silent success
 }
+
+// ==================== Recording ====================
+
+const isRecordingModalOpen = ref(false)
+const isRecordingConsentModalOpen = ref(false)
+const recordingOptions = ref({
+  recordLocalAudio: true,
+  recordLocalVideo: true,
+  recordRemoteAudio: true,
+  recordRemoteVideo: true,
+})
+
+function openRecordingModal() {
+  if (recordingStatus.value === "active") {
+    // Already recording - confirm stop
+    if (confirm("Stop recording?")) {
+      void stopRecording()
+    }
+    return
+  }
+  recordingOptions.value = {
+    recordLocalAudio: true,
+    recordLocalVideo: true,
+    recordRemoteAudio: true,
+    recordRemoteVideo: true,
+  }
+  isRecordingModalOpen.value = true
+}
+
+async function handleRequestRecording() {
+  const result = await requestRecording(recordingOptions.value)
+  if (result.success) {
+    isRecordingModalOpen.value = false
+    showToast("Recording requested - waiting for consent", "info")
+  } else {
+    showToast(`Recording request failed: ${result.error}`, "error")
+  }
+}
+
+async function handleRespondToRecording(consent: boolean) {
+  const result = await respondToRecordingRequest(consent)
+  isRecordingConsentModalOpen.value = false
+  if (result.success) {
+    if (consent && result.started) {
+      showToast("Recording started", "success")
+    } else if (!consent) {
+      showToast("Recording request declined", "info")
+    }
+  } else {
+    showToast(`Failed to respond: ${result.error}`, "error")
+  }
+}
+
+// Watch for recording consent requests
+watch(recordingStatus, (newStatus) => {
+  if (newStatus === "requested" && recordingId.value) {
+    // Show consent modal if we're not the requester
+    isRecordingConsentModalOpen.value = true
+  }
+})
+
+const recordingDurationFormatted = computed(() => {
+  const mins = Math.floor(recordingDuration.value / 60)
+    .toString()
+    .padStart(2, "0")
+  const secs = (recordingDuration.value % 60).toString().padStart(2, "0")
+  return `${mins}:${secs}`
+})
 
 const remoteDisplayState = computed<CallDisplayState>(() => {
   if (sessionLifecycle.value !== "ready") return "starting"
@@ -266,6 +340,22 @@ onBeforeUnmount(() => {
         })
       }}
     </span>
+  </div>
+
+  <!-- Recording Button (top-right) -->
+  <div style="position: fixed; top: 1rem; right: 1rem; z-index: 100">
+    <button
+      v-if="sessionLifecycle === 'ready'"
+      class="call-view__record-btn"
+      :class="{ 'call-view__record-btn--active': recordingStatus === 'active' }"
+      @click="openRecordingModal"
+      :title="recordingStatus === 'active' ? 'Stop recording' : 'Start recording'"
+    >
+      <span v-if="recordingStatus === 'idle'">🔴</span>
+      <span v-else-if="recordingStatus === 'requested'">⏳</span>
+      <span v-else-if="recordingStatus === 'active'">⏹</span>
+      <span v-else>🔴</span>
+    </button>
   </div>
 
   <CallMobileLayout
@@ -418,6 +508,85 @@ onBeforeUnmount(() => {
         </button>
       </form>
     </div>
+  </div>
+
+  <!-- Recording Options Modal -->
+  <div
+    v-if="isRecordingModalOpen"
+    class="call-view__modal-backdrop"
+    @click.self="isRecordingModalOpen = false"
+  >
+    <div class="call-view__modal p-4">
+      <h3 class="call-view__modal-title">Start Recording</h3>
+      <p class="call-view__modal-copy">Select what to record:</p>
+      <div style="margin: 1rem 0">
+        <label style="display: block; margin: 0.5rem 0">
+          <input v-model="recordingOptions.recordLocalAudio" type="checkbox" /> My audio
+        </label>
+        <label style="display: block; margin: 0.5rem 0">
+          <input v-model="recordingOptions.recordLocalVideo" type="checkbox" /> My video
+        </label>
+        <label style="display: block; margin: 0.5rem 0">
+          <input v-model="recordingOptions.recordRemoteAudio" type="checkbox" /> Remote audio
+        </label>
+        <label style="display: block; margin: 0.5rem 0">
+          <input v-model="recordingOptions.recordRemoteVideo" type="checkbox" /> Remote video
+        </label>
+      </div>
+      <div class="call-view__modal-actions">
+        <button
+          class="call-view__modal-button call-view__modal-button--secondary"
+          @click="isRecordingModalOpen = false"
+        >
+          Cancel
+        </button>
+        <button
+          class="call-view__modal-button call-view__modal-button--primary"
+          @click="handleRequestRecording"
+        >
+          Request Consent
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recording Consent Modal -->
+  <div v-if="isRecordingConsentModalOpen" class="call-view__modal-backdrop">
+    <div class="call-view__modal p-4">
+      <h3 class="call-view__modal-title">Recording Request</h3>
+      <p class="call-view__modal-copy">
+        The other participant wants to record this call. Do you consent?
+      </p>
+      <div style="margin: 1rem 0; padding: 0.5rem; background: #f5f5f5; border-radius: 4px">
+        <strong>Will record:</strong>
+        <ul style="margin: 0.5rem 0; padding-left: 1.5rem">
+          <li v-if="recordingOptions.recordLocalAudio">Your audio</li>
+          <li v-if="recordingOptions.recordLocalVideo">Your video</li>
+          <li v-if="recordingOptions.recordRemoteAudio">Their audio</li>
+          <li v-if="recordingOptions.recordRemoteVideo">Their video</li>
+        </ul>
+      </div>
+      <div class="call-view__modal-actions">
+        <button
+          class="call-view__modal-button call-view__modal-button--secondary"
+          @click="handleRespondToRecording(false)"
+        >
+          Decline
+        </button>
+        <button
+          class="call-view__modal-button call-view__modal-button--primary"
+          @click="handleRespondToRecording(true)"
+        >
+          Allow
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recording Indicator -->
+  <div v-if="recordingStatus === 'active'" class="call-view__recording-indicator">
+    <span class="call-view__recording-dot"></span>
+    <span class="call-view__recording-text">REC {{ recordingDurationFormatted }}</span>
   </div>
 </template>
 
@@ -641,6 +810,83 @@ onBeforeUnmount(() => {
 }
 
 .grace-banner__text {
+  font-size: 0.875rem;
+}
+
+/* Recording styles */
+.call-view__record-btn {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  color: white;
+  font-size: 1.25rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.call-view__record-btn:hover {
+  background: rgba(0, 0, 0, 0.7);
+  transform: scale(1.05);
+}
+
+.call-view__record-btn--active {
+  background: #dc2626;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.call-view__recording-indicator {
+  position: fixed;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  background: #dc2626;
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.call-view__recording-dot {
+  width: 0.75rem;
+  height: 0.75rem;
+  background: white;
+  border-radius: 50%;
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.call-view__recording-text {
+  font-family: monospace;
   font-size: 0.875rem;
 }
 </style>
