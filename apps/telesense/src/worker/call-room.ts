@@ -37,11 +37,20 @@ export interface Participant {
   lastSeenAt: number
 }
 
+export interface ChatMessage {
+  id: string
+  text: string
+  timestamp: number
+  participantId: string
+  deleted?: boolean
+}
+
 export interface CallState {
   sessions: Map<string, Session>
   participants: Map<string, Participant>
   budgetId: string | null
   budgetKey: string | null
+  chatMessages: ChatMessage[]
 }
 
 type SessionLookup =
@@ -73,6 +82,10 @@ export class CallRoom {
   private roomId: string | null = null
   private workerBaseUrl: string | null = null
   private initialized: boolean = false
+
+  // Chat state
+  private chatMessages: ChatMessage[] = []
+  private static readonly MAX_CHAT_MESSAGES = 100
 
   // Metering state
   private meteringTimer: number | null = null
@@ -136,6 +149,11 @@ export class CallRoom {
     if (storedTokenId) this.tokenId = storedTokenId
     if (storedMeterAtTokenLevel) this.meterAtTokenLevel = storedMeterAtTokenLevel
 
+    const storedChatMessages = await this.state.storage.get<ChatMessage[]>("chatMessages")
+    if (storedChatMessages) {
+      this.chatMessages = storedChatMessages
+    }
+
     if (storedMetering) {
       this.lastMeteredAt = storedMetering.lastMeteredAt
       this.graceEndsAt = storedMetering.graceEndsAt
@@ -197,6 +215,12 @@ export class CallRoom {
           return this.handleGetMeteringStatus()
         case "handleChargeResult":
           return await this.handleChargeResultAction(request)
+        case "postChatMessage":
+          return await this.postChatMessage(request)
+        case "getChatMessages":
+          return this.getChatMessages(request)
+        case "deleteChatMessage":
+          return await this.deleteChatMessage(request)
         default:
           console.error(`[CallRoom] Unknown action: ${action}`)
           return new Response(JSON.stringify({ error: `Unknown action: ${action}` }), {
@@ -792,6 +816,111 @@ export class CallRoom {
     )
   }
 
+  // ==================== Chat ====================
+
+  private async postChatMessage(request: Request): Promise<Response> {
+    const { internalId, text, messageId } = (await request.json()) as {
+      internalId: string
+      text: string
+      messageId: string
+    }
+
+    const lookup = this.resolveSession(internalId)
+    if (lookup.kind === "missing") return this.sessionNotFoundResponse()
+    if (lookup.kind === "replaced") return this.sessionReplacedResponse()
+
+    const message: ChatMessage = {
+      id: messageId || crypto.randomUUID(),
+      text: text.slice(0, 500), // Limit message length
+      timestamp: Date.now(),
+      participantId: lookup.participant.participantId,
+    }
+
+    this.chatMessages.push(message)
+
+    // Keep only last N messages
+    if (this.chatMessages.length > CallRoom.MAX_CHAT_MESSAGES) {
+      this.chatMessages.shift()
+    }
+
+    await this.persist()
+
+    return new Response(JSON.stringify({ success: true, messageId: message.id }), {
+      headers: { "Content-Type": "application/json" },
+    })
+  }
+
+  private getChatMessages(request: Request): Response {
+    const url = new URL(request.url)
+    const since = parseInt(url.searchParams.get("since") || "0", 10)
+    const selfId = url.searchParams.get("selfId")
+
+    if (!selfId) {
+      return new Response(JSON.stringify({ error: "Missing selfId" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
+    const selfLookup = this.resolveSession(selfId)
+    if (selfLookup.kind === "missing") return this.sessionNotFoundResponse()
+    if (selfLookup.kind === "replaced") return this.sessionReplacedResponse()
+
+    // Filter messages by timestamp (for polling) and exclude deleted
+    const messages = this.chatMessages
+      .filter((m) => m.timestamp > since && !m.deleted)
+      .map((m) => ({
+        id: m.id,
+        text: m.text,
+        timestamp: m.timestamp,
+        isLocal: m.participantId === selfLookup.participant.participantId,
+      }))
+
+    return new Response(
+      JSON.stringify({
+        messages,
+        serverTime: Date.now(),
+      }),
+      {
+        headers: { "Content-Type": "application/json" },
+      },
+    )
+  }
+
+  private async deleteChatMessage(request: Request): Promise<Response> {
+    const { internalId, messageId } = (await request.json()) as {
+      internalId: string
+      messageId: string
+    }
+
+    const lookup = this.resolveSession(internalId)
+    if (lookup.kind === "missing") return this.sessionNotFoundResponse()
+    if (lookup.kind === "replaced") return this.sessionReplacedResponse()
+
+    const message = this.chatMessages.find((m) => m.id === messageId)
+    if (!message) {
+      return new Response(JSON.stringify({ error: "Message not found" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
+    // Only allow deleting own messages
+    if (message.participantId !== lookup.participant.participantId) {
+      return new Response(JSON.stringify({ error: "Cannot delete other user's message" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
+    message.deleted = true
+    await this.persist()
+
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { "Content-Type": "application/json" },
+    })
+  }
+
   private pruneExpiredSessions(): boolean {
     const now = Date.now()
     let removed = false
@@ -845,6 +974,7 @@ export class CallRoom {
       lastMeteredAt: this.lastMeteredAt,
       graceEndsAt: this.graceEndsAt,
     })
+    await this.state.storage.put("chatMessages", this.chatMessages)
   }
 
   private async setBudgetId(request: Request): Promise<Response> {

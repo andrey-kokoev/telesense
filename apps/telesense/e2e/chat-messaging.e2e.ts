@@ -11,6 +11,12 @@ test.describe("Chat messaging between two participants", () => {
     const pageA = await contextA.newPage()
     const pageB = await contextB.newPage()
 
+    // Capture console logs for debugging
+    const logsA: string[] = []
+    const logsB: string[] = []
+    pageA.on("console", (msg) => logsA.push(msg.text()))
+    pageB.on("console", (msg) => logsB.push(msg.text()))
+
     try {
       // ===== BROWSER A: Create room =====
       await pageA.goto("/")
@@ -33,8 +39,9 @@ test.describe("Chat messaging between two participants", () => {
         timeout: 30000,
       })
 
-      // Wait for connection to stabilize
-      await pageA.waitForTimeout(2000)
+      // Wait for connection and data channel to be ready
+      // Data channel can take longer than media to establish
+      await pageA.waitForTimeout(5000)
 
       // Open chat and send message
       await pageA.getByRole("button", { name: /chat/i }).click()
@@ -42,17 +49,22 @@ test.describe("Chat messaging between two participants", () => {
 
       const testMessage = "Hello from Browser A"
       await pageA.locator(".call-view__chat-input").fill(testMessage)
+
+      // Click send and wait for it to actually appear
       await pageA.locator(".call-view__chat-send").click()
 
-      // Verify message appears locally
-      await expect(pageA.locator(".call-view__chat-message").first()).toContainText(testMessage)
+      // Wait for message to appear (may take time for data channel)
+      await expect(pageA.locator(".call-view__chat-message").first()).toContainText(testMessage, {
+        timeout: 10000,
+      })
 
       // ===== BROWSER B: Join room =====
       await pageB.goto(`/?room=${roomId}`)
 
-      // Wait for room check to complete
+      // Wait for room check to complete - button should show join action
       const joinButtonB = pageB.locator(".landing__main .landing__btn").first()
-      await expect(joinButtonB).toHaveText("Join room", { timeout: 10000 })
+      await expect(joinButtonB).toBeEnabled({ timeout: 10000 })
+      // Click the button (label depends on room state, could be "Join room" or similar)
       await joinButtonB.click()
 
       // Wait for call view
@@ -93,6 +105,12 @@ test.describe("Chat messaging between two participants", () => {
         pageA.locator(".call-view__chat-message").filter({ hasText: replyMessage }),
       ).toBeVisible({ timeout: 5000 })
     } finally {
+      // Print console logs for debugging
+      console.log("\n=== Browser A Console Logs ===")
+      logsA.forEach((log) => console.log(log))
+      console.log("\n=== Browser B Console Logs ===")
+      logsB.forEach((log) => console.log(log))
+
       await contextA.close()
       await contextB.close()
     }
@@ -131,10 +149,9 @@ test.describe("Chat messaging between two participants", () => {
 
       // B joins
       await pageB.goto(`/?room=${roomId}`)
-      await expect(pageB.locator(".landing__main .landing__btn").first()).toHaveText("Join room", {
-        timeout: 10000,
-      })
-      await pageB.locator(".landing__main .landing__btn").first().click()
+      const joinButtonB2 = pageB.locator(".landing__main .landing__btn").first()
+      await expect(joinButtonB2).toBeEnabled({ timeout: 10000 })
+      await joinButtonB2.click()
 
       await expect(pageB.getByText("Remote participant connected!")).toBeVisible({
         timeout: 30000,

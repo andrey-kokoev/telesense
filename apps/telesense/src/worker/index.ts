@@ -2188,6 +2188,162 @@ app.post("/api/rooms/:roomId/leave", async (c) => {
   return c.json({ ok: true } as OkResponse)
 })
 
+// 12. CHAT - Post a message
+app.post("/api/rooms/:roomId/chat", async (c) => {
+  const env = c.env
+  const roomId = normalizeRoomId(c.req.param("roomId"))
+
+  try {
+    requireNonEmptyString(roomId, "roomId")
+  } catch (e) {
+    return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
+  }
+
+  let body: {
+    sessionId: string
+    text: string
+    messageId?: string
+  }
+  try {
+    body = await c.req.json()
+    requireNonEmptyString(body.sessionId, "sessionId")
+    requireNonEmptyString(body.text, "text")
+  } catch (e) {
+    return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
+  }
+
+  const callRoom = getCallRoom(env, roomId)
+  const postRes = await callRoom.fetch(
+    new Request("http://do.internal/?action=postChatMessage", {
+      method: "POST",
+      body: JSON.stringify({
+        internalId: body.sessionId,
+        text: body.text,
+        messageId: body.messageId,
+      }),
+    }),
+  )
+
+  if (!postRes.ok) {
+    if (postRes.status === 409) {
+      return c.json({ error: "Session replaced", code: "SESSION_REPLACED" } as ErrorResponse, 409)
+    }
+    if (postRes.status === 404) {
+      return c.json({ error: "Session not found", code: "SESSION_NOT_FOUND" } as ErrorResponse, 404)
+    }
+    return c.json({ error: "Failed to post message", code: "INTERNAL_ERROR" } as ErrorResponse, 500)
+  }
+
+  return c.json({ ok: true } as OkResponse)
+})
+
+// 13. CHAT - Get messages
+app.get("/api/rooms/:roomId/chat", async (c) => {
+  const env = c.env
+  const roomId = normalizeRoomId(c.req.param("roomId"))
+
+  try {
+    requireNonEmptyString(roomId, "roomId")
+  } catch (e) {
+    return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
+  }
+
+  const sessionId = c.req.query("sessionId")
+  const since = c.req.query("since")
+
+  if (!sessionId) {
+    return c.json({ error: "sessionId required", code: "BAD_REQUEST" } as ErrorResponse, 400)
+  }
+
+  const callRoom = getCallRoom(env, roomId)
+  const getRes = await callRoom.fetch(
+    new Request(
+      `http://do.internal/?action=getChatMessages&selfId=${sessionId}&since=${since || "0"}`,
+    ),
+  )
+
+  if (!getRes.ok) {
+    if (getRes.status === 409) {
+      return c.json({ error: "Session replaced", code: "SESSION_REPLACED" } as ErrorResponse, 409)
+    }
+    if (getRes.status === 404) {
+      return c.json({ error: "Session not found", code: "SESSION_NOT_FOUND" } as ErrorResponse, 404)
+    }
+    return c.json({ error: "Failed to get messages", code: "INTERNAL_ERROR" } as ErrorResponse, 500)
+  }
+
+  const data = (await getRes.json()) as {
+    messages: Array<{
+      id: string
+      text: string
+      timestamp: number
+      isLocal: boolean
+    }>
+    serverTime: number
+  }
+
+  return c.json(data)
+})
+
+// 14. CHAT - Delete a message
+app.post("/api/rooms/:roomId/chat/delete", async (c) => {
+  const env = c.env
+  const roomId = normalizeRoomId(c.req.param("roomId"))
+
+  try {
+    requireNonEmptyString(roomId, "roomId")
+  } catch (e) {
+    return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
+  }
+
+  let body: {
+    sessionId: string
+    messageId: string
+  }
+  try {
+    body = await c.req.json()
+    requireNonEmptyString(body.sessionId, "sessionId")
+    requireNonEmptyString(body.messageId, "messageId")
+  } catch (e) {
+    return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
+  }
+
+  const callRoom = getCallRoom(env, roomId)
+  const deleteRes = await callRoom.fetch(
+    new Request("http://do.internal/?action=deleteChatMessage", {
+      method: "POST",
+      body: JSON.stringify({
+        internalId: body.sessionId,
+        messageId: body.messageId,
+      }),
+    }),
+  )
+
+  if (!deleteRes.ok) {
+    if (deleteRes.status === 403) {
+      return c.json(
+        { error: "Cannot delete other user's message", code: "FORBIDDEN" } as ErrorResponse,
+        403,
+      )
+    }
+    if (deleteRes.status === 404) {
+      return c.json({ error: "Message not found", code: "NOT_FOUND" } as ErrorResponse, 404)
+    }
+    if (deleteRes.status === 409) {
+      return c.json({ error: "Session replaced", code: "SESSION_REPLACED" } as ErrorResponse, 409)
+    }
+    if (deleteRes.status === 404) {
+      return c.json({ error: "Session not found", code: "SESSION_NOT_FOUND" } as ErrorResponse, 404)
+    }
+    return c.json(
+      { error: "Failed to delete message", code: "INTERNAL_ERROR" } as ErrorResponse,
+      500,
+    )
+  }
+
+  return c.json({ ok: true } as OkResponse)
+})
+
 /**
  * Serve static assets (SPA)
  * When ASSETS binding is available, serve the frontend

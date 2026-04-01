@@ -204,6 +204,11 @@ export function useCallSession({
   const dataChannel = ref<RTCDataChannel | null>(null)
   const isChatOpen = ref(false)
 
+  // Chat polling state
+  const chatPollTimeoutId = ref<number | null>(null)
+  const lastChatPollTime = ref(0)
+  const pendingMessageIds = ref<Set<string>>(new Set())
+
   // Auto-save chat history when messages change
   watch(
     chatMessages,
@@ -306,6 +311,13 @@ export function useCallSession({
     if (pollTimeoutId.value !== null) {
       window.clearTimeout(pollTimeoutId.value)
       pollTimeoutId.value = null
+    }
+  }
+
+  function stopChatPolling() {
+    if (chatPollTimeoutId.value !== null) {
+      window.clearTimeout(chatPollTimeoutId.value)
+      chatPollTimeoutId.value = null
     }
   }
 
@@ -800,6 +812,9 @@ export function useCallSession({
       log("👀 Waiting for remote participant...")
       void pollAndSubscribe(pc, sessionId)
 
+      // Start polling for chat messages
+      startChatPolling(sessionId)
+
       visibilityListener.value = () => {
         if (document.visibilityState === "hidden") {
           void togglePiP(true)
@@ -873,68 +888,175 @@ export function useCallSession({
     }
   }
 
-  function sendChatMessage(text: string): boolean {
-    const dc = dataChannel.value
-    if (!dc || dc.readyState !== "open") {
+  async function sendChatMessage(text: string): Promise<boolean> {
+    const sessionId = currentSessionId.value
+    if (!sessionId) {
       return false
     }
 
+    const messageId = crypto.randomUUID()
+    const trimmedText = text.slice(0, 500) // Limit message length
+
+    // Optimistically add to local messages
     const message = {
-      id: crypto.randomUUID(),
-      text: text.slice(0, 500), // Limit message length
+      id: messageId,
+      text: trimmedText,
       timestamp: Date.now(),
+      isLocal: true,
     }
 
+    // Track this as a pending message to avoid duplicates when we receive it back
+    pendingMessageIds.value.add(messageId)
+
+    // Add to local messages immediately for responsive UI
+    chatMessages.value.push(message)
+
+    // Keep only last 100 messages
+    if (chatMessages.value.length > 100) {
+      chatMessages.value.shift()
+    }
+
+    // Send to server
     try {
-      dc.send(JSON.stringify(message))
-      chatMessages.value.push({
-        ...message,
-        isLocal: true,
+      const res = await apiCall(`/api/rooms/${roomId}/chat`, {
+        method: "POST",
+        body: JSON.stringify({
+          sessionId,
+          text: trimmedText,
+          messageId,
+        }),
       })
-      // Keep only last 100 messages
-      if (chatMessages.value.length > 100) {
-        chatMessages.value.shift()
+
+      if (!res.ok) {
+        log("💬 Failed to send message to server")
+        // Don't remove from local - user still sees it
+        return false
       }
+
       return true
-    } catch {
+    } catch (e) {
+      log(`💬 Error sending message: ${errorToMessage(e)}`)
       return false
     }
   }
 
-  function deleteMessage(messageId: string): "deleted" | "local-only" | "not-found" {
+  async function deleteMessage(messageId: string): Promise<"deleted" | "local-only" | "not-found"> {
     const index = chatMessages.value.findIndex((m) => m.id === messageId)
     if (index === -1) {
       return "not-found"
     }
 
     const message = chatMessages.value[index]
+    const sessionId = currentSessionId.value
 
-    // Remove locally
+    // Remove locally first
     chatMessages.value.splice(index, 1)
 
-    // Try to notify remote if session is active and it's a local message
-    const dc = dataChannel.value
-    if (message.isLocal && dc && dc.readyState === "open") {
-      try {
-        dc.send(
-          JSON.stringify({
-            type: "delete",
-            messageId,
-          }),
-        )
-        return "deleted"
-      } catch {
-        // Failed to notify remote, but local deletion succeeded
-        return "local-only"
-      }
+    // If it's not a local message or no session, just local deletion
+    if (!message.isLocal || !sessionId) {
+      return "deleted"
     }
 
-    // For remote messages or if no active session, only local deletion
-    return message.isLocal ? "local-only" : "deleted"
+    // Notify server to delete
+    try {
+      const res = await apiCall(`/api/rooms/${roomId}/chat/delete`, {
+        method: "POST",
+        body: JSON.stringify({
+          sessionId,
+          messageId,
+        }),
+      })
+
+      if (!res.ok) {
+        log("💬 Failed to delete message on server")
+        return "local-only"
+      }
+
+      return "deleted"
+    } catch (e) {
+      log(`💬 Error deleting message: ${errorToMessage(e)}`)
+      return "local-only"
+    }
   }
 
   function toggleChat() {
     isChatOpen.value = !isChatOpen.value
+  }
+
+  // Poll for new chat messages
+  async function pollChatMessages(sessionId: string) {
+    if (currentSessionId.value !== sessionId) return
+
+    try {
+      const res = await apiCall(
+        `/api/rooms/${roomId}/chat?sessionId=${sessionId}&since=${lastChatPollTime.value}`,
+      )
+
+      if (!res.ok) {
+        const decoded = await decodeApiError(res)
+        if (decoded.kind === "session-replaced" || decoded.kind === "session-missing") {
+          log(
+            `🛑 ${decoded.kind === "session-replaced" ? "Session replaced" : "Session missing"} during chat poll`,
+          )
+          leaveWithError(decoded.message)
+          return
+        }
+        // Silent fail - will retry on next poll
+        return
+      }
+
+      const data = (await res.json()) as {
+        messages: Array<{
+          id: string
+          text: string
+          timestamp: number
+          isLocal: boolean
+        }>
+        serverTime: number
+      }
+
+      // Update last poll time
+      lastChatPollTime.value = data.serverTime
+
+      // Add new messages (filter out ones we already have or sent)
+      for (const msg of data.messages) {
+        // Skip if already in our list
+        if (chatMessages.value.some((m) => m.id === msg.id)) continue
+
+        // Skip if this is a message we just sent (to avoid duplicates)
+        if (pendingMessageIds.value.has(msg.id)) {
+          pendingMessageIds.value.delete(msg.id)
+          continue
+        }
+
+        chatMessages.value.push(msg)
+
+        // Keep only last 100 messages
+        if (chatMessages.value.length > 100) {
+          chatMessages.value.shift()
+        }
+
+        log("💬 Received message")
+      }
+    } catch (e) {
+      // Silent fail - will retry on next poll
+      console.error("Chat poll error:", e)
+    }
+  }
+
+  function startChatPolling(sessionId: string) {
+    stopChatPolling()
+
+    const poll = async () => {
+      await pollChatMessages(sessionId)
+
+      if (currentSessionId.value !== sessionId) return
+      chatPollTimeoutId.value = window.setTimeout(() => {
+        void poll()
+      }, 2000) // Poll every 2 seconds
+    }
+
+    void poll()
   }
 
   onBeforeUnmount(() => {
@@ -948,6 +1070,7 @@ export function useCallSession({
       beforeUnloadListener.value = null
     }
 
+    stopChatPolling()
     void cleanupCallPresence()
     dataChannel.value?.close()
     pcRef.value?.close()
