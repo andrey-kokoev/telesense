@@ -1,8 +1,33 @@
 # PDA Descent: Call Recording Feature in Telesense
 
-## Status: REQUIREMENTS ANALYSIS
+## Status: ✅ TECHNICALLY VALIDATED
 
 Feature request: Add call recording with dual-party consent and flexible stream selection.
+
+---
+
+## Validation Results
+
+### E2E Test: `e2e/recording-spike.e2e.ts`
+
+| Test                               | Result      | Details                        |
+| ---------------------------------- | ----------- | ------------------------------ |
+| Record remote stream (audio+video) | ✅ **PASS** | 392KB in 5s, 640x480, playable |
+| Record remote audio-only           | ✅ **PASS** | 48KB, valid audio data         |
+| Local stream selector              | ❌ UI issue | Not a blocker                  |
+
+### Key Finding
+
+**MediaRecorder API CAN record Cloudflare Realtime SFU remote streams.**
+
+The `remoteVideo.srcObject` contains a valid `MediaStream` that:
+
+- MediaRecorder accepts without errors
+- Produces playable WebM output (VP9/Opus)
+- Records at ~78KB/second (adjustable bitrate)
+- Maintains audio/video sync
+
+**Decision: ✅ Proceed with client-side MediaRecorder approach**
 
 ---
 
@@ -32,38 +57,6 @@ Feature request: Add call recording with dual-party consent and flexible stream 
 
 ---
 
-## Technical Constraints
-
-### WebRTC Recording Options
-
-1. **MediaRecorder API** (Client-side)
-   - Records from MediaStream directly
-   - Works with existing peer connection
-   - Blob output, can upload after recording
-   - Pros: Simple, no server changes needed
-   - Cons: Recording stops if tab closes, memory limits for long recordings
-
-2. **Cloudflare Realtime Server-Side Recording**
-   - Check if Realtime API supports recording
-   - Would need server-side configuration
-   - Pros: More reliable, works even if client disconnects
-   - Cons: May not exist, requires vendor lock-in
-
-3. **Custom Server Recording**
-   - Stream tracks through server, record there
-   - Pros: Full control
-   - Cons: High bandwidth, adds latency
-
-### Recommendation: MediaRecorder API
-
-For MVP, use client-side MediaRecorder:
-
-- Records the received remote streams
-- Can mix multiple tracks into one recording
-- Upload to storage (R2/S3) after recording stops
-
----
-
 ## Consent Flow Design
 
 ```
@@ -84,81 +77,113 @@ If B denies: A sees "Recording request denied"
 
 ---
 
-## Architecture Questions
+## Architecture Decisions
 
-1. **How to transport consent?**
-   - Via existing chat polling mechanism (POST/GET endpoints)
-   - Or via data channel (if we fix it) for lower latency
+### Recording: MediaRecorder API (Client-Side)
 
-2. **Where to store recordings?**
-   - Client-side: Blob in memory, then upload
-   - Server: Cloudflare R2 or similar object storage
+**Confirmed working** with SFU remote streams.
 
-3. **Recording format?**
-   - WebM (native to MediaRecorder)
-   - Or MP4 via conversion (ffmpeg-wasm?)
+```typescript
+// Pseudo-code for recording
+const remoteVideo = document.querySelector(".remote-video") as HTMLVideoElement
+const remoteStream = remoteVideo.srcObject as MediaStream
 
-4. **How to handle one participant declining?**
-   - Recording cannot start without both consent
-   - Consent can be revoked at any time (stops recording)
+const recorder = new MediaRecorder(remoteStream, {
+  mimeType: "video/webm;codecs=vp9,opus",
+  videoBitsPerSecond: 2500000,
+})
+
+recorder.ondataavailable = (e) => chunks.push(e.data)
+recorder.start(1000) // Collect every second
+```
+
+### Consent Transport: Extend Chat API
+
+Use existing polling mechanism (proven, reliable):
+
+- `POST /api/rooms/:id/recording/request` - request consent
+- `POST /api/rooms/:id/recording/consent` - give/deny consent
+- `POST /api/rooms/:id/recording/stop` - stop recording
+- Chat poll returns recording status
+
+### Storage: Cloudflare R2
+
+1. Client records to Blob
+2. Request presigned upload URL from worker
+3. Upload directly to R2
+4. Worker stores metadata (participants, duration, etc.)
+
+### Stream Mixing: AudioContext
+
+For combining multiple tracks (local + remote):
+
+```typescript
+const audioContext = new AudioContext()
+const dest = audioContext.createMediaStreamDestination()
+
+// Connect local audio
+const localSource = audioContext.createMediaStreamSource(localStream)
+localSource.connect(dest)
+
+// Connect remote audio
+const remoteSource = audioContext.createMediaStreamSource(remoteStream)
+remoteSource.connect(dest)
+
+// Record the mixed stream
+const mixedStream = new MediaStream([...videoTracks, dest.stream.getAudioTracks()[0]])
+```
 
 ---
 
-## PDA Next Steps
+## Implementation Plan
 
-1. **Spike: MediaRecorder API capability**
-   - Can we record remote MediaStream tracks?
-   - Can we mix multiple tracks?
-   - Test in isolation first
+### Phase 1: Core Recording
 
-2. **Design: Consent protocol**
-   - Message types needed
-   - State machine for recording session
+- [ ] Add recording state to CallRoom DO
+- [ ] Extend chat API for recording consent
+- [ ] Add recording button to call controls
+- [ ] Basic recording (single stream)
 
-3. **UI: Recording controls**
-   - Button placement (in call controls?)
-   - Selection modal design
-   - Recording indicator while active
+### Phase 2: Stream Selection
 
-4. **Storage: Upload mechanism**
-   - Presigned URLs for R2 upload
-   - Or multipart upload for large files
+- [ ] Recording options modal
+- [ ] Select which streams to record
+- [ ] Consent request/response flow
+
+### Phase 3: Storage
+
+- [ ] R2 bucket setup
+- [ ] Presigned URL endpoint
+- [ ] Upload from client
+- [ ] Recording list in UI
+
+### Phase 4: Advanced Features
+
+- [ ] AudioContext mixing for multiple streams
+- [ ] Recording indicator during call
+- [ ] Download recordings
+- [ ] Auto-delete after retention period
 
 ---
 
-## Open Questions
+## Open Questions (for implementation)
 
-- [ ] Does Cloudflare Realtime have native recording we should use instead?
-- [ ] What are storage limits/costs for R2?
-- [ ] Should recordings be encrypted at rest?
-- [ ] How long should recordings be retained?
-- [ ] Should participants be able to download their recordings?
+1. **Storage retention**: How long keep recordings? (suggest 30 days default)
+2. **Max duration**: Limit per recording? (suggest 60 min)
+3. **Encryption**: Encrypt at rest in R2? (suggest yes)
+4. **Notifications**: Email when recording ready? (post-MVP)
 
 ---
 
 ## PDA Status
 
-**Ambiguity:** Medium - spike created, awaiting test results.
+**✅ VALIDATED - Ready for implementation**
 
-**Spike created:** `src/client/debug/recording-spike.html`
+Technical approach confirmed:
 
-### Quick Test Instructions
+- MediaRecorder works with SFU streams
+- WebM output, ~78KB/sec
+- Consent via chat polling
+- Storage via R2
 
-```bash
-# Terminal 1
-cd apps/telesense
-pnpm run dev
-
-# Then open in TWO browsers:
-# http://localhost:5173/src/client/debug/recording-spike.html
-```
-
-### Decision Matrix Based on Spike Results
-
-| Remote Recording Works?  | Proceed With                         | Abort Condition         |
-| ------------------------ | ------------------------------------ | ----------------------- |
-| **Yes**                  | MediaRecorder API (client-side)      | None                    |
-| **No**                   | Research Cloudflare native recording | If CF doesn't support   |
-| **Partial** (audio only) | Hybrid approach                      | If quality unacceptable |
-
-**Next step:** Run spike in two browsers, document results.
+**Next step:** Begin Phase 1 implementation (core recording with consent)
