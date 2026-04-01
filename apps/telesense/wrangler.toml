@@ -63,6 +63,11 @@ new_classes = ["MonthlyAllowance"]
 tag = "v4"
 new_classes = ["TokenUsageLedger"]
 
+# R2 bucket for call recordings
+[[r2_buckets]]
+binding = "RECORDINGS"
+bucket_name = "telesense-recordings"
+
 [triggers]
 crons = ["*/15 * * * *"]
 

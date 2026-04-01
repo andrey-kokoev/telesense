@@ -1271,10 +1271,17 @@ export function useCallSession({
         }
       }
 
-      mediaRecorder.value.onstop = () => {
+      mediaRecorder.value.onstop = async () => {
         const blob = new Blob(recordedChunks.value, { type: selectedMimeType })
-        log(`🎥 Recording complete. Size: ${(blob.size / 1024 / 1024).toFixed(2)} MB`)
-        // TODO: Upload to storage
+        const sizeMB = blob.size / 1024 / 1024
+        log(`🎥 Recording complete. Size: ${sizeMB.toFixed(2)} MB`)
+
+        // Upload to R2
+        const sessionId = currentSessionId.value
+        const recId = recordingId.value
+        if (sessionId && recId && blob.size > 0) {
+          await uploadRecording(sessionId, recId, blob, selectedMimeType)
+        }
       }
 
       mediaRecorder.value.onerror = (e) => {
@@ -1293,6 +1300,43 @@ export function useCallSession({
       log("🎥 MediaRecorder started")
     } catch (e) {
       log(`🎥 Failed to start MediaRecorder: ${errorToMessage(e)}`, "error")
+    }
+  }
+
+  async function uploadRecording(
+    sessionId: string,
+    recId: string,
+    blob: Blob,
+    contentType: string,
+  ): Promise<{ success: boolean; url?: string; error?: string }> {
+    try {
+      log("🎥 Uploading recording...")
+
+      // Upload directly via worker endpoint
+      const uploadRes = await apiCall(
+        `/api/rooms/${roomId}/recording/upload?recordingId=${recId}&sessionId=${sessionId}`,
+        {
+          method: "POST",
+          body: blob,
+          headers: {
+            "Content-Type": contentType,
+          },
+        },
+      )
+
+      if (!uploadRes.ok) {
+        const data = (await uploadRes.json().catch(() => ({}))) as { error?: string }
+        throw new Error(data.error || `Upload failed: ${uploadRes.status}`)
+      }
+
+      const { publicUrl } = (await uploadRes.json()) as { publicUrl: string }
+
+      log(`🎥 Recording uploaded! ${publicUrl}`, "success")
+      return { success: true, url: publicUrl }
+    } catch (e) {
+      const msg = errorToMessage(e)
+      log(`🎥 Upload failed: ${msg}`, "error")
+      return { success: false, error: msg }
     }
   }
 

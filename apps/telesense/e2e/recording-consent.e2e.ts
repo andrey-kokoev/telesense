@@ -77,7 +77,7 @@ test.describe("Recording consent flow", () => {
 
       // Should confirm stop (alert)
       await pageA.waitForEvent("dialog")
-      await pageA.on("dialog", (dialog) => dialog.accept())
+      pageA.on("dialog", (dialog) => dialog.accept())
 
       // Recording indicator should disappear
       await expect(pageA.locator(".call-view__recording-indicator")).not.toBeVisible({

@@ -92,6 +92,7 @@ type Env = {
   DEBUG?: string
   HOST_ADMIN_DB?: D1Database
   ASSETS?: Fetcher // Workers Sites static assets
+  RECORDINGS?: R2Bucket // Call recordings storage
   CALL_ROOMS: DurableObjectNamespace
   ENTITLEMENT_BUDGETS: DurableObjectNamespace
   MONTHLY_ALLOWANCES: DurableObjectNamespace
@@ -2548,6 +2549,153 @@ app.get("/api/rooms/:roomId/recording", async (c) => {
     recording: RecordingSession | null
   }
   return c.json(data)
+})
+
+// 19. RECORDING - Direct upload endpoint
+app.post("/api/rooms/:roomId/recording/upload", async (c) => {
+  const env = c.env
+  const roomId = normalizeRoomId(c.req.param("roomId"))
+
+  try {
+    requireNonEmptyString(roomId, "roomId")
+  } catch (e) {
+    return c.json({ error: (e as Error).message, code: "BAD_REQUEST" } as ErrorResponse, 400)
+  }
+
+  if (!env.RECORDINGS) {
+    return c.json(
+      { error: "Recording storage not configured", code: "NOT_CONFIGURED" } as ErrorResponse,
+      503,
+    )
+  }
+
+  // Get recordingId from query params
+  const recordingId = c.req.query("recordingId")
+  const sessionId = c.req.query("sessionId")
+
+  if (!recordingId || !sessionId) {
+    return c.json(
+      { error: "recordingId and sessionId required", code: "BAD_REQUEST" } as ErrorResponse,
+      400,
+    )
+  }
+
+  // Validate recording exists and is stopped
+  const callRoom = getCallRoom(env, roomId)
+  const statusRes = await callRoom.fetch(
+    new Request(`http://do.internal/?action=getRecordingStatus&internalId=${sessionId}`),
+  )
+
+  if (!statusRes.ok) {
+    return c.json({ error: "Session not found", code: "SESSION_NOT_FOUND" } as ErrorResponse, 404)
+  }
+
+  const statusData = (await statusRes.json()) as {
+    status: string
+    recording: { id: string; status: string; requestedBy: string } | null
+  }
+
+  if (!statusData.recording || statusData.recording.id !== recordingId) {
+    return c.json({ error: "Recording not found", code: "NOT_FOUND" } as ErrorResponse, 404)
+  }
+
+  if (statusData.recording.status !== "stopped") {
+    return c.json(
+      { error: "Recording not stopped", code: "RECORDING_ACTIVE" } as ErrorResponse,
+      409,
+    )
+  }
+
+  // Generate unique filename
+  const timestamp = Date.now()
+  const filename = `${roomId}/${recordingId}/${timestamp}.webm`
+
+  try {
+    // Get the blob data from request
+    const blob = await c.req.blob()
+
+    if (!blob || blob.size === 0) {
+      return c.json({ error: "No data provided", code: "BAD_REQUEST" } as ErrorResponse, 400)
+    }
+
+    // Upload to R2
+    await env.RECORDINGS.put(filename, blob, {
+      httpMetadata: {
+        contentType: "video/webm",
+      },
+      customMetadata: {
+        "recording-id": recordingId,
+        "room-id": roomId,
+        "uploaded-by": sessionId,
+        timestamp: String(timestamp),
+      },
+    })
+
+    // Create public URL for download
+    const publicUrl = `${c.req.url.split("/api")[0]}/api/recordings/${filename}`
+
+    // Store the URL in the recording session
+    await callRoom.fetch(
+      new Request("http://do.internal/?action=setRecordingUrl", {
+        method: "POST",
+        body: JSON.stringify({
+          internalId: sessionId,
+          url: publicUrl,
+        }),
+      }),
+    )
+
+    return c.json({
+      success: true,
+      publicUrl,
+      filename,
+      size: blob.size,
+    })
+  } catch (e) {
+    console.error("Failed to upload recording:", e)
+    return c.json(
+      { error: "Failed to upload recording", code: "UPLOAD_ERROR" } as ErrorResponse,
+      500,
+    )
+  }
+})
+
+// 20. RECORDING - Download recording
+app.get("/api/recordings/:roomId/:recordingId/:filename", async (c) => {
+  const env = c.env
+
+  if (!env.RECORDINGS) {
+    return c.json(
+      { error: "Recording storage not configured", code: "NOT_CONFIGURED" } as ErrorResponse,
+      503,
+    )
+  }
+
+  const roomId = c.req.param("roomId")
+  const recordingId = c.req.param("recordingId")
+  const filename = c.req.param("filename")
+  const key = `${roomId}/${recordingId}/${filename}`
+
+  try {
+    const object = await env.RECORDINGS.get(key)
+
+    if (!object) {
+      return c.json({ error: "Recording not found", code: "NOT_FOUND" } as ErrorResponse, 404)
+    }
+
+    const headers = new Headers()
+    object.writeHttpMetadata(headers)
+    headers.set("Content-Type", "video/webm")
+    headers.set("Content-Disposition", `attachment; filename="recording-${recordingId}.webm"`)
+
+    return new Response(object.body, { headers })
+  } catch (e) {
+    console.error("Failed to get recording:", e)
+    return c.json(
+      { error: "Failed to get recording", code: "INTERNAL_ERROR" } as ErrorResponse,
+      500,
+    )
+  }
 })
 
 /**
