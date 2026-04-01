@@ -152,6 +152,7 @@ const {
   recordingStatus,
   recordingId,
   recordingDuration,
+  recordingRequestedBy,
   requestRecording,
   respondToRecordingRequest,
   stopRecording,
@@ -259,8 +260,10 @@ async function handleRespondToRecording(consent: boolean) {
 // Watch for recording consent requests
 watch(recordingStatus, (newStatus) => {
   if (newStatus === "requested" && recordingId.value) {
-    // Show consent modal if we're not the requester
-    isRecordingConsentModalOpen.value = true
+    // Only show consent modal to the non-requester
+    if (currentSessionId.value !== recordingRequestedBy.value) {
+      isRecordingConsentModalOpen.value = true
+    }
   }
 })
 
