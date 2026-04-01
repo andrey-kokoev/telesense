@@ -773,53 +773,59 @@ export function useCallSession({
         log(`⚠️ Could not create data channel: ${errorToMessage(e)}`)
       }
 
-      const offer = await pc.createOffer()
-      await pc.setLocalDescription(offer)
+      // Only publish if we have local tracks to send
+      // Viewers (no media) skip publishing and go straight to ready state
+      if (transceivers.length > 0) {
+        const offer = await pc.createOffer()
+        await pc.setLocalDescription(offer)
 
-      log("📤 Publishing...", "publish.start", {
-        sessionId,
-        trackKinds: media.localStream.value?.getTracks().map((track) => track.kind) ?? [],
-      })
-      sessionLifecycle.value = "publishing"
-      const publishRes = await apiCall(`/api/rooms/${roomId}/publish-offer`, {
-        method: "POST",
-        body: JSON.stringify({
+        log("📤 Publishing...", "publish.start", {
           sessionId,
-          sdpOffer: offer.sdp,
-          tracks: transceivers.map(({ mid, sender }) => ({
-            mid: mid!,
-            trackName: sender.track?.id || crypto.randomUUID(),
-          })),
-        }),
-      })
+          trackKinds: media.localStream.value?.getTracks().map((track) => track.kind) ?? [],
+        })
+        sessionLifecycle.value = "publishing"
+        const publishRes = await apiCall(`/api/rooms/${roomId}/publish-offer`, {
+          method: "POST",
+          body: JSON.stringify({
+            sessionId,
+            sdpOffer: offer.sdp,
+            tracks: transceivers.map(({ mid, sender }) => ({
+              mid: mid!,
+              trackName: sender.track?.id || crypto.randomUUID(),
+            })),
+          }),
+        })
 
-      await throwIfTerminalSessionError(publishRes, "publish")
+        await throwIfTerminalSessionError(publishRes, "publish")
 
-      if (!publishRes.ok) {
-        throw new Error(`Publish failed: ${publishRes.status}`)
-      }
-
-      const publishData = (await publishRes.json()) as PublishResponse
-      await pc.setRemoteDescription(publishData.sessionDescription)
-      log("✅ Connected to Cloudflare", "publish.ok", {
-        sessionId,
-        confirmedTrackCount: publishData.tracks?.length || 0,
-      })
-
-      await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error("Connection timeout")), 15000)
-        const check = () => {
-          if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
-            clearTimeout(timeout)
-            resolve()
-          } else if (pc.iceConnectionState === "failed") {
-            clearTimeout(timeout)
-            reject(new Error("Connection failed"))
-          }
+        if (!publishRes.ok) {
+          throw new Error(`Publish failed: ${publishRes.status}`)
         }
-        pc.addEventListener("iceconnectionstatechange", check)
-        check()
-      })
+
+        const publishData = (await publishRes.json()) as PublishResponse
+        await pc.setRemoteDescription(publishData.sessionDescription)
+        log("✅ Connected to Cloudflare", "publish.ok", {
+          sessionId,
+          confirmedTrackCount: publishData.tracks?.length || 0,
+        })
+
+        await new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error("Connection timeout")), 15000)
+          const check = () => {
+            if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+              clearTimeout(timeout)
+              resolve()
+            } else if (pc.iceConnectionState === "failed") {
+              clearTimeout(timeout)
+              reject(new Error("Connection failed"))
+            }
+          }
+          pc.addEventListener("iceconnectionstatechange", check)
+          check()
+        })
+      } else {
+        log("👁️ No local tracks - joining as viewer only")
+      }
 
       log("🟢 Ready for calls!")
       showToast("Ready for calls!", "success")
