@@ -27,6 +27,14 @@ const props = defineProps<{
   isRemoteAudioMuted: boolean
   isRemoteVideoOff: boolean
   hasLocalStream: boolean
+  sessionLifecycle:
+    | "creating_session"
+    | "acquiring_media"
+    | "publishing"
+    | "ready"
+    | "leaving"
+    | "failed"
+  recordingStatus: "idle" | "requested" | "active" | "stopped"
   remoteDisplayState:
     | "starting"
     | "waiting_for_remote"
@@ -50,6 +58,7 @@ const emit = defineEmits<{
   toggleAudio: []
   toggleVideo: []
   toggleChat: []
+  toggleRecording: []
   sendChatMessage: [text: string]
   leave: []
   endRoom: []
@@ -391,6 +400,26 @@ async function copyDiagnostics() {
             @pointerup="blurTappedButton"
           >
             {{ t("call_logs") }}
+          </button>
+          <button
+            type="button"
+            v-if="sessionLifecycle === 'ready'"
+            class="call-mobile__menu-item"
+            @click="
+              () => {
+                emit('toggleRecording')
+                showMenu = false
+              }
+            "
+            @pointerup="blurTappedButton"
+          >
+            {{
+              recordingStatus === "active"
+                ? "Stop recording"
+                : recordingStatus === "requested"
+                  ? "Recording..."
+                  : "Start recording"
+            }}
           </button>
           <button
             type="button"

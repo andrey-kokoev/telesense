@@ -27,6 +27,14 @@ const props = defineProps<{
   isRemoteAudioMuted: boolean
   isRemoteVideoOff: boolean
   hasLocalStream: boolean
+  sessionLifecycle:
+    | "creating_session"
+    | "acquiring_media"
+    | "publishing"
+    | "ready"
+    | "leaving"
+    | "failed"
+  recordingStatus: "idle" | "requested" | "active" | "stopped"
   remoteDisplayState:
     | "starting"
     | "waiting_for_remote"
@@ -50,6 +58,7 @@ const emit = defineEmits<{
   toggleAudio: []
   toggleVideo: []
   toggleScreenShare: []
+  toggleRecording: []
   toggleChat: []
   sendChatMessage: [text: string]
   leave: []
@@ -344,6 +353,24 @@ async function copyDiagnostics() {
               "
             >
               {{ isScreenSharing ? t("call_stop_sharing") : t("call_share_screen") }}
+            </button>
+            <button
+              v-if="sessionLifecycle === 'ready'"
+              class="call-desktop__menu-item"
+              @click="
+                () => {
+                  emit('toggleRecording')
+                  showMenu = false
+                }
+              "
+            >
+              {{
+                recordingStatus === "active"
+                  ? "Stop recording"
+                  : recordingStatus === "requested"
+                    ? "Recording..."
+                    : "Start recording"
+              }}
             </button>
             <button
               v-if="canEndRoom"

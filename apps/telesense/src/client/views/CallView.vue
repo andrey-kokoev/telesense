@@ -346,23 +346,6 @@ onBeforeUnmount(() => {
     </span>
   </div>
 
-  <!-- Recording Button (top-right) -->
-  <div style="position: fixed; top: 1rem; right: 1rem; z-index: 100">
-    <button
-      v-if="sessionLifecycle === 'ready'"
-      data-testid="record-button"
-      class="call-view__record-btn"
-      :class="{ 'call-view__record-btn--active': recordingStatus === 'active' }"
-      @click="openRecordingModal"
-      :title="recordingStatus === 'active' ? 'Stop recording' : 'Start recording'"
-    >
-      <span v-if="recordingStatus === 'idle'">🔴</span>
-      <span v-else-if="recordingStatus === 'requested'">⏳</span>
-      <span v-else-if="recordingStatus === 'active'">⏹</span>
-      <span v-else>🔴</span>
-    </button>
-  </div>
-
   <CallMobileLayout
     v-if="useMobileLayout"
     :room-id="roomId"
@@ -376,6 +359,8 @@ onBeforeUnmount(() => {
     :is-remote-audio-muted="isRemoteAudioMuted"
     :is-remote-video-off="isRemoteVideoOff"
     :has-local-stream="!!localStream"
+    :session-lifecycle="sessionLifecycle"
+    :recording-status="recordingStatus"
     :remote-display-state="remoteDisplayState"
     :mobile-layout="mobileCallLayout"
     :remote-zoom-style="remoteZoom.transformStyle.value"
@@ -389,6 +374,7 @@ onBeforeUnmount(() => {
     @toggle-video="toggleVideo"
     @toggle-chat="toggleChat"
     @send-chat-message="handleSendMessage"
+    @toggle-recording="openRecordingModal"
     @leave="leave"
     @end-room="endRoom"
     @local-video-tap="onVideoTap('local')"
@@ -412,6 +398,8 @@ onBeforeUnmount(() => {
     :is-remote-audio-muted="isRemoteAudioMuted"
     :is-remote-video-off="isRemoteVideoOff"
     :has-local-stream="!!localStream"
+    :session-lifecycle="sessionLifecycle"
+    :recording-status="recordingStatus"
     :remote-display-state="remoteDisplayState"
     :desktop-layout="desktopCallLayout"
     :remote-zoom-style="remoteZoom.transformStyle.value"
@@ -426,6 +414,7 @@ onBeforeUnmount(() => {
     @toggle-screen-share="toggleScreenShare"
     @toggle-chat="toggleChat"
     @send-chat-message="handleSendMessage"
+    @toggle-recording="openRecordingModal"
     @leave="leave"
     @end-room="endRoom"
     @local-video-tap="onVideoTap('local')"

@@ -17,7 +17,7 @@ const { toasts } = useToast()
 <style scoped>
 .toast-container {
   position: fixed;
-  top: 1.5rem;
+  bottom: 1.5rem;
   right: 1.5rem;
   display: flex;
   flex-direction: column;
